@@ -1,0 +1,113 @@
+---
+metadata:
+  title: 中国民事起诉状引导式问卷系统
+  short title: 民事起诉状生成器
+  description: 面向执业律师与当事人的交互式民事起诉状要素采集问卷
+  authors:
+    - LawFlow 智律架构团队
+  revision_date: 2026-10-16
+---
+features:
+  question back button: True
+  navigation: True
+---
+modules:
+  - docassemble.base.util
+---
+objects:
+  - plaintiff: Individual
+  - defendant: Individual
+  - claims: DADict
+---
+mandatory: True
+code: |
+  set_language('zh')
+---
+id: intro
+question: |
+  欢迎使用 LawFlow 智律工作台 - 民事起诉状自动化引擎
+subquestion: |
+  本向导将引导您录入原被告身份信息、诉讼请求与事实理由，自动匹配《民事诉讼法》规范并生成符合法院公文标准的 Word 文书。
+continue button field: intro_seen
+---
+id: plaintiff_info
+question: |
+  原告主体信息采集
+fields:
+  - 姓名/名称: plaintiff.name.first
+    required: True
+  - 性别: plaintiff.gender
+    choices:
+      - 男
+      - 女
+      - 单位/法人
+  - 民族: plaintiff.ethnicity
+    default: 汉族
+  - 出生年月日: plaintiff.birthdate
+    datatype: date
+  - 公民身份号码/统一社会信用代码: plaintiff.id_number
+    required: True
+  - 经常居住地/住所地: plaintiff.address.address
+    required: True
+  - 联系电话: plaintiff.phone_number
+    datatype: mobile
+---
+id: defendant_info
+question: |
+  被告主体信息采集
+fields:
+  - 姓名/名称: defendant.name.first
+    required: True
+  - 性别/性质: defendant.gender
+    choices:
+      - 男
+      - 女
+      - 单位/法人
+  - 公民身份号码/统一社会信用代码: defendant.id_number
+  - 住所地/户籍地: defendant.address.address
+    required: True
+  - 联系电话: defendant.phone_number
+---
+id: litigation_claims
+question: |
+  诉讼请求与涉案标的额
+fields:
+  - 诉讼标的金额（元）: claim_amount
+    datatype: currency
+    min: 0
+  - 是否主张利息/违约金: claim_interest
+    datatype: yesno
+  - 诉讼请求条项描述: claim_details
+    input type: area
+    rows: 4
+---
+id: facts_and_reasons
+question: |
+  纠纷事实经过与起诉理由
+subquestion: |
+  可简要描述双方民事法律行为发生时间、违约或侵权表现及催告情况，本地大模型（gemma4:12b）将协助完成法言法语重构。
+fields:
+  - 事实与理由描述: raw_facts
+    input type: area
+    rows: 6
+    required: True
+  - 受诉人民法院名称: court_name
+    default: 北京市朝阳区
+    help: 填入法院全称，例如：北京市朝阳区人民法院
+---
+id: review_and_download
+mandatory: True
+question: |
+  起诉状已完成要素解析与排版
+subquestion: |
+  已为您自动核算案件受理费与对应诉讼请求。点击下方可下载符合最高法规范的 Word 文书。
+attachment:
+  name: 民事起诉状
+  filename: 民事起诉状_LawFlow.docx
+  docx template file: civil_complaint_template.docx
+  valid formats:
+    - docx
+    - pdf
+buttons:
+  - 重新填写: restart
+  - 确认完成: exit

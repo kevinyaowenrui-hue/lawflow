@@ -1,0 +1,112 @@
+version: "3.8"
+
+networks:
+  lawflow-net:
+    name: lawflow-net
+    driver: bridge
+  ragflow-net:
+    name: ragflow-net
+    # 预留对接 RAGFlow 外部容器集群网络
+    # 若外部宿主机已独立运行 RAGFlow 容器网络，可解开 external: true 直接无缝桥接
+    # external: true
+
+services:
+  # ============================================================================
+  # 基础必启服务（默认启动，无需指定 profile）
+  # ============================================================================
+
+  # 1. 核心法律编排网关与现代化律师工作台 (FastAPI + Web UI) - 端口 8000
+  lawflow-gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: lawflow-gateway
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - LLM_MODEL=${LLM_MODEL:-gemma4:12b}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - DA_API_KEY=${DA_API_KEY:-lawflow_secret_key_2026}
+      - DOCASSEMBLE_URL=${DOCASSEMBLE_URL:-http://docassemble:80}
+      - STIRLING_PDF_URL=${STIRLING_PDF_URL:-http://stirling-pdf:8080}
+      - RAGFLOW_URL=${RAGFLOW_URL:-http://ragflow:9380}
+      - DOCUSEAL_URL=${DOCUSEAL_URL:-http://docuseal:3000}
+      - GATEWAY_PORT=8000
+      - GATEWAY_HOST=0.0.0.0
+      - STORAGE_DIR=/app/storage
+      - TEMPLATES_DIR=/app/templates
+      - FONTS_DIR=/usr/share/fonts/truetype/custom
+    volumes:
+      - ./storage:/app/storage
+      - ./templates:/app/templates
+      - ./fonts:/usr/share/fonts/truetype/custom:ro
+      - ./frontend:/app/frontend:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - lawflow-net
+      - ragflow-net
+
+  # 2. 司法文书处理中间件 Stirling-PDF (PDF合并、拆分、OCR、公文盖章) - 端口 8081
+  stirling-pdf:
+    image: frooodle/s-pdf:latest
+    container_name: lawflow-stirling-pdf
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      - DOCKER_ENABLE_SECURITY=false
+      - INSTALL_BOOK_AND_ADVANCED_HTML_OPS=false
+      - LANGS=zh_CN
+    volumes:
+      - ./storage/stirling-pdf/trainingData:/usr/share/tessdata
+      - ./storage/stirling-pdf/extraConfigs:/configs
+      - ./storage/stirling-pdf/logs:/logs
+      - ./fonts:/usr/share/fonts/truetype/custom:ro
+    networks:
+      - lawflow-net
+
+  # ============================================================================
+  # Profile phase1：交互式法律问卷引擎 (按需启动: docker compose --profile phase1 up)
+  # ============================================================================
+
+  # 3. Docassemble 引导式法律问卷系统 - 端口 8080
+  docassemble:
+    image: j2r2b/docassemble:latest
+    container_name: lawflow-docassemble
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    environment:
+      - DAHOSTNAME=127.0.0.1
+      - BEHIND_HTTPS_LOAD_BALANCER=false
+      - APIKEY=${DA_API_KEY:-lawflow_secret_key_2026}
+    volumes:
+      # 挂载法院标准中文字体目录，防止公文与问卷 PDF 乱码
+      - ./fonts:/usr/share/fonts/truetype/chinese:ro
+      - ./storage/docassemble:/usr/share/docassemble/backup
+    networks:
+      - lawflow-net
+    profiles:
+      - phase1
+
+  # ============================================================================
+  # Profile phase3：电子签约与存证 (按需启动: docker compose --profile phase3 up)
+  # ============================================================================
+
+  # 4. DocuSeal 私有化电子合同签署平台 - 端口 8082
+  docuseal:
+    image: docuseal/docuseal:latest
+    container_name: lawflow-docuseal
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8082:3000"
+    environment:
+      - FORCE_SSL=false
+    volumes:
+      - ./storage/docuseal:/data
+    networks:
+      - lawflow-net
+    profiles:
+      - phase3

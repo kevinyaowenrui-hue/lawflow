@@ -15,7 +15,7 @@
     "parent_article_id": "civil_code_2021:art_585",
     "child_article_id": "nine_minutes_2019:art_46",
     "relation_type": "审判指导规范",
-    "notes": "确立民商事审判中法官对显失公平畸高违约金的主动释明义务与综合考量规则。"
+    "notes": "要点摘要（非原文）：原关联内容待核验；九民纪要第46条正文已置 PENDING_HUMAN。"
   },
   {
     "parent_article_id": "civil_code_2021:art_667",
@@ -39,19 +39,19 @@
     "parent_article_id": "civil_code_2021:art_686",
     "child_article_id": "guarantee_interp_2021:art_25",
     "relation_type": "程序衔接与裁判主文执行顺序",
-    "notes": "落实一般保证推定后，债权人仅起诉保证人的法院必须释明追加主债务人；裁判主文必须明确先执行主债务人财产。"
+    "notes": "要点摘要（非原文）：一般保证与连带保证的识别；起诉与判决主文见担保制度解释第26条（待核验）。"
   },
   {
     "parent_article_id": "civil_code_2021:art_686",
     "child_article_id": "guarantee_interp_2021:art_32",
     "relation_type": "除斥期间与时效起算",
-    "notes": "约定不明时保证期间推定为主债务届满后六个月，六个月内不起诉主债务人保证人彻底免责。"
+    "notes": "要点摘要（非原文）：一般保证——债权人未在保证期间内对债务人提起诉讼或申请仲裁的，保证人不再承担保证责任；连带责任保证——债权人未在保证期间内请求保证人承担保证责任的，保证人不再承担保证责任（依据《民法典》第693条，律师 L-S2/L-S13）。"
   },
   {
-    "parent_article_id": "company_law_2024:art_10",
-    "child_article_id": "nine_minutes_2019:art_53",
+    "parent_article_id": "company_law_2024:art_11",
+    "child_article_id": "nine_minutes_2019:art_41",
     "relation_type": "审判实践认定规则",
-    "notes": "最高院确立“看人不看章”原则：法定代表人或代理人享有代表权时，私刻假章依然有效；无权代理时真实印章亦不能绑架公司。"
+    "notes": "要点摘要（非原文）：最高院确立“看人不看章”原则相关指引现挂接公司法十一条与九民纪要第四十一条（盖章行为的法律效力）；细节待律师按官方原文核验。"
   },
   {
     "parent_article_id": "criminal_law_2024:art_224",
@@ -61,8 +61,20 @@
   },
   {
     "parent_article_id": "criminal_law_2024:art_175_1",
-    "child_article_id": "prosecution_standards_2022:art_19",
+    "child_article_id": "prosecution_standards_2022:art_22",
     "relation_type": "立案追诉门槛",
-    "notes": "骗取贷款罪给金融机构造成直接经济损失达五十万元以上应立案，防止将民事贷款展期纠纷简单推向刑事化。"
+    "notes": "要点摘要（非原文）：骗取贷款罪立案追诉门槛（2022版条号第22条），直接经济损失五十万元以上；待律师核验原文。"
+  },
+  {
+    "parent_article_id": "civil_code_2021:art_686",
+    "child_article_id": "guarantee_interp_2021:art_26",
+    "relation_type": "程序衔接与裁判主文",
+    "notes": "要点摘要（非原文）：一般保证的起诉与判决主文（待律师核验原文）。"
+  },
+  {
+    "parent_article_id": "civil_code_2021:art_585",
+    "child_article_id": "nine_minutes_2019:art_50",
+    "relation_type": "审判指导规范",
+    "notes": "要点摘要（非原文）：违约金过高标准及举证责任（待律师核验原文）。"
   }
 ]

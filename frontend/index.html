@@ -2550,7 +2550,7 @@
           <span>05 要件推演与执行破局</span>
         </button>
 
-        <button class="nav-item" id="nav-statutes" onclick="switchNavTab('tab-statutes', '06 权威法典与子母法图谱', this)">
+        <button class="nav-item" id="nav-statutes" onclick="switchNavTab('tab-statutes', '06 法条库与子母法图谱', this)">
           <!-- 法典/图谱书籍图标 -->
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
@@ -2558,7 +2558,7 @@
             <line x1="8" y1="7" x2="16" y2="7"></line>
             <line x1="8" y1="11" x2="14" y2="11"></line>
           </svg>
-          <span>06 权威法典与子母法图谱</span>
+          <span>06 法条库与子母法图谱</span>
         </button>
 
         <button class="nav-item" id="nav-graphs" onclick="switchNavTab('tab-graphs', '07 案件空间与核心图谱中枢', this)">
@@ -4294,14 +4294,14 @@
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 15px; font-weight: 700; color: var(--primary-navy);">中国法律权威法典与子母法图谱中枢</span>
+              <span style="font-size: 15px; font-weight: 700; color: var(--primary-navy);">法条库与子母法图谱中枢</span>
               <span class="live-badge valid" style="font-size: 11px; height: 24px; padding: 0 8px;">
                 <span class="pulse-dot" style="width: 6px; height: 6px;"></span>
                 <span>SQLite FTS5 全文索引引擎在线</span>
               </span>
             </div>
-            <div style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">
-              三路混合检索（精确条号直达 + 复合短语 + FTS5 全文索引）· 母法与司法解释子母连带穿透对照
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 3px;" id="statute-coverage-note">
+              三路混合检索 · 子母法穿透 · 仅覆盖本工具引擎引用的部分条文（已核验/待核验分列），并非权威法典全集
             </div>
           </div>
 
@@ -4314,7 +4314,7 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
               <span>刷新指标</span>
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="reseedStatutesCorpus()" title="强制重置并重新灌装权威法典语料">
+            <button class="btn btn-secondary btn-sm" onclick="reseedStatutesCorpus()" title="强制重置并重新灌装法条种子语料">
               <span>重载语料</span>
             </button>
           </div>
@@ -4329,8 +4329,8 @@
           </div>
           <div class="metric-item">
             <span class="metric-label">实务要件法条</span>
-            <span class="metric-value" id="statute-kpi-articles">39 条</span>
-            <span class="metric-sub">编章节条款原子切片</span>
+            <span class="metric-value" id="statute-kpi-articles">—</span>
+            <span class="metric-sub" id="statute-kpi-verify-sub">已核验 / 待核验分列</span>
           </div>
           <div class="metric-item">
             <span class="metric-label">子母法图谱连带</span>
@@ -4372,7 +4372,7 @@
           <span class="citation-pill" onclick="quickFillStatuteSearch('民法典 686')">民法典 686 (一般保证法定推定)</span>
           <span class="citation-pill" onclick="quickFillStatuteSearch('刑法 224')">刑法 224 (合同诈骗与追诉标准)</span>
           <span class="citation-pill" onclick="quickFillStatuteSearch('劳动合同法 47')">劳动合同法 47 (补偿N与社平3倍)</span>
-          <span class="citation-pill" onclick="quickFillStatuteSearch('看人不看章')">九民纪要 53 (看人不看章)</span>
+          <span class="citation-pill" onclick="quickFillStatuteSearch('看人不看章')">九民纪要 41 (盖章行为/看人不看章)</span>
           <span class="citation-pill" onclick="quickFillStatuteSearch('刑法 175')">刑法 175之一 (骗取贷款罪)</span>
         </div>
 
@@ -7640,9 +7640,16 @@
           const res = await resp.json();
           const d = res.data;
           document.getElementById('statute-kpi-laws').innerText = `${d.total_laws} 部`;
+          const vc = d.verification_counts || {};
+          const verified = vc.VERIFIED || 0;
+          const pending = (vc.PENDING_HUMAN || 0) + (vc.USER_IMPORTED_UNVERIFIED || 0);
           document.getElementById('statute-kpi-articles').innerText = `${d.total_articles} 条`;
+          const sub = document.getElementById('statute-kpi-verify-sub');
+          if (sub) sub.innerText = `已核验 ${verified} · 待核验 ${pending}`;
           document.getElementById('statute-kpi-links').innerText = `${d.total_parent_child_links} 组`;
           document.getElementById('statute-kpi-abrogated').innerText = `${d.total_abrogated_laws} 部`;
+          const noteEl = document.getElementById('statute-coverage-note');
+          if (noteEl && d.coverage_note) noteEl.innerText = d.coverage_note;
         }
       } catch (e) {
         console.warn("加载法规概览异常:", e);
@@ -7650,7 +7657,7 @@
     }
 
     async function reseedStatutesCorpus() {
-      if (!confirm('确认强制重置并重新灌装权威法典语料？此操作不可撤销。')) {
+      if (!confirm('确认强制重置并重新灌装法条种子语料？此操作不可撤销。')) {
         return;
       }
       try {
@@ -7754,6 +7761,10 @@
           const provBadge = art.has_proviso ? `<span class="badge" style="background: rgba(197, 133, 50, 0.15); color: var(--accent-amber); font-size: 10px;">含除外但书</span>` : '';
           const childrenCount = (art.child_interpretations && art.child_interpretations.length) ? art.child_interpretations.length : 0;
           const childBadge = childrenCount > 0 ? `<span class="badge" style="background: rgba(34, 197, 94, 0.12); color: var(--status-valid); font-size: 10px;">★ 关联 ${childrenCount} 条司法解释</span>` : '';
+          const vLabel = art.verification_label || (art.verification_status === 'VERIFIED' ? '已核验' : (art.verification_status === 'USER_IMPORTED_UNVERIFIED' ? '用户导入·未核验' : '待律师核验'));
+          const vBadgeColor = art.verification_status === 'VERIFIED' ? '#15803D' : '#B45309';
+          const vBadgeBg = art.verification_status === 'VERIFIED' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.15)';
+          const verifyBadge = `<span class="badge" style="background: ${vBadgeBg}; color: ${vBadgeColor}; font-size: 10px;">${vLabel}</span>`;
           const matchModeLabel = art.match_mode === 'EXACT_ARTICLE_MATCH' ? '精确条号直达' : (art.match_mode === 'PHRASE_EXACT_MATCH' ? '短语精准匹配' : 'FTS5 全文命中');
           const isPinned = (window.CaseContextStore && window.CaseContextStore.hasStatute(art.id));
 
@@ -7762,6 +7773,7 @@
               <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                 <span class="citation-pill" style="font-weight: 700; background: #14233C; color: #FFF; border: none;">${art.article_no_cn}</span>
                 <span style="font-size: 12.5px; font-weight: 600; color: var(--primary-navy);">${art.short_name || art.full_name}</span>
+                ${verifyBadge}
                 <span style="font-size: 11px; color: var(--text-muted);">${art.part_name || ''} ${art.chapter_name || ''}</span>
               </div>
               <span style="font-size: 10.5px; color: var(--accent-amber); font-weight: 500;">${matchModeLabel}</span>
@@ -8416,7 +8428,7 @@
       if (!statutes || statutes.length === 0) {
         container.innerHTML = `
           <div style="font-size:12px; color:var(--text-muted); padding:10px; text-align:center; background:#FAF9F6; border:1px dashed #D8D4C8; border-radius:var(--radius-sm);">
-            暂未选入法条。可前往 <strong>06 权威法典中枢</strong> 检索并点击【📌 选入本案依据】。
+            暂未选入法条。可前往 <strong>06 法条库中枢</strong> 检索并点击【📌 选入本案依据】。
           </div>
         `;
         return;
@@ -11758,7 +11770,7 @@
           phase1_calc: '01 实务精算与核验',
           phase1_litigation: '02 立案文书流水线',
           phase2_evidence: '03 证据清洗与庭审',
-          phase5_statutes: '06 权威法典与图谱',
+          phase5_statutes: '06 法条库与图谱',
           phase4_deep_matrix: '05 深度要件推演',
           matter_vault: '07 案件空间'
         };
@@ -11903,7 +11915,7 @@
         'tab-evidence': '03 证据清洗与庭审',
         'tab-rag-sign': '04 类案检索与签署',
         'tab-deep-matrix': '05 深度要件与质证推演',
-        'tab-statutes': '06 权威法典与子母法图谱',
+        'tab-statutes': '06 法条库与子母法图谱',
         'tab-graphs': '07 案件空间与核心图谱中枢'
       };
 
@@ -12370,8 +12382,8 @@
         <!-- 四、请求权基础实体法条总线 -->
         <div style="font-size: 13px; font-weight: 700; color: var(--primary-navy); margin-bottom: 10px; border-top: 1px solid var(--border-hairline); padding-top: 12px; display: flex; justify-content: space-between; align-items: center;">
           <span>四、请求权基础法条依据 (Statutes Basis, <span id="modal-statutes-count">3</span> 条)</span>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="closeCaseContextModal(); switchNavTab('tab-statutes', '06 权威法典与子母法图谱', document.getElementById('nav-statutes'))" style="padding: 2px 8px; font-size: 11px;">
-            🔍 前往 06 权威法典库选入新法条
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeCaseContextModal(); switchNavTab('tab-statutes', '06 法条库与子母法图谱', document.getElementById('nav-statutes'))" style="padding: 2px 8px; font-size: 11px;">
+            🔍 前往 06 法条库选入新法条
           </button>
         </div>
         <div id="modal-statutes-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
@@ -13157,7 +13169,7 @@
               <option value="phase1_litigation">02 立案文书流水线</option>
               <option value="phase1_calc">01 实务精算与核验</option>
               <option value="phase2_evidence">03 证据清洗与庭审</option>
-              <option value="phase5_statutes">06 权威法典与图谱</option>
+              <option value="phase5_statutes">06 法条库与图谱</option>
               <option value="phase4_deep_matrix">05 深度要件与质证推演</option>
               <option value="matter_vault">07 案件空间与图谱</option>
             </select>

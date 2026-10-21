@@ -550,9 +550,9 @@ def run_tests():
 第三条 平台企业通过算法或者规则对劳动者进行实质性管理，劳动者在工作时间、工作路线、服务价格等方面受平台严格控制的，应当认定双方存在劳动关系。
 """
     r = client.post("/api/v1/statutes/import", json={
-        "law_id": "test_highcourt_platform_labor_2024",
-        "full_name": "某省高级人民法院关于审理互联网平台用工劳动争议案件的审理指引",
-        "short_name": "平台用工审理指引",
+        "law_id": "user_import_highcourt_platform_labor_2024",
+        "full_name": "【测试】某省高级人民法院关于审理互联网平台用工劳动争议案件的审理指引",
+        "short_name": "【测试】平台用工审理指引",
         "hierarchy": 4,
         "promulgated_by": "某省高级人民法院",
         "effective_date": "2024-05-01",
@@ -574,8 +574,11 @@ def run_tests():
     res_imported = r.json().get("results", [])
     log_test(
         "法典中枢: 自定义导入法规即时毫秒级混合检索验证",
-        len(res_imported) >= 1 and "平台用工审理指引" in res_imported[0].get("short_name", ""),
-        f"命中新建私有条文: {res_imported[0].get('short_name')} {res_imported[0].get('article_no_cn')}"
+        len(res_imported) >= 1 and "平台用工审理指引" in res_imported[0].get("short_name", "") and (
+            res_imported[0].get("verification_status") == "USER_IMPORTED_UNVERIFIED"
+            or "未核验" in str(res_imported[0].get("verification_label") or "")
+        ),
+        f"命中新建私有条文: {res_imported[0].get('short_name')} {res_imported[0].get('article_no_cn')} status={res_imported[0].get('verification_status')}"
     )
 
     # ==========================================

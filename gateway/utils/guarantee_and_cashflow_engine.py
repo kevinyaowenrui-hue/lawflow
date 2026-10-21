@@ -345,6 +345,9 @@ def audit_and_reconcile_cashflow(
     start_date: Optional[str] = None,
     debtor_name: Optional[str] = None,
     creditor_name: Optional[str] = None,
+    both_natural_persons: Optional[bool] = None,
+    lender_is_natural_person: Optional[bool] = None,
+    borrower_is_natural_person: Optional[bool] = None,
     **kwargs
 ) -> Dict[str, Any]:
     """
@@ -355,6 +358,18 @@ def audit_and_reconcile_cashflow(
     """
     if "annual_rate" in kwargs and kwargs["annual_rate"] is not None:
         annual_interest_rate = float(kwargs["annual_rate"])
+    if both_natural_persons is None:
+        if lender_is_natural_person is not None and borrower_is_natural_person is not None:
+            both_natural_persons = bool(lender_is_natural_person and borrower_is_natural_person)
+        elif "party_type" in kwargs:
+            both_natural_persons = str(kwargs.get("party_type") or "").lower() in (
+                "natural",
+                "natural_person",
+                "双方均为自然人",
+                "自然人",
+            )
+        else:
+            both_natural_persons = False
 
     try:
         p_base = float(Decimal(str(principal_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
@@ -545,16 +560,23 @@ def audit_and_reconcile_cashflow(
         payee = f["payee"]
         # B1. 出借交付入第三方账户
         if any(k in p_text for k in ["借款", "出借", "本金"]) and ("第三人" in payee or "出纳" in payee or "配偶" in payee or (debtor_name and payee and debtor_name not in payee)):
+            tip = (
+                f"借款本金未直接汇入借款人本人银行账户，而是汇入第三方【{payee}】！"
+                "出借人主张第三人系受委托收款的，必须提供借款人明确的书面指示委托书或微信聊天明确确认，"
+                "否则可能面临借款款项未实际交付之举证困境。"
+            )
+            # 「借贷实践合同未生效」仅在双方均为自然人时提示，依据《民法典》第679条（律师 L-I13）
+            if both_natural_persons:
+                tip += (
+                    "双方均为自然人时，依据《民法典》第六百七十九条，自然人之间的借款合同自贷款人提供借款时成立；"
+                    "若未能证明已向借款人提供借款，合同可能尚未成立生效。"
+                )
             red_flags.append({
                 "risk_type": "第三方代收交付阻断抗辩",
                 "severity": "HIGH",
                 "flow_id": f["flow_id"],
                 "payee": payee,
-                "risk_tip": (
-                    f"借款本金未直接汇入借款人本人银行账户，而是汇入第三方【{payee}】！"
-                    "依《最高法民间借贷规定》第8条，出借人主张第三人系受委托收款的，必须提供借款人明确的书面指示委托书或微信聊天明确确认，"
-                    "否则将面临'借款款项未实际交付、借贷实践合同未生效'的败诉风险！"
-                )
+                "risk_tip": tip,
             })
         # B2. 还款清偿由第三方汇出
         if any(k in p_text for k in ["还款", "代还", "归还", "清偿", "付息"]) and ("第三" in payer or "代" in p_text or (debtor_name and payer and debtor_name not in payer)):

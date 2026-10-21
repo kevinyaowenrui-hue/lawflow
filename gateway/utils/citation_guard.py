@@ -136,6 +136,10 @@ def _ensure_laws_db() -> bool:
         return os.path.exists(_db_path_str())
 
 
+def _seed_demo_enabled() -> bool:
+    return os.environ.get("LAWFLOW_SEED_DEMO", "").strip() in ("1", "true", "True", "yes", "YES")
+
+
 def ensure_court_precedents_table(conn: sqlite3.Connection):
     cursor = conn.cursor()
     cursor.execute(
@@ -148,54 +152,94 @@ def ensure_court_precedents_table(conn: sqlite3.Connection):
         judgment_year INTEGER,
         cause_of_action TEXT,
         holding_summary TEXT,
-        source TEXT DEFAULT '演示判例种子',
-        is_demo INTEGER DEFAULT 1
+        source TEXT DEFAULT NULL,
+        is_demo INTEGER DEFAULT 0,
+        source_url TEXT,
+        verified_at TEXT,
+        stance TEXT,
+        core_topic TEXT,
+        holding_ratio TEXT,
+        appellate_rebuttal_argument TEXT,
+        factual_equivalence TEXT,
+        court_level TEXT,
+        is_guiding_or_gazette INTEGER DEFAULT 0
     );
     """
     )
-    # 兼容旧库缺 is_demo 列
-    try:
-        cursor.execute("SELECT is_demo FROM court_precedents LIMIT 1")
-    except sqlite3.OperationalError:
+    for col, decl in (
+        ("is_demo", "INTEGER DEFAULT 0"),
+        ("source_url", "TEXT"),
+        ("verified_at", "TEXT"),
+        ("stance", "TEXT"),
+        ("core_topic", "TEXT"),
+        ("holding_ratio", "TEXT"),
+        ("appellate_rebuttal_argument", "TEXT"),
+        ("factual_equivalence", "TEXT"),
+        ("court_level", "TEXT"),
+        ("is_guiding_or_gazette", "INTEGER DEFAULT 0"),
+    ):
         try:
-            cursor.execute("ALTER TABLE court_precedents ADD COLUMN is_demo INTEGER DEFAULT 1")
+            cursor.execute(f"SELECT {col} FROM court_precedents LIMIT 1")
         except sqlite3.OperationalError:
-            pass
+            try:
+                cursor.execute(f"ALTER TABLE court_precedents ADD COLUMN {col} {decl}")
+            except sqlite3.OperationalError:
+                pass
 
-    for p in load_precedents_demo():
-        try:
+    # 仅演示模式灌入 data/demo/precedents_demo.json；默认不写入任何案号
+    if _seed_demo_enabled():
+        for p in load_precedents_demo():
             cursor.execute(
                 """
             INSERT OR IGNORE INTO court_precedents
-            (case_number, title, court_name, judgment_year, cause_of_action, holding_summary, is_demo)
-            VALUES (?, ?, ?, ?, ?, ?, 1);
+            (case_number, title, court_name, judgment_year, cause_of_action, holding_summary,
+             source, is_demo, source_url, verified_at, stance, core_topic, holding_ratio,
+             appellate_rebuttal_argument, factual_equivalence, court_level, is_guiding_or_gazette)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, ?, ?, ?, ?, 0);
             """,
                 (
                     p["case_number"],
                     p["title"],
                     p["court_name"],
-                    p["judgment_year"],
-                    p["cause_of_action"],
-                    p["holding_summary"],
-                ),
-            )
-        except sqlite3.OperationalError:
-            cursor.execute(
-                """
-            INSERT OR IGNORE INTO court_precedents
-            (case_number, title, court_name, judgment_year, cause_of_action, holding_summary)
-            VALUES (?, ?, ?, ?, ?, ?);
-            """,
-                (
-                    p["case_number"],
-                    p["title"],
-                    p["court_name"],
-                    p["judgment_year"],
-                    p["cause_of_action"],
-                    p["holding_summary"],
+                    p.get("judgment_year"),
+                    p.get("cause_of_action"),
+                    p.get("holding_summary"),
+                    p.get("source") or "演示数据·非真实案例",
+                    p.get("source_url"),
+                    p.get("stance"),
+                    p.get("core_topic"),
+                    p.get("holding_ratio"),
+                    p.get("appellate_rebuttal_argument"),
+                    p.get("factual_equivalence"),
+                    p.get("court_level"),
                 ),
             )
     conn.commit()
+
+
+def load_verified_precedents_from_db(conn: Optional[sqlite3.Connection] = None) -> List[Dict[str, Any]]:
+    """仅返回 is_demo=false 且 verified_at 非空的判例；供上诉引擎使用。"""
+
+    def _run(active: sqlite3.Connection) -> List[Dict[str, Any]]:
+        ensure_court_precedents_table(active)
+        cur = active.cursor()
+        cur.execute(
+            """
+            SELECT * FROM court_precedents
+            WHERE COALESCE(is_demo, 0) = 0
+              AND verified_at IS NOT NULL
+              AND TRIM(verified_at) != ''
+            """
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    if conn is not None:
+        return _run(conn)
+    if not os.path.exists(_db_path_str()):
+        if not _ensure_laws_db():
+            return []
+    with connect(get_laws_db_path(), row_factory=sqlite3.Row) as owned:
+        return _run(owned)
 
 
 def _row_is_demo(db_case) -> bool:
@@ -366,22 +410,9 @@ def _is_recognized_law(canon: str, cursor) -> bool:
 def _find_article_row(cursor, canon: str, norm_art_no: Optional[int], art_no_cn: str):
     cursor.execute(
         """
-        SELECT a.id, a.article_no_cn, a.content, a.has_proviso, l.short_name, l.full_name
-        FROM articles a
-        JOIN laws l ON a.law_id = l.id
-        """
-    )
-    for row in cursor.fetchall():
-        if normalize_law_name(row["full_name"]) != canon and normalize_law_name(row["short_name"]) != canon:
-            continue
-        if norm_art_no and (row["article_no_cn"] == art_no_cn or True):
-            # 精确条号
-            pass
-        # re-query with int
-    cursor.execute(
-        """
-        SELECT a.id, a.article_no_cn, a.content, a.has_proviso, l.short_name, l.full_name
-               , a.article_no_int
+        SELECT a.id, a.article_no_cn, a.content, a.has_proviso, a.article_no_int,
+               a.verification_status, a.review_note,
+               l.short_name, l.full_name, l.hierarchy, l.version_note
         FROM articles a
         JOIN laws l ON a.law_id = l.id
         """
@@ -692,7 +723,18 @@ def _audit_citations_core(conn, content_text, auto_sanitize, incident_date=None)
                 citation_entry["article_content"] = art_row["content"]
                 citation_entry["statute_full_name"] = art_row["full_name"]
                 citation_entry["has_proviso"] = bool(art_row["has_proviso"])
+                # 会议纪要不得作为裁判依据直接援引
+                try:
+                    hier = art_row["hierarchy"] if "hierarchy" in art_row.keys() else None
+                except Exception:
+                    hier = None
+                if hier == 4 or canon in ("九民纪要", "类案检索指导意见"):
+                    citation_entry["notes"] += "；不得作为裁判依据直接援引，只能在说理部分参考"
+                    citation_entry["meeting_minutes_caveat"] = (
+                        "不得作为裁判依据直接援引，只能在说理部分参考"
+                    )
             else:
+                # PENDING_HUMAN / USER_IMPORTED_UNVERIFIED 等一律黄标，绝不当作绿标标准答案
                 yellow_count += 1
                 unverified_count += 1
                 citation_entry["status"] = "PENDING_VERIFICATION"
@@ -701,6 +743,8 @@ def _audit_citations_core(conn, content_text, auto_sanitize, incident_date=None)
                 citation_entry["notes"] = f"本地库已收录但 verification_status={vstatus}，待核验"
                 citation_entry["official_content"] = art_row["content"]
                 citation_entry["article_content"] = art_row["content"]
+                if canon in ("九民纪要", "类案检索指导意见"):
+                    citation_entry["notes"] += "；不得作为裁判依据直接援引，只能在说理部分参考"
             citation_entry["risk_tip"] = citation_entry["notes"]
         else:
             yellow_count += 1

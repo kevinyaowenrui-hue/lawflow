@@ -429,7 +429,8 @@ def run_tests():
     })
     assert r.status_code == 200, r.text
     preserv_res = r.json()
-    log_test("深度精算: 财产保全续查封续冻结红线精算", preserv_res.get("advance_days_required") == 15, f"续保申请截止日: {preserv_res.get('renewal_application_deadline')} | 距截止剩余: {preserv_res.get('days_to_renewal_deadline')}天")
+    # 原断言 advance_days_required == 15 把错误行为写成了通过条件；法释〔2016〕22号第十八条为届满七日前
+    log_test("深度精算: 财产保全续查封续冻结红线精算", preserv_res.get("advance_days_required") == 7, f"续保申请截止日: {preserv_res.get('renewal_application_deadline')} | 距截止剩余: {preserv_res.get('days_to_renewal_deadline')}天")
 
     # 5.3 规范性法律文件现行有效性与废止拦截核验
     r = client.post("/api/v1/phase1/calc/statute-validity", json={

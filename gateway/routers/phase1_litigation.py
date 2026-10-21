@@ -19,10 +19,10 @@ import time
 import uuid
 import logging
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from docxtpl import DocxTemplate
 import httpx
 import pymupdf as fitz
@@ -39,6 +39,10 @@ from gateway.utils.cn_legal_calc import (
     verify_statutory_validity,
     calculate_settlement_npv_and_recovery
 )
+
+
+def _http_422(detail: str) -> HTTPException:
+    return HTTPException(status_code=422, detail=detail)
 from gateway.core.ollama_client import ollama_client
 from gateway.core.security import sanitize_filename, safe_join, validate_download_filename
 from gateway.utils.legal_prompts import FACTS_POLISH_SYSTEM_PROMPT
@@ -150,7 +154,7 @@ class USCCReq(BaseModel):
     uscc: str = Field(..., example="91440300708461136T")
 
 class CourtFeeReq(BaseModel):
-    claim_amount: float = Field(..., example=250000.0)
+    claim_amount: float = Field(..., ge=0, example=250000.0)
     case_type: str = Field(default="property")
     is_summary_procedure: bool = Field(default=False)
 
@@ -159,10 +163,53 @@ class LPRInterestReq(BaseModel):
     start_date: str = Field(..., example="2023-01-01")
     end_date: str = Field(..., example="2024-01-01")
     multiplier: float = Field(default=1.0)
-    term: str = Field(default="1Y")
-    fixed_annual_rate: Optional[float] = Field(default=None)
+    term: Literal["1Y", "5Y"] = Field(default="1Y")
+    fixed_annual_rate: Optional[float] = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="年利率，单位为百分数，例如 12 表示年利率 12%",
+    )
     rule_mode: str = Field(default="commercial_floating", example="commercial_floating")
     contract_date: Optional[str] = Field(default=None, example="2022-03-01")
+    filing_date: Optional[str] = Field(
+        default=None,
+        example="2021-12-01",
+        description="起诉日期（2020-08-20 前成立的民间借贷合同必填）",
+    )
+    markup_ratio: Optional[float] = Field(
+        default=None,
+        description="买卖合同固定 LPR 加计比例，须在 0.3–0.5",
+    )
+    today_date: Optional[str] = Field(default=None)
+
+    @field_validator("term", mode="before")
+    @classmethod
+    def _normalize_term(cls, v):
+        if v is None:
+            return "1Y"
+        s = str(v).strip().upper()
+        if s not in ("1Y", "5Y"):
+            raise ValueError('term 仅允许 "1Y" 或 "5Y"')
+        return s
+
+    @field_validator("fixed_annual_rate")
+    @classmethod
+    def _reject_decimal_rate(cls, v):
+        if v is not None and 0 < float(v) < 1:
+            raise ValueError("疑似填写了小数，请输入百分数（例如 0.24 应写为 24）")
+        return v
+
+    @model_validator(mode="after")
+    def _check_date_order(self):
+        try:
+            d0 = datetime.strptime(self.start_date, "%Y-%m-%d").date()
+            d1 = datetime.strptime(self.end_date, "%Y-%m-%d").date()
+        except ValueError as e:
+            raise ValueError(f"日期格式无效: {e}") from e
+        if d1 < d0:
+            raise ValueError("计息截止日期不能早于起始日期")
+        return self
 
 class LaborCalcReq(BaseModel):
     monthly_salary: float = Field(..., example=12000.0)
@@ -233,22 +280,31 @@ async def api_uscc(req: USCCReq):
 @router.post("/api/v1/phase1/calc/court-fees", summary="《诉讼费用交纳办法》分段计费")
 @router.post("/api/calc/court-fees", include_in_schema=False)
 async def api_court_fees(req: CourtFeeReq):
-    return calculate_court_fees(req.claim_amount, req.case_type, req.is_summary_procedure)
+    try:
+        return calculate_court_fees(req.claim_amount, req.case_type, req.is_summary_procedure)
+    except ValueError as e:
+        raise _http_422(str(e)) from e
 
 
 @router.post("/api/v1/phase1/calc/lpr-interest", summary="央行 LPR 历期计息及诉状利息明细说明")
 @router.post("/api/calc/lpr-interest", include_in_schema=False)
 async def api_lpr_interest(req: LPRInterestReq):
-    return calculate_lpr_interest(
-        principal=req.principal,
-        start_date=req.start_date,
-        end_date=req.end_date,
-        multiplier=req.multiplier,
-        term=req.term,
-        fixed_annual_rate=req.fixed_annual_rate,
-        rule_mode=req.rule_mode,
-        contract_date=req.contract_date
-    )
+    try:
+        return calculate_lpr_interest(
+            principal=req.principal,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            multiplier=req.multiplier,
+            term=req.term,
+            fixed_annual_rate=req.fixed_annual_rate,
+            rule_mode=req.rule_mode,
+            contract_date=req.contract_date,
+            filing_date=req.filing_date,
+            markup_ratio=req.markup_ratio,
+            today_date=req.today_date,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
 
 
 @router.post("/api/v1/phase1/calc/labor-arbitration", summary="劳动争议经济补偿金精算 (N / N+1 / 2N)")
@@ -268,12 +324,20 @@ class StatuteLimitationsReq(BaseModel):
     interruption_events: Optional[List[Dict[str, str]]] = Field(default=None)
     suspension_events: Optional[List[Dict[str, str]]] = Field(default=None)
     today_date: Optional[str] = Field(default=None)
+    act_date: Optional[str] = Field(
+        default=None,
+        example="2021-06-01",
+        description="民事法律行为发生日（撤销权校验 5 年最长期限）",
+    )
 
 class PreservationRenewalReq(BaseModel):
-    preservation_type: str = Field(default="bank_deposit", example="bank_deposit")
+    preservation_type: Literal["bank_deposit", "movable_property", "real_estate_equity"] = Field(
+        default="bank_deposit", example="bank_deposit"
+    )
     start_date: str = Field(..., example="2023-05-10")
     custom_years: Optional[float] = Field(default=None)
     today_date: Optional[str] = Field(default=None)
+    internal_reminder_days: int = Field(default=30, ge=1)
 
 class StatuteValidityReq(BaseModel):
     citation_text: str = Field(..., example="《中华人民共和国合同法》第一百零七条")
@@ -283,24 +347,32 @@ class StatuteValidityReq(BaseModel):
 @router.post("/api/v1/phase1/calc/statute-limitations", summary="诉讼时效与除斥期间精确核算器 (《民法典》第188、194、195、199条)")
 @router.post("/api/calc/statute-limitations", include_in_schema=False)
 async def api_statute_limitations(req: StatuteLimitationsReq):
-    return calculate_statute_of_limitations(
-        start_date=req.start_date,
-        cause_type=req.cause_type,
-        interruption_events=req.interruption_events,
-        suspension_events=req.suspension_events,
-        today_date=req.today_date
-    )
+    try:
+        return calculate_statute_of_limitations(
+            start_date=req.start_date,
+            cause_type=req.cause_type,
+            interruption_events=req.interruption_events,
+            suspension_events=req.suspension_events,
+            today_date=req.today_date,
+            act_date=req.act_date,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
 
 
 @router.post("/api/v1/phase1/calc/preservation-renewal", summary="财产保全续查封续冻结红线精算 (法释〔2016〕22号第十八条)")
 @router.post("/api/calc/preservation-renewal", include_in_schema=False)
 async def api_preservation_renewal(req: PreservationRenewalReq):
-    return calculate_preservation_renewal(
-        preservation_type=req.preservation_type,
-        start_date=req.start_date,
-        custom_years=req.custom_years,
-        today_date=req.today_date
-    )
+    try:
+        return calculate_preservation_renewal(
+            preservation_type=req.preservation_type,
+            start_date=req.start_date,
+            custom_years=req.custom_years,
+            today_date=req.today_date,
+            internal_reminder_days=req.internal_reminder_days,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
 
 
 @router.post("/api/v1/phase1/calc/statute-validity", summary="规范性法律文件现行有效性与废止拦截核验")
@@ -327,9 +399,13 @@ class AssetPlanInput(BaseModel):
     encumbrance_status: Optional[str] = Field(default="", example="在先银行抵押150万元")
 
 class SettlementSimulationReq(BaseModel):
-    total_claim_nominal: float = Field(..., example=5000000.0, description="债权标的名义总额")
-    plan_type: str = Field(default="hybrid", example="hybrid", description="和解方案类型: cash_installments / debt_for_asset / hybrid")
-    annual_discount_rate: float = Field(default=0.08, example=0.08, description="年化资金折现率/资本成本")
+    total_claim_nominal: float = Field(..., gt=0, example=5000000.0, description="债权标的名义总额")
+    plan_type: Literal["cash_installments", "debt_for_asset", "hybrid"] = Field(
+        default="hybrid",
+        example="hybrid",
+        description="和解方案类型: cash_installments / debt_for_asset / hybrid",
+    )
+    annual_discount_rate: float = Field(default=0.08, ge=0, example=0.08, description="年化资金折现率/资本成本")
     installments: Optional[List[InstallmentItem]] = Field(default=None, description="分期还款计划")
     asset_plan: Optional[AssetPlanInput] = Field(default=None, description="以物抵债方案")
 
@@ -337,15 +413,18 @@ class SettlementSimulationReq(BaseModel):
 @router.post("/api/v1/phase1/calc/settlement-simulation", summary="商业诉讼和解与以物抵债现值/回收率精算")
 @router.post("/api/calc/settlement-simulation", include_in_schema=False)
 async def api_settlement_simulation(req: SettlementSimulationReq):
-    installments_list = [i.model_dump() if hasattr(i, "model_dump") else i.dict() for i in req.installments] if req.installments else []
-    asset_dict = req.asset_plan.model_dump() if hasattr(req.asset_plan, "model_dump") else (req.asset_plan.dict() if req.asset_plan else {})
-    return calculate_settlement_npv_and_recovery(
-        total_claim_nominal=req.total_claim_nominal,
-        plan_type=req.plan_type,
-        annual_discount_rate=req.annual_discount_rate,
-        installments=installments_list,
-        asset_plan=asset_dict
-    )
+    try:
+        installments_list = [i.model_dump() if hasattr(i, "model_dump") else i.dict() for i in req.installments] if req.installments else []
+        asset_dict = req.asset_plan.model_dump() if hasattr(req.asset_plan, "model_dump") else (req.asset_plan.dict() if req.asset_plan else {})
+        return calculate_settlement_npv_and_recovery(
+            total_claim_nominal=req.total_claim_nominal,
+            plan_type=req.plan_type,
+            annual_discount_rate=req.annual_discount_rate,
+            installments=installments_list,
+            asset_plan=asset_dict
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
 
 
 
@@ -503,6 +582,8 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "contract_arrears": f"{req.claim_amount:,.2f}",
             "contract_arrears_capital": rmb_to_capital(req.claim_amount),
             "liquidated_damages": f"{req.claim_amount * 0.05:,.2f}",
+            # 利率描述改为模板变量；完整口径由批次7/律师确认，此处仅占位避免硬编码「加计50%」
+            "overdue_rate_desc": "按照全国银行间同业拆借中心公布的一年期贷款市场报价利率（LPR）及合同约定或依法可主张的标准计算",
             "facts_and_reasons": facts_polished,
             "court_name": req.court_name,
             "filing_date": filing_date_str

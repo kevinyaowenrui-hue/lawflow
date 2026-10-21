@@ -102,6 +102,11 @@ async def lifespan(app: FastAPI):
             "同源前端可通过首页 meta[name=lawflow-token] 自动携带；"
             "外部调用请设置 LAWFLOW_API_TOKEN 并在请求头加入 X-LawFlow-Token。"
         )
+    try:
+        from gateway.utils.cn_legal_calc import check_lpr_data_freshness
+        check_lpr_data_freshness()
+    except Exception as e:
+        logger.warning(f"LPR 数据新鲜度检查失败: {e}")
     yield
     logger.info("=== [LawFlow 智律工作台] 网关已安全下线 ===")
 

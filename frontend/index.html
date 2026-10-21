@@ -2807,6 +2807,10 @@
                   <option value="5Y">五年期以上 LPR (长期固定资产类)</option>
                 </select>
               </div>
+              <div class="form-group">
+                <label class="form-label">起诉日期（2020-08-20 前成立的民间借贷合同必填）</label>
+                <input type="date" id="lpr-filing" value="">
+              </div>
             </div>
 
             <div style="margin-top: 18px;">
@@ -2885,10 +2889,15 @@
                 <select id="statute-type">
                   <option value="general_3y">普通民事诉讼时效（3年，民法典第188条）</option>
                   <option value="intl_trade_4y">国际买卖与技术进出口争议（4年，民法典第594条）</option>
-                  <option value="cancel_right_1y">重大误解/欺诈撤销权除斥期间（1年，不适用中断）</option>
+                  <option value="cancel_mistake_90d">重大误解撤销权（90日）</option>
+                  <option value="cancel_right_1y">欺诈/显失公平撤销权（1年，不适用中断）</option>
                   <option value="construction_priority_18m">建工价款优先受偿权除斥期间（18个月）</option>
                   <option value="rescission_right_1y">合同解除权除斥期间（1年，民法典第564条）</option>
                 </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">行为发生日（撤销权校验5年最长除斥）</label>
+                <input type="date" id="statute-act-date" value="">
               </div>
             </div>
 
@@ -2913,9 +2922,9 @@
               <div class="form-group">
                 <label class="form-label">保全标的财产类型</label>
                 <select id="preserv-type">
-                  <option value="bank_deposit">银行存款及其他资金冻结 (限1年 / 提前15日申请续冻)</option>
-                  <option value="movable_property">动产车辆、机器设备查封 (限2年 / 提前15日申请续封)</option>
-                  <option value="real_estate_equity">不动产房产土地、股权冻结 (限3年 / 提前30日申请续封)</option>
+                  <option value="bank_deposit">银行存款及其他资金冻结 (限1年 / 届满七日前申请续冻)</option>
+                  <option value="movable_property">动产车辆、机器设备查封 (限2年 / 届满七日前申请续封)</option>
+                  <option value="real_estate_equity">不动产房产土地、股权冻结 (限3年 / 届满七日前申请续封)</option>
                 </select>
               </div>
               <div class="form-group">
@@ -5279,12 +5288,15 @@
       const endDate = document.getElementById('lpr-end').value;
       const multiplier = parseFloat(document.getElementById('lpr-mult').value) || 1.0;
       const term = document.getElementById('lpr-term').value;
+      const filingDate = (document.getElementById('lpr-filing') || {}).value || "";
 
       try {
+        const payload = { principal, start_date: startDate, end_date: endDate, multiplier, term };
+        if (filingDate) payload.filing_date = filingDate;
         const resp = await fetch(`${API_BASE}/api/v1/phase1/calc/lpr-interest`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ principal, start_date: startDate, end_date: endDate, multiplier, term })
+          body: JSON.stringify(payload)
         });
         const d = await resp.json();
 
@@ -5421,6 +5433,7 @@
     async function runStatuteLimitCalc() {
       const startDate = document.getElementById('statute-start').value;
       const causeType = document.getElementById('statute-type').value;
+      const actDate = (document.getElementById('statute-act-date') || {}).value || "";
       const notes = document.getElementById('statute-interrupt-notes').value.trim();
       
       const interruptions = [];
@@ -5436,10 +5449,12 @@
       }
 
       try {
+        const payload = { start_date: startDate, cause_type: causeType, interruption_events: interruptions };
+        if (actDate) payload.act_date = actDate;
         const resp = await fetch(`${API_BASE}/api/v1/phase1/calc/statute-limitations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ start_date: startDate, cause_type: causeType, interruption_events: interruptions })
+          body: JSON.stringify(payload)
         });
         const d = await resp.json();
 

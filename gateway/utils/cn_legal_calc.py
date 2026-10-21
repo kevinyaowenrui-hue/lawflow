@@ -9,7 +9,8 @@ LawFlow 智律工作台 - 中国法律实务精确数学与规则计算引擎
 6. 《劳动合同法》第47/87条劳动争议经济补偿金 (N / N+1) 与违法解除赔偿金 (2N) 精算
 """
 
-from datetime import datetime, date
+import logging
+from datetime import datetime, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -17,6 +18,13 @@ try:
     import cn2an
 except ImportError:
     cn2an = None
+
+logger = logging.getLogger("lawflow.cn_legal_calc")
+
+# 央行贷款基准利率（1 年期）——律师审查结论 L-I8；适用起点日期 TODO(律师核实)
+PBOC_BENCHMARK_1Y_RATE = 4.35
+PBOC_BENCHMARK_BASIS = "中国人民银行同期同类贷款基准利率（1年期 4.35%）（律师审查结论 L-I8）"
+# TODO(律师核实): 该基准利率适用起点日期未核实，期间早于起点时仅提示人工核对
 
 
 # ==============================================================================
@@ -345,10 +353,19 @@ def calculate_court_fees(
     breakdown = []
     standard_fee = Decimal("0")
 
-    if case_type == "labor":
+    # 归一化案件类型（前端可能传中文）
+    ct = (case_type or "property").strip().lower()
+    if ct in ("财产案件", "property", "财产"):
+        ct = "property"
+    elif ct in ("劳动", "labor", "劳动人事争议"):
+        ct = "labor"
+    elif ct in ("离婚", "divorce"):
+        ct = "divorce"
+
+    if case_type == "labor" or ct == "labor":
         standard_fee = Decimal("10.00")
         breakdown.append({"tier": "劳动人事争议案件固定收费", "rate": "法定10元/件", "fee": 10.00})
-    elif case_type == "divorce":
+    elif case_type == "divorce" or ct == "divorce":
         base_fee = Decimal("100.00")
         if amount <= Decimal("200000"):
             standard_fee = base_fee
@@ -360,6 +377,8 @@ def calculate_court_fees(
             breakdown.append({"tier": "基础规费(20万以内)", "rate": "100元", "fee": 100.00})
             breakdown.append({"tier": f"超过20万部分({excess:.2f}元)", "rate": "0.5%", "fee": float(excess_fee)})
     else:
+        if amount <= 0:
+            raise ValueError("财产案件标的额须大于 0")
         tiers = [
             (Decimal("0"), Decimal("10000"), None, Decimal("50")),
             (Decimal("10000"), Decimal("100000"), Decimal("0.025"), None),
@@ -420,24 +439,30 @@ def calculate_court_fees(
 # ==============================================================================
 # 5. 央行 LPR 历期分段计息算法与起诉状《利息计算明细说明》生成
 # ==============================================================================
-LPR_HISTORY: List[Tuple[str, float, float]] = [
-    ("2019-08-20", 4.25, 4.85),
-    ("2019-09-20", 4.20, 4.85),
-    ("2019-11-20", 4.15, 4.80),
-    ("2020-02-20", 4.05, 4.75),
-    ("2020-04-20", 3.85, 4.65),
-    ("2021-12-20", 3.80, 4.65),
-    ("2022-01-20", 3.70, 4.60),
-    ("2022-05-20", 3.70, 4.45),
-    ("2022-08-22", 3.65, 4.30),
-    ("2023-06-20", 3.55, 4.20),
-    ("2023-08-21", 3.45, 4.20),
-    ("2024-02-20", 3.45, 3.95),
-    ("2024-07-22", 3.35, 3.85),
-    ("2024-10-21", 3.10, 3.60),
-    ("2025-05-20", 3.00, 3.50),
-    ("2026-01-20", 2.90, 3.40),
-]
+
+def _lookup_lpr_on_date(sorted_lpr: List[Tuple[str, float, float]], on_date: date, term: str = "1Y") -> Optional[float]:
+    term_u = term.strip().upper()
+    for dt_str, r1, r5 in reversed(sorted_lpr):
+        pub_dt = datetime.strptime(dt_str, "%Y-%m-%d").date()
+        if pub_dt <= on_date:
+            return r1 if term_u == "1Y" else r5
+    return None
+
+
+def check_lpr_data_freshness(today: Optional[date] = None) -> List[str]:
+    """启动/调用时检查 LPR 表是否可能过期。"""
+    from gateway.utils.legal_data import load_lpr_history_meta
+
+    warnings: List[str] = []
+    meta = load_lpr_history_meta()
+    data_as_of = datetime.strptime(meta["data_as_of"], "%Y-%m-%d").date()
+    d_today = today or date.today()
+    if (d_today - data_as_of).days > 31:
+        msg = "LPR 数据可能已过期，请更新 data/legal/lpr_history.json"
+        warnings.append(msg)
+        logger.warning(msg)
+    return warnings
+
 
 def calculate_lpr_interest(
     principal: float | Decimal,
@@ -446,34 +471,55 @@ def calculate_lpr_interest(
     multiplier: float = 1.0,
     term: str = "1Y",
     fixed_annual_rate: Optional[float] = None,
-    rule_mode: str = "commercial_floating", # commercial_floating (商事同期浮动) 或 private_lending_cap (民间借贷司法保护上限)
-    contract_date: Optional[str] = None     # 民间借贷合同成立日期 (锚定成立时1年期LPR4倍上限)
+    rule_mode: str = "commercial_floating",  # commercial_floating / private_lending_cap / sales_fixed_lpr_markup
+    contract_date: Optional[str] = None,
+    filing_date: Optional[str] = None,
+    markup_ratio: Optional[float] = None,
+    today_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     分段计算自起始日起至截止日期的逾期利息 / 资金占用损失。
-    支持两大实务核心模式：
-    1. commercial_floating（默认）：商事买卖/工程等违约金，按同期全国银行间同业拆借中心公布的LPR浮动分段计息；
-    2. private_lending_cap：民间借贷司法保护上限精算（laws 表 private_lending_2020：法释〔2020〕17号第二次修正、2021-01-01施行；条文见第25/28/29条等，正文待律师核验），
-       以借款合同成立时一年期LPR的4倍为固定上限，并严格区分2020年8月20日前（年化24%上限）与之后（4倍LPR）的新旧法衔接。
-    生成直接写入起诉状的《利息计算明细说明》规范公文段落。
+    模式：
+    1. commercial_floating（默认）：商事同期 LPR 浮动；2019-08-20 前用央行贷款基准利率 4.35%。
+    2. private_lending_cap：民间借贷司法保护上限（法释〔2020〕17号第31条第2款）。
+    3. sales_fixed_lpr_markup：买卖合同未约定逾期违约金时，起算日一年期 LPR×(1+markup_ratio) 固定计息。
     """
+    from gateway.utils.legal_data import load_lpr_history, load_lpr_history_meta
+
+    term_norm = (term or "").strip().upper()
+    if term_norm not in ("1Y", "5Y"):
+        raise ValueError('term 仅允许 "1Y" 或 "5Y"')
+    term = term_norm
+
+    if fixed_annual_rate is not None and 0 < float(fixed_annual_rate) < 1:
+        raise ValueError("疑似填写了小数，请输入百分数（例如 0.24 应写为 24）")
+
     d_start = datetime.strptime(start_date, "%Y-%m-%d").date()
     d_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    d_today = datetime.strptime(today_date, "%Y-%m-%d").date() if today_date else date.today()
 
     if d_end < d_start:
         raise ValueError("计息截止日期不能早于起始日期")
 
     total_days = (d_end - d_start).days
     p_dec = Decimal(str(principal)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    sorted_lpr = sorted(LPR_HISTORY, key=lambda x: x[0])
+    sorted_lpr = load_lpr_history()
+    meta = load_lpr_history_meta()
+    data_as_of = datetime.strptime(meta["data_as_of"], "%Y-%m-%d").date()
 
-    periods = []
+    warnings: List[str] = []
+    warnings.extend(check_lpr_data_freshness(d_today))
+    if d_end > data_as_of:
+        warnings.append("计息止日超出 LPR 数据截止日，后段按最后一期利率计算")
+
+    periods: List[Dict[str, Any]] = []
     total_interest = Decimal("0.00")
+    rate_desc = ""
 
     # ==========================================================================
-    # 模式 A：固定年化利率模式（如当事人合同约定年化 12%）
+    # 模式 A：固定年化利率（非民间借贷上限模式）
     # ==========================================================================
-    if fixed_annual_rate is not None and rule_mode != "private_lending_cap":
+    if fixed_annual_rate is not None and rule_mode not in ("private_lending_cap", "sales_fixed_lpr_markup"):
         rate_dec = Decimal(str(fixed_annual_rate)) / Decimal("100")
         interest = (p_dec * rate_dec * Decimal(total_days) / Decimal("365")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         total_interest = interest
@@ -487,28 +533,69 @@ def calculate_lpr_interest(
         rate_desc = f"双方约定的固定年利率 {fixed_annual_rate}%"
 
     # ==========================================================================
-    # 模式 B：民间借贷司法保护上限穿透模式（文号/施行日以 laws 表为准：法释〔2020〕17号、2021-01-01）
+    # 模式 sales_fixed_lpr_markup：买卖合同固定 LPR 加计（《买卖合同解释》第18条第4款，需律师核实原文）
+    # ==========================================================================
+    elif rule_mode == "sales_fixed_lpr_markup":
+        if markup_ratio is None:
+            raise ValueError("sales_fixed_lpr_markup 模式须提供 markup_ratio（0.3–0.5）")
+        mr = float(markup_ratio)
+        if mr < 0.3 or mr > 0.5:
+            raise ValueError("markup_ratio 须在 0.3–0.5 之间")
+        base_lpr = _lookup_lpr_on_date(sorted_lpr, d_start, "1Y")
+        if base_lpr is None:
+            raise ValueError("无法确定违约行为发生日的一年期 LPR，请核对起息日与 LPR 表")
+        applied = round(base_lpr * (1.0 + mr), 4)
+        rate_dec = Decimal(str(applied)) / Decimal("100")
+        interest = (p_dec * rate_dec * Decimal(total_days) / Decimal("365")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total_interest = interest
+        periods.append({
+            "segment_start": start_date,
+            "segment_end": end_date,
+            "days": total_days,
+            "base_lpr": base_lpr,
+            "markup_ratio": mr,
+            "applied_annual_rate": applied,
+            "interest": float(interest),
+            "rate_basis": "《买卖合同解释》（2020修正）第十八条第四款（需律师核实原文）",
+        })
+        rate_desc = (
+            f"违约行为发生日一年期 LPR {base_lpr}% 加计 {mr * 100:.0f}%（固定基数，不随后续 LPR 浮动）；"
+            f"依据《买卖合同解释》（2020修正）第十八条第四款（需律师核实原文）。"
+            f"仅适用于合同未约定逾期付款违约金的情形，有约定的从约定"
+        )
+        warnings.append("仅适用于合同未约定逾期付款违约金的情形，有约定的从约定")
+
+    # ==========================================================================
+    # 模式 B：民间借贷司法保护上限（法释〔2020〕17号第31条第2款）
+    # 摘录："……对于自2020年8月20日到借款返还之日的利息部分，适用起诉时本规定的利率保护标准计算。"
+    # 来源：court.gov.cn 249051
     # ==========================================================================
     elif rule_mode == "private_lending_cap" or (contract_date is not None and rule_mode != "commercial_floating"):
-        # 1. 确定借款合同成立时的一年期 LPR
         ref_contract_date = datetime.strptime(contract_date, "%Y-%m-%d").date() if contract_date else d_start
-        contract_lpr = None
-        for dt_str, r1, r5 in reversed(sorted_lpr):
-            pub_dt = datetime.strptime(dt_str, "%Y-%m-%d").date()
-            if pub_dt <= ref_contract_date:
-                contract_lpr = r1
-                break
-        if contract_lpr is None:
-            # 2019年8月20日LPR改革前合同，依司法解释第31条参照2020-08-20发布的LPR 3.85%计算
-            contract_lpr = 3.85
-
-        cap_rate_post = round(contract_lpr * 4, 4) # 合同成立时一年期LPR的4倍
-        rate_pre_2020 = 24.0 # 2020-08-20前司法保护上限为年化24%
-
         d_pivot = date(2020, 8, 20)
+        rate_pre_2020 = 24.0
+
+        contract_lpr = _lookup_lpr_on_date(sorted_lpr, ref_contract_date, "1Y")
+        if contract_lpr is None:
+            contract_lpr = 3.85  # LPR 改革前合同兜底：参照 2020-04-20 一期 3.85%
+
+        if ref_contract_date < d_pivot:
+            if not filing_date:
+                raise ValueError("合同成立于2020-08-20之前，须提供起诉日期 filing_date")
+            d_filing = datetime.strptime(filing_date, "%Y-%m-%d").date()
+            filing_lpr = _lookup_lpr_on_date(sorted_lpr, d_filing, "1Y")
+            if filing_lpr is None:
+                raise ValueError("无法确定起诉日对应的一年期 LPR")
+            cap_rate_post = round(filing_lpr * 4, 4)
+            post_cap_basis = "起诉时LPR×4"
+            post_lpr_base = filing_lpr
+        else:
+            cap_rate_post = round(contract_lpr * 4, 4)
+            post_cap_basis = "合同成立时LPR×4"
+            post_lpr_base = contract_lpr
+
         user_agreed_rate = fixed_annual_rate if fixed_annual_rate is not None else cap_rate_post
 
-        # 分段：以 2020-08-20 为法定分水岭
         split_dates = [d_start]
         if d_start < d_pivot < d_end:
             split_dates.append(d_pivot)
@@ -516,21 +603,22 @@ def calculate_lpr_interest(
 
         for i in range(len(split_dates) - 1):
             s_dt = split_dates[i]
-            e_dt = split_dates[i+1]
+            e_dt = split_dates[i + 1]
             s_days = (e_dt - s_dt).days
             if s_days <= 0:
                 continue
 
             if e_dt <= d_pivot:
-                # 2020年8月20日前：上限为年化24%
                 applicable_cap = rate_pre_2020
                 seg_label = "2020-08-20前（适用原司法解释24%上限）"
+                cap_basis = "2020-08-20前24%上限"
+                lpr_base = None
             else:
-                # 2020年8月20日及之后：上限为合同成立时一年期LPR四倍
                 applicable_cap = cap_rate_post
-                seg_label = f"2020-08-20后（适用成立时LPR四倍 {cap_rate_post}% 上限）"
+                seg_label = f"2020-08-20后（适用{post_cap_basis} {cap_rate_post}% 上限）"
+                cap_basis = post_cap_basis
+                lpr_base = post_lpr_base
 
-            # 最终执行利率不得超过法定上限
             effective_rate = min(user_agreed_rate, applicable_cap)
             r_dec = Decimal(str(effective_rate)) / Decimal("100")
             seg_int = (p_dec * r_dec * Decimal(s_days) / Decimal("365")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -542,24 +630,32 @@ def calculate_lpr_interest(
                 "days": s_days,
                 "regime": seg_label,
                 "contract_lpr_base": contract_lpr,
+                "lpr_base_for_cap": lpr_base,
                 "statutory_cap_rate": applicable_cap,
+                "cap_basis": cap_basis,
                 "applied_annual_rate": effective_rate,
                 "is_rate_capped": user_agreed_rate > applicable_cap,
                 "interest": float(seg_int)
             })
 
-        rate_desc = f"民间借贷法定利率保护上限标准（合同成立日 {ref_contract_date} 对应LPR {contract_lpr}% 之4倍即年化 {cap_rate_post}%）"
+        rate_desc = (
+            f"民间借贷法定利率保护上限标准（法释〔2020〕17号第31条第2款；"
+            f"后段上限依据 {post_cap_basis} = {post_lpr_base}%×4 = {cap_rate_post}%）"
+        )
 
     # ==========================================================================
-    # 模式 C：商事违约同期 LPR 浮动分段计息模式（默认）
+    # 模式 C：商事违约同期 LPR 浮动分段计息（默认）
     # ==========================================================================
     else:
+        lpr_reform = date(2019, 8, 20)
         breakpoints = []
+        if d_start < lpr_reform < d_end:
+            breakpoints.append(lpr_reform)
         for dt_str, r1, r5 in sorted_lpr:
             dt = datetime.strptime(dt_str, "%Y-%m-%d").date()
-            if d_start < dt < d_end:
+            if d_start < dt < d_end and dt not in breakpoints:
                 breakpoints.append(dt)
-
+        breakpoints.sort()
         all_points = [d_start] + breakpoints + [d_end]
 
         for i in range(len(all_points) - 1):
@@ -569,35 +665,63 @@ def calculate_lpr_interest(
             if seg_days <= 0:
                 continue
 
-            active_rate = None
-            for dt_str, r1, r5 in reversed(sorted_lpr):
-                pub_dt = datetime.strptime(dt_str, "%Y-%m-%d").date()
-                if pub_dt <= seg_start:
-                    active_rate = r1 if term == "1Y" else r5
-                    break
+            if seg_end <= lpr_reform or (seg_start < lpr_reform and seg_end <= lpr_reform):
+                # 2019-08-20 前：央行贷款基准利率
+                active_rate = PBOC_BENCHMARK_1Y_RATE
+                rate_basis = PBOC_BENCHMARK_BASIS
+                # TODO(律师核实): 基准利率适用起点日期未核实
+                warnings.append(
+                    "本段早于 LPR 改革日；若期间早于中国人民银行同期同类贷款基准利率适用起点（起点日期 TODO(律师核实)），请人工核对"
+                )
+                actual_rate = active_rate * multiplier
+                rate_dec = Decimal(str(actual_rate)) / Decimal("100")
+                seg_interest = (p_dec * rate_dec * Decimal(seg_days) / Decimal("365")).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                total_interest += seg_interest
+                periods.append({
+                    "segment_start": seg_start.strftime("%Y-%m-%d"),
+                    "segment_end": seg_end.strftime("%Y-%m-%d"),
+                    "days": seg_days,
+                    "base_lpr": active_rate,
+                    "rate_basis": rate_basis,
+                    "multiplier": multiplier,
+                    "applied_annual_rate": round(actual_rate, 4),
+                    "interest": float(seg_interest)
+                })
+                continue
 
+            active_rate = _lookup_lpr_on_date(sorted_lpr, seg_start, term)
             if active_rate is None:
-                active_rate = 4.25 if term == "1Y" else 4.85
+                # 仍早于首期 LPR：用基准利率
+                active_rate = PBOC_BENCHMARK_1Y_RATE
+                rate_basis = PBOC_BENCHMARK_BASIS
+            else:
+                rate_basis = "全国银行间同业拆借中心公布的贷款市场报价利率（LPR）"
 
             actual_rate = active_rate * multiplier
             rate_dec = Decimal(str(actual_rate)) / Decimal("100")
-            seg_interest = (p_dec * rate_dec * Decimal(seg_days) / Decimal("365")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
+            seg_interest = (p_dec * rate_dec * Decimal(seg_days) / Decimal("365")).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
             total_interest += seg_interest
             periods.append({
                 "segment_start": seg_start.strftime("%Y-%m-%d"),
                 "segment_end": seg_end.strftime("%Y-%m-%d"),
                 "days": seg_days,
                 "base_lpr": active_rate,
+                "rate_basis": rate_basis,
                 "multiplier": multiplier,
                 "applied_annual_rate": round(actual_rate, 4),
                 "interest": float(seg_interest)
             })
-        rate_desc = f"同期全国银行间同业拆借中心公布的一年期贷款市场报价利率（LPR）的 {multiplier} 倍"
+        rate_desc = f"同期全国银行间同业拆借中心公布的一年期贷款市场报价利率（LPR）的 {multiplier} 倍（2019-08-20前适用央行贷款基准利率）"
+
+    # 去重 warnings
+    warnings = list(dict.fromkeys(warnings))
 
     total_amount = p_dec + total_interest
 
-    # 自动生成直接写入起诉状的《利息计算明细说明》公文段落
     complaint_lines = [
         f"【利息计算明细说明】",
         f"以拖欠款项本金人民币 {p_dec:,.2f} 元为基数，自 {start_date} 起至 {end_date} 止，按照{rate_desc}标准分段计算逾期违约利息。",
@@ -610,9 +734,15 @@ def calculate_lpr_interest(
                 f"  ({idx}) {p['segment_start']} 至 {p['segment_end']}（共 {p['days']} 天）：{p['regime']}，执行年化 {p['applied_annual_rate']}%，该段利息为人民币 {p['interest']:,.2f} 元；"
             )
         elif "applied_annual_rate" in p and "base_lpr" in p:
-            complaint_lines.append(
-                f"  ({idx}) {p['segment_start']} 至 {p['segment_end']}（共 {p['days']} 天）：基准LPR {p['base_lpr']}% × {p['multiplier']}倍 = 执行年化 {p['applied_annual_rate']}%，该段利息为人民币 {p['interest']:,.2f} 元；"
-            )
+            basis_note = p.get("rate_basis") or "LPR"
+            if p.get("markup_ratio") is not None:
+                complaint_lines.append(
+                    f"  ({idx}) {p['segment_start']} 至 {p['segment_end']}（共 {p['days']} 天）：起算日 LPR {p['base_lpr']}% × (1+{p['markup_ratio']}) = 执行年化 {p['applied_annual_rate']}%（{basis_note}），该段利息为人民币 {p['interest']:,.2f} 元；"
+                )
+            else:
+                complaint_lines.append(
+                    f"  ({idx}) {p['segment_start']} 至 {p['segment_end']}（共 {p['days']} 天）：基准 {p['base_lpr']}% × {p['multiplier']}倍 = 执行年化 {p['applied_annual_rate']}%（{basis_note}），该段利息为人民币 {p['interest']:,.2f} 元；"
+                )
         else:
             complaint_lines.append(
                 f"  ({idx}) {p['segment_start']} 至 {p['segment_end']}（共 {p['days']} 天）：执行年化 {p['annual_rate']}%，该段利息为人民币 {p['interest']:,.2f} 元；"
@@ -632,7 +762,9 @@ def calculate_lpr_interest(
         "interest_capital": rmb_to_capital(total_interest),
         "total_amount_capital": rmb_to_capital(total_amount),
         "complaint_statement": complaint_statement,
-        "segments": periods
+        "segments": periods,
+        "warnings": warnings,
+        "lpr_data_as_of": meta["data_as_of"],
     }
 
 
@@ -830,14 +962,15 @@ def calculate_statute_of_limitations(
     cause_type: str = "general_3y",
     interruption_events: Optional[List[Dict[str, str]]] = None,
     suspension_events: Optional[List[Dict[str, str]]] = None,
-    today_date: Optional[str] = None
+    today_date: Optional[str] = None,
+    act_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     精确核算民事诉讼时效与除斥期间：
     - 普通民事诉讼时效：3年（《民法典》第188条）
     - 国际货物买卖/技术进出口合同争议：4年（《民法典》第594条）
     - 最长权利保护期：自权利受损之日起20年（《民法典》第188条第二款）
-    - 撤销权除斥期间：1年/90日（《民法典》第152条，不适用中止中断）
+    - 撤销权除斥期间：1年/90日（《民法典》第152条，不适用中止中断）；自行为发生日起最长5年
     - 建设工程优先受偿权除斥期间：18个月（《建工解释一》第41条，法释〔2020〕25号）
     - 一般保证保证期间（除斥期间6个月，必须起诉主债务人，《民法典》第693条）
     - 连带保证保证期间（除斥期间6个月，必须向保证人主张权利，《民法典》第693条）
@@ -846,8 +979,9 @@ def calculate_statute_of_limitations(
     """
     d_start = datetime.strptime(start_date, "%Y-%m-%d").date()
     d_today = datetime.strptime(today_date, "%Y-%m-%d").date() if today_date else date.today()
+    warnings: List[str] = []
 
-    # 基础期限定义（月数）
+    # 基础期限定义（月数 / 日数）
     PERIOD_RULES = {
         "general_3y": {"name": "普通民事诉讼时效（3年）", "basis": "《民法典》第一百八十八条第一款", "years": 3, "months": 36, "is_preclusive": False},
         "intl_trade_4y": {"name": "国际货物买卖/技术进出口争议（4年）", "basis": "《民法典》第五百九十四条", "years": 4, "months": 48, "is_preclusive": False},
@@ -867,8 +1001,31 @@ def calculate_statute_of_limitations(
             "is_preclusive": True,
             "special_notice": "【执业穿仓红线】债权人必须在主债务届满之日起6个月内向保证人提出承担保证责任请求！自请求之日起，对保证人的3年诉讼时效单独起算。"
         },
-        "cancel_right_1y": {"name": "重大误解/显失公平/欺诈撤销权（除斥期间1年）", "basis": "《民法典》第一百五十二条第一款", "years": 1, "months": 12, "is_preclusive": True},
-        "cancel_duress_1y": {"name": "胁迫终止之日起撤销权（除斥期间1年）", "basis": "《民法典》第一百五十二条第一款第二项", "years": 1, "months": 12, "is_preclusive": True},
+        "cancel_right_1y": {
+            "name": "欺诈/显失公平撤销权（1年）",
+            "basis": "《民法典》第一百五十二条（律师注明：原文未在线逐字核对）",
+            "years": 1,
+            "months": 12,
+            "is_preclusive": True,
+            "is_cancel_right": True,
+        },
+        "cancel_mistake_90d": {
+            "name": "重大误解撤销权（90日）",
+            "basis": "《民法典》第一百五十二条（律师注明：原文未在线逐字核对）",
+            "years": 0,
+            "months": 0,
+            "days": 90,
+            "is_preclusive": True,
+            "is_cancel_right": True,
+        },
+        "cancel_duress_1y": {
+            "name": "胁迫终止之日起撤销权（除斥期间1年）",
+            "basis": "《民法典》第一百五十二条第一款第二项（律师注明：原文未在线逐字核对）",
+            "years": 1,
+            "months": 12,
+            "is_preclusive": True,
+            "is_cancel_right": True,
+        },
         "construction_priority_18m": {
             "name": "建设工程价款优先受偿权（除斥期间18个月）",
             "basis": "《最高人民法院关于审理建设工程施工合同纠纷案件适用法律问题的解释（一）》第四十一条（法释〔2020〕25号）",
@@ -882,6 +1039,7 @@ def calculate_statute_of_limitations(
 
     rule = PERIOD_RULES.get(cause_type, PERIOD_RULES["general_3y"])
     is_preclusive = rule["is_preclusive"]
+    is_cancel_right = bool(rule.get("is_cancel_right"))
 
     def add_years_exact(d: date, years: int) -> date:
         try:
@@ -899,7 +1057,9 @@ def calculate_statute_of_limitations(
         return date(new_year, new_month, new_day)
 
     # 初始到期日
-    if rule["months"] % 12 == 0:
+    if rule.get("days"):
+        initial_expire = d_start + timedelta(days=int(rule["days"]))
+    elif rule["months"] % 12 == 0:
         initial_expire = add_years_exact(d_start, int(rule["years"]))
     else:
         initial_expire = add_months_exact(d_start, rule["months"])
@@ -981,6 +1141,23 @@ def calculate_statute_of_limitations(
                     })
                     effective_suspensions.append(ev)
 
+    # 撤销权：自民事法律行为发生之日起 5 年最长除斥（《民法典》第152条）
+    five_year_cap_date = None
+    if is_cancel_right:
+        if act_date:
+            d_act = datetime.strptime(act_date, "%Y-%m-%d").date()
+            five_year_cap_date = add_years_exact(d_act, 5)
+            if current_expire > five_year_cap_date:
+                current_expire = five_year_cap_date
+                timeline_log.append({
+                    "date": act_date,
+                    "event": "民事法律行为发生日",
+                    "action": "适用撤销权最长5年除斥期间上限",
+                    "expire_date": current_expire.strftime("%Y-%m-%d")
+                })
+        else:
+            warnings.append("未提供行为发生日，未校验 5 年最长期限")
+
     days_remaining = (current_expire - d_today).days
     is_expired = days_remaining < 0
 
@@ -1009,9 +1186,11 @@ def calculate_statute_of_limitations(
         "is_preclusive": is_preclusive,
         "preclusive_note": "除斥期间不适用中止、中断和延长规定，到期实体权利直接消灭" if is_preclusive else "适用法定中止、中断规则（《民法典》第194、195条）",
         "start_date": start_date,
+        "act_date": act_date,
         "calculation_benchmark_today": d_today.strftime("%Y-%m-%d"),
         "initial_expire_date": initial_expire.strftime("%Y-%m-%d"),
         "final_expire_date": current_expire.strftime("%Y-%m-%d"),
+        "five_year_cap_date": five_year_cap_date.strftime("%Y-%m-%d") if five_year_cap_date else None,
         "max_20y_deadline": max_20y_expire.strftime("%Y-%m-%d"),
         "days_remaining": days_remaining,
         "is_expired": is_expired,
@@ -1020,7 +1199,8 @@ def calculate_statute_of_limitations(
         "risk_alert": risk_alert,
         "timeline_log": timeline_log,
         "effective_interruptions_count": len(effective_interruptions),
-        "effective_suspensions_count": len(effective_suspensions)
+        "effective_suspensions_count": len(effective_suspensions),
+        "warnings": warnings,
     }
 
 
@@ -1031,13 +1211,14 @@ def calculate_preservation_renewal(
     preservation_type: str,
     start_date: str,
     custom_years: Optional[float] = None,
-    today_date: Optional[str] = None
+    today_date: Optional[str] = None,
+    internal_reminder_days: int = 30,
 ) -> Dict[str, Any]:
     """
-    根据《最高人民法院关于人民法院办理财产保全案件若干问题的规定》（法释〔2016〕22号）第十八条：
-    - 冻结银行存款及其他资金：期限不得超过 1 年；应当在期限届满前 15 日内申请续冻。
-    - 查封、扣押动产（车辆/存货）：期限不得超过 2 年；应当在期限届满前 15 日内申请续封。
-    - 查封不动产（房屋/土地）、冻结其他财产权（股权/专利）：期限不得超过 3 年；应当在期限届满前 30 日内申请续封。
+    财产保全续行期限核算。
+    续行申请时点：应在保全期限届满七日前申请续行
+    ——《财产保全规定》（法释〔2016〕22号）第十八条，来源 https://www.court.gov.cn/zixun/xiangqing/30101.html
+    期限上限（存款1年/动产2年/不动产及其他财产权3年）出自《民诉法解释》相关条款（条号 TODO(律师核实)）。
     """
     d_start = datetime.strptime(start_date, "%Y-%m-%d").date()
     d_today = datetime.strptime(today_date, "%Y-%m-%d").date() if today_date else date.today()
@@ -1046,27 +1227,34 @@ def calculate_preservation_renewal(
         "bank_deposit": {
             "name": "银行存款及现金理财冻结",
             "max_years": 1,
-            "advance_days": 15,
-            "statute": "《最高法院关于人民法院办理财产保全案件若干问题的规定》第十八条第一款",
-            "desc": "冻结银行存款及其他资金的期限不得超过一年"
+            "advance_days": 7,
+            "statute": "《财产保全规定》（法释〔2016〕22号）第十八条；期限上限依据《民诉法解释》相关条款（条号 TODO(律师核实)）",
+            "statute_url": "https://www.court.gov.cn/zixun/xiangqing/30101.html",
+            "desc": "冻结银行存款及其他资金的期限不得超过一年；应在届满七日前申请续行"
         },
         "movable_property": {
             "name": "动产（汽车、机器设备、存货）查封扣押",
             "max_years": 2,
-            "advance_days": 15,
-            "statute": "《最高法院关于人民法院办理财产保全案件若干问题的规定》第十八条第一款",
-            "desc": "查封、扣押动产的期限不得超过二年"
+            "advance_days": 7,
+            "statute": "《财产保全规定》（法释〔2016〕22号）第十八条；期限上限依据《民诉法解释》相关条款（条号 TODO(律师核实)）",
+            "statute_url": "https://www.court.gov.cn/zixun/xiangqing/30101.html",
+            "desc": "查封、扣押动产的期限不得超过二年；应在届满七日前申请续行"
         },
         "real_estate_equity": {
             "name": "不动产（房产土地）与股权/知识产权冻结",
             "max_years": 3,
-            "advance_days": 30,
-            "statute": "《最高法院关于人民法院办理财产保全案件若干问题的规定》第十八条第一款",
-            "desc": "查封不动产、冻结其他财产权的期限不得超过三年"
+            "advance_days": 7,
+            "statute": "《财产保全规定》（法释〔2016〕22号）第十八条；期限上限依据《民诉法解释》相关条款（条号 TODO(律师核实)）",
+            "statute_url": "https://www.court.gov.cn/zixun/xiangqing/30101.html",
+            "desc": "查封不动产、冻结其他财产权的期限不得超过三年；应在届满七日前申请续行"
         }
     }
 
-    rule = TYPE_RULES.get(preservation_type, TYPE_RULES["bank_deposit"])
+    if preservation_type not in TYPE_RULES:
+        allowed = ", ".join(TYPE_RULES.keys())
+        raise ValueError(f"preservation_type 非法，允许值: {allowed}")
+
+    rule = TYPE_RULES[preservation_type]
     years = custom_years if custom_years else rule["max_years"]
     advance_days = rule["advance_days"]
 
@@ -1077,7 +1265,6 @@ def calculate_preservation_renewal(
         except ValueError:
             res = d.replace(year=d.year + whole_y, month=2, day=28)
         if y > whole_y:
-            # 增加半年的情况
             import calendar
             target_month = (res.month + 6 - 1) % 12 + 1
             target_year = res.year + (res.month + 6 - 1) // 12
@@ -1086,42 +1273,46 @@ def calculate_preservation_renewal(
         return res
 
     expire_date = add_years_exact(d_start, years)
-    from datetime import timedelta
     renewal_deadline = expire_date - timedelta(days=advance_days)
+    internal_reminder_date = expire_date - timedelta(days=int(internal_reminder_days))
 
     days_to_expire = (expire_date - d_today).days
     days_to_renewal = (renewal_deadline - d_today).days
 
     if days_to_renewal < 0 and days_to_expire >= 0:
         status_level = "CRITICAL_BREACH"
-        status_label = "【续封申请法定期限已违约逾期】"
-        alert_msg = f"已超过法定提前 {advance_days} 日申请续封红线！虽财产暂未到期解封，但法院极可能因超期排期不予受理续保全，导致首封优势丧失或被轮候查封人上位！需紧急联系执行法官采取紧急补救措施。"
+        status_label = "【已晚于法定续行申请时点】"
+        alert_msg = "已晚于法定的续行申请时点（届满七日前），请立即核实保全状态并与承办法官沟通"
     elif days_to_expire < 0:
         status_level = "EXPIRED"
-        status_label = "【保全已自然失效解封】"
-        alert_msg = "该财产查封/冻结期限已完全届满，已自动失去保全效力，被执行人可随时转移财产！"
+        status_label = "【保全期限已届满】"
+        alert_msg = "该财产查封/冻结期限已届满，请立即核实保全状态并与承办法官沟通"
     elif days_to_renewal <= 15:
         status_level = "URGENT"
-        status_label = f"【极度紧迫：距续封截止仅余 {days_to_renewal} 天】"
-        alert_msg = f"执业穿仓红线警告：必须在 {renewal_deadline.strftime('%Y-%m-%d')} 前向法院提交《续行财产保全申请书》！距离法定截止只剩 {days_to_renewal} 天。"
+        status_label = f"【极度紧迫：距续行申请截止仅余 {days_to_renewal} 天】"
+        alert_msg = f"须在 {renewal_deadline.strftime('%Y-%m-%d')} 前（届满七日前）向法院提交续行财产保全申请；距离法定截止只剩 {days_to_renewal} 天。"
     elif days_to_renewal <= 45:
         status_level = "WARNING"
         status_label = f"【续封预警窗口：剩余 {days_to_renewal} 天】"
-        alert_msg = f"进入续封准备期：建议在 {renewal_deadline.strftime('%Y-%m-%d')} 前准备好续保担保材料与申请书并邮寄法院承办法官。"
+        alert_msg = f"进入续封准备期：建议在 {renewal_deadline.strftime('%Y-%m-%d')} 前准备好续保担保材料与申请书并联系承办法官。"
     else:
         status_level = "SAFE"
-        status_label = f"【保全状态安全：距续封截止 {days_to_renewal} 天】"
+        status_label = f"【保全状态安全：距续行申请截止 {days_to_renewal} 天】"
         alert_msg = "在正常保全有效期内。"
 
     return {
         "preservation_type": preservation_type,
         "type_name": rule["name"],
         "statute_basis": rule["statute"],
+        "statute_url": rule.get("statute_url"),
         "statute_description": rule["desc"],
         "start_date": start_date,
         "expire_date": expire_date.strftime("%Y-%m-%d"),
         "advance_days_required": advance_days,
         "renewal_application_deadline": renewal_deadline.strftime("%Y-%m-%d"),
+        "internal_reminder_days": int(internal_reminder_days),
+        "internal_reminder_date": internal_reminder_date.strftime("%Y-%m-%d"),
+        "internal_reminder_note": "内部提醒日，非法定期限",
         "days_to_expire": days_to_expire,
         "days_to_renewal_deadline": days_to_renewal,
         "status_level": status_level,
@@ -1286,15 +1477,16 @@ def calculate_settlement_npv_and_recovery(
     """
     try:
         claim_nominal = float(Decimal(str(total_claim_nominal)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-    except Exception:
-        claim_nominal = 1.0
+    except Exception as e:
+        raise ValueError(f"无效的债权标的金额: {total_claim_nominal}") from e
     if claim_nominal <= 0:
-        claim_nominal = 1.0
+        raise ValueError("债权标的名义总额须大于 0")
 
     discount_rate = max(0.001, min(0.50, float(annual_discount_rate)))
-    plan_type = plan_type.lower()
-    if plan_type not in ["cash_installments", "debt_for_asset", "hybrid"]:
-        plan_type = "hybrid"
+    plan_type = (plan_type or "").strip().lower()
+    allowed_plans = ("cash_installments", "debt_for_asset", "hybrid")
+    if plan_type not in allowed_plans:
+        raise ValueError(f"plan_type 非法，允许值: {', '.join(allowed_plans)}")
 
     # 1. 现金分期现值核算
     installments_breakdown = []
@@ -1482,9 +1674,9 @@ def _generate_partner_settlement_memo(
             f"该项抵债资产对我方债权的真实贡献值仅为 ¥{a_npv:,.2f} 元（折合原评估价的 {(a_npv/nom_val*100) if nom_val else 0:.1f}%）！"
         )
         memo_lines.append(
-            "4. 《九民纪要》第71条合规防线：若双方在履行期届满前达成以物抵债，法律性质属于'让与担保'，"
-            "严禁约定'债务不履行直接归债权人所有'（流押/流质绝对无效条款）。必须明确约定清算义务，"
-            "且必须在产权登记机关办理正式抵押登记或预告登记网签，防范债务人擅自二抵或被第三方债权人抢先首封！"
+            "4. 履行期届满前达成的以物抵债协议，适用《合同编通则解释》第二十八条（原文需律师核实）；"
+            "涉及流押/流质约定的，依《九民纪要》第71条、《民法典》第401条、第428条，"
+            "该部分约定无效，但不影响合同其他部分的效力，可以就该财产优先受偿。"
         )
         memo_lines.append("")
 

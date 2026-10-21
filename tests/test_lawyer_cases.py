@@ -54,13 +54,11 @@ def test_R3_lpr_interest_full_year():
     assert round(res["total_interest"], 2) == 3038.08
 
 
-@pytest.mark.xfail(strict=True, reason="待批次5修复")
 def test_R4_lpr_interest_partial_2026():
     res = calculate_lpr_interest(100000, "2026-01-01", "2026-10-21", term="1Y")
     assert round(res["total_interest"], 2) == 2408.22
 
 
-@pytest.mark.xfail(strict=True, reason="待批次5修复")
 def test_R5_private_lending_cap():
     res = calculate_lpr_interest(
         100000,
@@ -95,7 +93,6 @@ def test_R8_labor_cap_local_avg():
     assert res["tiers"]["N"]["amount"] == 360000
 
 
-@pytest.mark.xfail(strict=True, reason="待批次5修复")
 def test_R9_sol_cancel_mistake_90d():
     res = calculate_statute_of_limitations(
         "2026-01-01",
@@ -114,7 +111,6 @@ def test_R10_sol_interruption():
     assert res["final_expire_date"] == "2028-06-01"
 
 
-@pytest.mark.xfail(strict=True, reason="待批次5修复")
 def test_R11_preservation_renewal_7_days():
     res = calculate_preservation_renewal(
         "bank_deposit", "2026-01-01", today_date="2026-10-21"
@@ -125,6 +121,9 @@ def test_R11_preservation_renewal_7_days():
     d_exp = datetime.strptime(expire[:10], "%Y-%m-%d").date()
     expected = (d_exp - timedelta(days=7)).isoformat()
     assert res["renewal_application_deadline"] == expected
+    # 届满日口径：start + 1 年 = 2027-01-01 → 续行截止 2026-12-25（若律师对届满日有异议，待确认）
+    assert expire[:10] == "2027-01-01"
+    assert res["renewal_application_deadline"] == "2026-12-25"
 
 
 _GUARANTEE_NODES = [

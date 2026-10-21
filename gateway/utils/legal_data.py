@@ -9,7 +9,7 @@ import json
 import threading
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 _LOCK = threading.Lock()
 _CACHE: Dict[str, Any] = {}
@@ -42,6 +42,37 @@ def clear_legal_data_cache() -> None:
         load_precedents_demo.cache_clear()
         load_preset_dossiers.cache_clear()
         load_private_cases_demo.cache_clear()
+        load_lpr_history_bundle.cache_clear()
+
+
+@lru_cache(maxsize=1)
+def load_lpr_history_bundle() -> Dict[str, Any]:
+    return dict(_load_json(_LEGAL_DIR / "lpr_history.json"))
+
+
+def load_lpr_history_meta() -> Dict[str, Any]:
+    """返回 LPR 表元数据（source、data_as_of 等）。"""
+    bundle = load_lpr_history_bundle()
+    return {
+        "source": bundle.get("source"),
+        "data_as_of": bundle.get("data_as_of"),
+        "note": bundle.get("note"),
+    }
+
+
+def load_lpr_history() -> List[Tuple[str, float, float]]:
+    """返回 [(date, one_year, five_year), ...] 按日期升序。"""
+    rates = list(load_lpr_history_bundle().get("rates") or [])
+    out: List[Tuple[str, float, float]] = []
+    for row in rates:
+        out.append(
+            (
+                str(row["date"]),
+                float(row["one_year"]),
+                float(row["five_year"]),
+            )
+        )
+    return sorted(out, key=lambda x: x[0])
 
 
 @lru_cache(maxsize=1)

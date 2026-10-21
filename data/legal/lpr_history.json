@@ -1,0 +1,26 @@
+{
+  "source": [
+    "https://www.boc.cn/fimarkets/lilv/fd32/201310/t20131031_2591219.html",
+    "https://www.news.cn/20261020/b68d5e1b300e4a5bbfe5c1149cba5314/c.html"
+  ],
+  "data_as_of": "2026-10-20",
+  "note": "2019-08-20 至 2025-05-20 共 15 个变动点经律师逐条核对；此后每月公布均为一年期 3.00%、五年期 3.50%，最新一期 2026-10-20。",
+  "rates": [
+    {"date": "2019-08-20", "one_year": 4.25, "five_year": 4.85},
+    {"date": "2019-09-20", "one_year": 4.20, "five_year": 4.85},
+    {"date": "2019-11-20", "one_year": 4.15, "five_year": 4.80},
+    {"date": "2020-02-20", "one_year": 4.05, "five_year": 4.75},
+    {"date": "2020-04-20", "one_year": 3.85, "five_year": 4.65},
+    {"date": "2021-12-20", "one_year": 3.80, "five_year": 4.65},
+    {"date": "2022-01-20", "one_year": 3.70, "five_year": 4.60},
+    {"date": "2022-05-20", "one_year": 3.70, "five_year": 4.45},
+    {"date": "2022-08-22", "one_year": 3.65, "five_year": 4.30},
+    {"date": "2023-06-20", "one_year": 3.55, "five_year": 4.20},
+    {"date": "2023-08-21", "one_year": 3.45, "five_year": 4.20},
+    {"date": "2024-02-20", "one_year": 3.45, "five_year": 3.95},
+    {"date": "2024-07-22", "one_year": 3.35, "five_year": 3.85},
+    {"date": "2024-10-21", "one_year": 3.10, "five_year": 3.60},
+    {"date": "2025-05-20", "one_year": 3.00, "five_year": 3.50},
+    {"date": "2026-10-20", "one_year": 3.00, "five_year": 3.50}
+  ]
+}

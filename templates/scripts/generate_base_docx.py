@@ -363,7 +363,7 @@ def create_civil_complaint_sales_template(output_path: str):
     format_paragraph(p_claims, first_line_indent_chars=2)
     r = p_claims.add_run(
         "1. 判令被告立即向原告支付拖欠的货物采购货款人民币 {{ contract_arrears }} 元（大写：{{ contract_arrears_capital }}）；\n"
-        "2. 判令被告向原告支付自逾期之日起至实际清偿之日止的逾期付款违约金（按照全国银行间同业拆借中心公布的一年期贷款市场报价利率 LPR 加计 50% 计算，暂计至起诉日为人民币 {{ liquidated_damages }} 元）；\n"
+        "2. 判令被告向原告支付自逾期之日起至实际清偿之日止的逾期付款违约金（{{ overdue_rate_desc }}，暂计至起诉日为人民币 {{ liquidated_damages }} 元；合同有约定的从约定）；\n"
         "3. 判令本案全部诉讼费用、保全责任保险费及保全申请费由被告承担。"
     )
     set_run_font(r, font_name="仿宋", size_pt=14)

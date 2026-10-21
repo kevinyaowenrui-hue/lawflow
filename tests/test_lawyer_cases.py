@@ -137,7 +137,6 @@ _GUARANTEE_EDGES = [
 ]
 
 
-@pytest.mark.xfail(strict=True, reason="待批次6修复")
 def test_R12_guarantee_general_not_safe():
     timeline = [
         {
@@ -158,7 +157,6 @@ def test_R12_guarantee_general_not_safe():
     assert res["guarantee_audits"][0]["status"] != "SAFE"
 
 
-@pytest.mark.xfail(strict=True, reason="待批次6修复")
 def test_R13_guarantee_insufficient_data():
     res = analyze_guarantee_topology_and_deadlines(
         _GUARANTEE_NODES, _GUARANTEE_EDGES, timeline=[], today_date="2026-10-21"
@@ -229,7 +227,6 @@ def test_R20_cashflow_reconcile():
     assert row["unpaid_interest_after_repay"] == pytest.approx(950.68, abs=0.005)
 
 
-@pytest.mark.xfail(strict=True, reason="待批次6修复")
 def test_R20b_cashflow_no_weiyue_phrase():
     res = audit_and_reconcile_cashflow(
         [{"date": "2025-07-01", "amount": 5000, "purpose": "还款"}],
@@ -239,6 +236,8 @@ def test_R20b_cashflow_no_weiyue_phrase():
     )
     serialized = json.dumps(res, ensure_ascii=False)
     assert "未逾越" not in serialized
+    assert "超过" in serialized
+    assert "12.4" in serialized
 
 
 @pytest.mark.xfail(strict=True, reason="待批次8修复")

@@ -9,6 +9,7 @@ LawFlow 智律工作台 - 中国法律实务精确数学与规则计算引擎
 6. 《劳动合同法》第47/87条劳动争议经济补偿金 (N / N+1) 与违法解除赔偿金 (2N) 精算
 """
 
+import calendar
 import logging
 from datetime import datetime, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -447,6 +448,64 @@ def _lookup_lpr_on_date(sorted_lpr: List[Tuple[str, float, float]], on_date: dat
         if pub_dt <= on_date:
             return r1 if term_u == "1Y" else r5
     return None
+
+
+def add_months_exact(d: date, months: int) -> date:
+    """
+    按《民法典》第202条按月计算期间：到期月对应日为期间最后一日；
+    没有对应日的，以到期月的月末日为最后一日。
+    months 可为负数。
+    """
+    new_year = d.year + (d.month + months - 1) // 12
+    new_month = (d.month + months - 1) % 12 + 1
+    max_day = calendar.monthrange(new_year, new_month)[1]
+    new_day = min(d.day, max_day)
+    return date(new_year, new_month, new_day)
+
+
+def get_private_lending_four_times_lpr_cap(
+    contract_date: str,
+    filing_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    民间借贷约定利率司法保护上限（一年期 LPR×4）。
+    合同成立于 2020-08-20 及之后：上限=合同成立时一年期 LPR×4；
+    合同成立于 2020-08-20 之前：后段上限需起诉日 LPR×4（须提供 filing_date）。
+    返回百分数口径（如 12.4 表示 12.4%）。
+    """
+    from gateway.utils.legal_data import load_lpr_history
+
+    sorted_lpr = load_lpr_history()
+    ref_contract_date = datetime.strptime(contract_date, "%Y-%m-%d").date()
+    d_pivot = date(2020, 8, 20)
+
+    contract_lpr = _lookup_lpr_on_date(sorted_lpr, ref_contract_date, "1Y")
+    if contract_lpr is None:
+        contract_lpr = 3.85
+
+    if ref_contract_date < d_pivot:
+        if not filing_date:
+            raise ValueError("合同成立于2020-08-20之前，须提供起诉日期 filing_date")
+        d_filing = datetime.strptime(filing_date, "%Y-%m-%d").date()
+        filing_lpr = _lookup_lpr_on_date(sorted_lpr, d_filing, "1Y")
+        if filing_lpr is None:
+            raise ValueError("无法确定起诉日对应的一年期 LPR")
+        cap_rate_percent = round(filing_lpr * 4, 4)
+        basis = "起诉时LPR×4"
+        lpr_base = filing_lpr
+    else:
+        cap_rate_percent = round(contract_lpr * 4, 4)
+        basis = "合同成立时LPR×4"
+        lpr_base = contract_lpr
+
+    return {
+        "cap_rate_percent": cap_rate_percent,
+        "cap_rate_decimal": round(cap_rate_percent / 100.0, 6),
+        "lpr_base_percent": lpr_base,
+        "basis": basis,
+        "contract_date": contract_date,
+        "filing_date": filing_date,
+    }
 
 
 def check_lpr_data_freshness(today: Optional[date] = None) -> List[str]:
@@ -1047,14 +1106,6 @@ def calculate_statute_of_limitations(
         except ValueError:
             # 润年2月29日顺延处理
             return d.replace(year=d.year + years, month=2, day=28)
-
-    def add_months_exact(d: date, months: int) -> date:
-        new_year = d.year + (d.month + months - 1) // 12
-        new_month = (d.month + months - 1) % 12 + 1
-        import calendar
-        max_day = calendar.monthrange(new_year, new_month)[1]
-        new_day = min(d.day, max_day)
-        return date(new_year, new_month, new_day)
 
     # 初始到期日
     if rule.get("days"):

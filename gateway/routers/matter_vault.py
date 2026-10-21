@@ -126,8 +126,13 @@ class GuaranteeAnalysisReq(BaseModel):
 
 class CashflowAuditReq(BaseModel):
     principal_amount: Optional[float] = Field(default=None, example=5000000.0, description="借款/合同本金总额")
-    annual_interest_rate: Optional[float] = Field(default=0.144, example=0.144, description="约定年化利息率")
+    annual_interest_rate: Optional[float] = Field(default=None, example=0.12, description="约定年化利息率（小数，如0.12）")
+    annual_rate: Optional[float] = Field(default=None, example=0.12, description="annual_interest_rate 别名")
     start_date: Optional[str] = Field(default=None, example="2023-03-16", description="出借交付起息日")
+    contract_date: Optional[str] = Field(default=None, description="合同成立日（默认取起息日）")
+    filing_date: Optional[str] = Field(default=None, description="起诉日（2020-08-20前合同核验上限时需要）")
+    fees: Optional[float] = Field(default=None, description="实现债权的有关费用")
+    agreed_offset_order: Optional[List[str]] = Field(default=None, description="约定抵充顺序")
     override_cashflow: Optional[List[Dict[str, Any]]] = None
 
 
@@ -389,6 +394,7 @@ async def api_matter_guarantee_analysis(matter_id: str, req: Optional[GuaranteeA
     nodes = req.override_nodes if req.override_nodes is not None else entity_g.get("nodes", [])
     edges = req.override_edges if req.override_edges is not None else entity_g.get("edges", [])
     timeline = graphs.get("timeline", [])
+    # 接口返回 200 + insufficient_data 结构（缺少主债务到期日时由引擎判定）
     return analyze_guarantee_topology_and_deadlines(
         nodes=nodes,
         edges=edges,
@@ -396,6 +402,25 @@ async def api_matter_guarantee_analysis(matter_id: str, req: Optional[GuaranteeA
         principal_due_date=req.principal_due_date,
         today_date=req.today_date
     )
+
+
+def _extract_start_date_from_graphs(graphs: Dict[str, Any], flows: List[Dict[str, Any]]) -> Optional[str]:
+    """从图谱时间线放款/起息事件或出借流水提取起息日。"""
+    for ev in graphs.get("timeline", []) or []:
+        text = str(ev.get("event", "") or "")
+        tag = str(ev.get("legal_tag", "") or "")
+        blob = text + " " + tag
+        if any(k in blob for k in ("放款", "起息", "出借", "交付", "电汇本金", "借款实际交付")):
+            d = str(ev.get("date", "") or "")[:10]
+            if d:
+                return d
+    for f in flows or []:
+        purpose = str(f.get("purpose", "") or "")
+        if any(k in purpose for k in ("借款", "出借", "放款", "本金出借", "交付")):
+            d = str(f.get("date", "") or "")[:10]
+            if d:
+                return d
+    return None
 
 
 @router.post("/matters/{matter_id}/cashflow-audit", summary="资金穿透流水大屏与民法典第561条法定冲抵对账")
@@ -406,13 +431,33 @@ async def api_matter_cashflow_audit(matter_id: str, req: Optional[CashflowAuditR
         raise HTTPException(status_code=404, detail="案件空间不存在")
     graphs = matter.get("graphs", {})
     flows = req.override_cashflow if req.override_cashflow is not None else graphs.get("cashflow", [])
-    principal = req.principal_amount if req.principal_amount is not None else (matter.get("principal_amount") or 5000000.0)
-    rate = req.annual_interest_rate if req.annual_interest_rate is not None else 0.144
+
+    principal = req.principal_amount if req.principal_amount is not None else matter.get("principal_amount")
+    rate = req.annual_interest_rate if req.annual_interest_rate is not None else req.annual_rate
+    if principal is None:
+        raise HTTPException(status_code=422, detail="缺少 principal_amount（请求体或案件本金）")
+    if rate is None:
+        raise HTTPException(status_code=422, detail="缺少 annual_interest_rate / annual_rate")
+
+    start_date = req.start_date or _extract_start_date_from_graphs(graphs, flows)
+    if not start_date:
+        return {
+            "status": "insufficient_data",
+            "missing_fields": ["start_date"],
+            "message": "缺少起息日/放款日，无法进行流水对账",
+            "reconciliation_ledger": [],
+            "unclassified_records": [],
+        }
+
     return audit_and_reconcile_cashflow(
         cashflow_records=flows,
         principal_amount=principal,
         annual_interest_rate=rate,
-        start_date=req.start_date
+        start_date=start_date,
+        contract_date=req.contract_date,
+        filing_date=req.filing_date,
+        fees=req.fees or 0.0,
+        agreed_offset_order=req.agreed_offset_order,
     )
 
 

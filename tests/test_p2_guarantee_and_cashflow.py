@@ -14,7 +14,9 @@ from gateway.utils.guarantee_and_cashflow_engine import (
     analyze_guarantee_topology_and_deadlines,
     audit_and_reconcile_cashflow
 )
+from gateway.utils.matter_vault_db import init_matter_vault_db
 
+init_matter_vault_db()
 client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
 
@@ -46,21 +48,33 @@ def test_civil_code_art_561_mathematical_precision():
         }
     ]
 
+    # 旧测试曾依赖引擎默认年利率 0.144，并把“未钳制的默认利率”写成断言；
+    # 批次6去掉业务默认值后，改为显式传入利率，并另测超过 LPR 四倍时被钳制。
     res = audit_and_reconcile_cashflow(
         cashflow_records=records,
         principal_amount=5000000.0,
-        annual_rate=0.144,
+        annual_rate=0.12,
         start_date="2023-01-01"
     )
 
     assert res["status"] == "success"
     assert res["principal_claim_initial"] == 5000000.0
-    assert res["annual_interest_rate"] == 0.144
+    assert res["annual_interest_rate"] == pytest.approx(0.12, abs=1e-9)
+
+    # 2023-01-01 合同成立时一年期 LPR 3.65%，四倍上限 14.6%；约定 24% 应被钳制
+    capped = audit_and_reconcile_cashflow(
+        cashflow_records=records,
+        principal_amount=5000000.0,
+        annual_rate=0.24,
+        start_date="2023-01-01",
+    )
+    assert capped["annual_interest_rate"] == pytest.approx(0.146, abs=1e-6)
+    assert "超过" in capped.get("rate_note", "")
 
     ledger = res["reconciliation_ledger"]
     assert len(ledger) == 2
 
-    # 第1笔核算（189天计息，利息约372,821.92）
+    # 第1笔核算（189天计息，年利率12%）
     step1 = ledger[0]
     assert step1["step_num"] == 1
     assert step1["days_accrued"] == 189
@@ -70,9 +84,9 @@ def test_civil_code_art_561_mathematical_precision():
     assert step1["offset_to_principal"] == 0.0
     assert step1["remaining_principal"] == 5000000.0
     assert "不足以清偿" in step1["legal_comment"]
-    assert step1["unpaid_interest_after_repay"] > 70000.0
+    assert step1["unpaid_interest_after_repay"] > 0.0
 
-    # 第2笔核算（175天计息，利息约345,205.48，累积利息约418,027.40）
+    # 第2笔核算
     step2 = ledger[1]
     assert step2["step_num"] == 2
     assert step2["days_accrued"] == 175
@@ -89,6 +103,8 @@ def test_civil_code_art_561_mathematical_precision():
     assert "民法典" in statement
     assert "第五百六十一条" in statement
     assert "5,000,000.00" in statement
+    assert "未逾越" not in statement
+    assert "强制性" not in statement
 
 
 def test_civil_code_art_692_guarantee_expiry_deadlines():
@@ -138,10 +154,15 @@ def test_civil_code_art_692_guarantee_expiry_deadlines():
     # 1. 华夏智融在 2023-11-15 催告（早于 2024-01-01） -> 保证期间已依法阻断，SAFE
     assert g_audits["华夏智融融资租赁有限公司"]["status"] == "SAFE"
     assert g_audits["华夏智融融资租赁有限公司"]["has_demanded_in_time"] is True
-    assert "民法典》第694条" in g_audits["华夏智融融资租赁有限公司"]["warning_message"]
-    # 作为企业，必须含新《公司法》第15条穿透审查
+    # 批次6：有效主张引用第693条要点，不再对律师函一律套用第694条
+    assert "693" in g_audits["华夏智融融资租赁有限公司"]["warning_message"]
+    assert "694" not in g_audits["华夏智融融资租赁有限公司"]["warning_message"]
+    # 作为企业，statute_basis 以担保制度解释为主，并保留公司法第15条
     assert g_audits["华夏智融融资租赁有限公司"]["corporate_resolution_check"] is not None
-    assert "新《公司法》第15条" in g_audits["华夏智融融资租赁有限公司"]["corporate_resolution_check"]["statute_basis"]
+    corp_basis = g_audits["华夏智融融资租赁有限公司"]["corporate_resolution_check"]["statute_basis"]
+    assert "担保制度解释" in corp_basis
+    assert "公司法》第15条" in corp_basis
+    assert "仅承担" not in g_audits["华夏智融融资租赁有限公司"]["corporate_resolution_check"]["audit_note"]
 
     # 2. 张某某在 2024-03-20 催告（晚于 2024-01-01） -> 逾期主张，CRITICAL_EXPIRED
     assert g_audits["张某某"]["status"] == "CRITICAL_EXPIRED"
@@ -177,11 +198,12 @@ def test_civil_code_art_392_collateral_priority():
 
     c_audits = {c["collateral_provider"]: c for c in res["collateral_audits"]}
     
-    # 借款人自有的抵押物 -> 第一顺位 (强制先行实现)
+    # 借款人自有的抵押物 -> 无约定时先就物保实现（删除“不可绕过/必须”绝对化表述）
     assert c_audits["借款人企业"]["is_debtor_own_property"] is True
     assert c_audits["借款人企业"]["priority_level"] == 1
-    assert "第一顺位 (强制先行实现)" in c_audits["借款人企业"]["priority_rank"]
+    assert "第一顺位" in c_audits["借款人企业"]["priority_rank"]
     assert "先就该物的担保实现债权" in c_audits["借款人企业"]["statutory_rule"]
+    assert "不可绕过" not in c_audits["借款人企业"]["action_warning"]
 
     # 第三人的抵押物 -> 并列顺位 (债权人选择权)
     assert c_audits["第三方资产公司"]["is_debtor_own_property"] is False
@@ -259,23 +281,24 @@ def test_api_guarantee_and_cashflow_endpoints():
     POST /api/v1/vault/matters/MATTER-2026-001/guarantee-analysis
     POST /api/v1/vault/matters/MATTER-2026-001/cashflow-audit
     """
-    # 1. 担保分析端点
+    # 1. 担保分析端点（演示案图谱无明确到期日时须显式传入，避免编造到期日）
     resp_g = client.post(
         "/api/v1/vault/matters/MATTER-2026-001/guarantee-analysis",
-        json={"today_date": "2026-03-01"}
+        json={"today_date": "2026-03-01", "principal_due_date": "2024-03-15"}
     )
     assert resp_g.status_code == 200
     g_data = resp_g.json()
     assert g_data["status"] == "success"
     assert "guarantee_audits" in g_data
+    assert len(g_data["guarantee_audits"]) >= 1
     assert "collateral_audits" in g_data
     assert "topology" in g_data
     assert "partner_tactical_memo" in g_data
 
-    # 2. 资金审计与法定冲抵端点
+    # 2. 资金审计与法定冲抵端点（显式传入利率；本金可取案件记录）
     resp_cf = client.post(
         "/api/v1/vault/matters/MATTER-2026-001/cashflow-audit",
-        json={"annual_rate": 0.144}
+        json={"annual_interest_rate": 0.12, "principal_amount": 5000000.0}
     )
     assert resp_cf.status_code == 200
     cf_data = resp_cf.json()
@@ -285,3 +308,4 @@ def test_api_guarantee_and_cashflow_endpoints():
     assert "court_cross_exam_statement" in cf_data
     assert cf_data["principal_claim_initial"] > 0
     assert cf_data["current_principal_unpaid"] > 0
+    assert "未逾越" not in cf_data["court_cross_exam_statement"]

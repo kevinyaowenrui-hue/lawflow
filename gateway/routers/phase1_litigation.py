@@ -15,11 +15,13 @@ LawFlow 智律工作台 - 阶段一：立案文书自动化 + 中国司法实务
 
 import os
 import re
+import shutil
+import subprocess
 import time
 import uuid
 import logging
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Literal
+from typing import List, Optional, Dict, Any, Literal, Tuple
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -39,6 +41,13 @@ from gateway.utils.cn_legal_calc import (
     verify_statutory_validity,
     calculate_settlement_npv_and_recovery
 )
+from gateway.utils.text_utils import (
+    normalize_court_name,
+    normalize_arbitration_committee,
+    extract_agreed_annual_rate,
+    extract_first_date_iso,
+    format_date_cn,
+)
 
 
 def _http_422(detail: str) -> HTTPException:
@@ -53,6 +62,8 @@ router = APIRouter(tags=["阶段一：立案文书自动化与法律精算"])
 
 from gateway.core.paths import get_base_dir, get_generated_dir
 
+PLACEHOLDER = "【待填写】"
+
 
 def _templates_dir() -> str:
     return str(get_base_dir() / "templates")
@@ -60,14 +71,157 @@ def _templates_dir() -> str:
 STIRLING_PDF_URL = os.getenv("STIRLING_PDF_URL", "http://127.0.0.1:8081").rstrip("/")
 
 
+def _find_soffice() -> Optional[str]:
+    """定位 LibreOffice soffice 可执行文件。"""
+    for cand in (
+        shutil.which("soffice"),
+        shutil.which("libreoffice"),
+        r"C:\Program Files\LibreOffice\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+        "/usr/bin/soffice",
+        "/usr/bin/libreoffice",
+    ):
+        if cand and os.path.isfile(cand):
+            return cand
+    return None
+
+
+def _convert_docx_via_soffice(docx_path: str, pdf_path: str) -> bool:
+    soffice = _find_soffice()
+    if not soffice:
+        return False
+    out_dir = os.path.dirname(os.path.abspath(pdf_path)) or "."
+    try:
+        proc = subprocess.run(
+            [
+                soffice,
+                "--headless",
+                "--nologo",
+                "--nofirststartwizard",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                out_dir,
+                os.path.abspath(docx_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if proc.returncode != 0:
+            logger.warning(f"LibreOffice 转换失败: {proc.stderr}")
+            return False
+        produced = os.path.join(out_dir, os.path.splitext(os.path.basename(docx_path))[0] + ".pdf")
+        if os.path.abspath(produced) != os.path.abspath(pdf_path):
+            if os.path.isfile(produced):
+                shutil.move(produced, pdf_path)
+        return os.path.isfile(pdf_path) and os.path.getsize(pdf_path) > 100
+    except Exception as e:
+        logger.warning(f"LibreOffice 转换异常: {e}")
+        return False
+
+
+def _extract_docx_paragraphs(docx_path: str, text_summary: str = "") -> List[str]:
+    import docx as python_docx
+    d = python_docx.Document(docx_path)
+    lines: List[str] = []
+    for p in d.paragraphs:
+        if p.text.strip():
+            lines.append(p.text)
+    for table in d.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells if c.text.strip()]
+            if cells:
+                lines.append("  ".join(cells))
+    if not lines:
+        if text_summary:
+            lines = [text_summary]
+        else:
+            lines = ["司法文书内容"]
+    return lines
+
+
+def _pymupdf_fit_lines(doc: "fitz.Document", text_rect, lines: List[str], fontsize: int = 11) -> int:
+    """二分查找能完整写入当前新页的最大行数；写入后返回消耗行数。"""
+    if not lines:
+        return 0
+    page_width, page_height = 595, 842
+    lo, hi = 1, len(lines)
+    best = 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        probe = doc.new_page(width=page_width, height=page_height)
+        rc = probe.insert_textbox(
+            text_rect, "\n".join(lines[:mid]), fontsize=fontsize, fontname="china-s", align=0
+        )
+        doc.delete_page(-1)
+        if rc >= 0:
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    page = doc.new_page(width=page_width, height=page_height)
+    page.insert_textbox(
+        text_rect, "\n".join(lines[:best]), fontsize=fontsize, fontname="china-s", align=0
+    )
+    return best
+
+
+def _pymupdf_paginated_render(paragraphs: List[str], pdf_path: str) -> bool:
+    """
+    按行分页写入 PDF：检查 insert_textbox 返回值，溢出则新开一页继续，直至写完。
+    """
+    page_width, page_height = 595, 842
+    margin_x, margin_top, margin_bottom = 54, 72, 55
+    fontsize = 11
+    all_lines: List[str] = []
+    for p in paragraphs:
+        text = p if p is not None else ""
+        if not text:
+            all_lines.append("")
+            continue
+        for i in range(0, len(text), 38):
+            all_lines.append(text[i : i + 38])
+        all_lines.append("")
+
+    doc = fitz.open()
+    text_rect = fitz.Rect(margin_x, margin_top, page_width - margin_x, page_height - margin_bottom)
+    remaining = all_lines
+    while remaining:
+        consumed = _pymupdf_fit_lines(doc, text_rect, remaining, fontsize=fontsize)
+        if consumed <= 0:
+            # 保底：强制写一行避免死循环
+            page = doc.new_page(width=page_width, height=page_height)
+            page.insert_textbox(text_rect, remaining[0], fontsize=fontsize, fontname="china-s", align=0)
+            consumed = 1
+        remaining = remaining[consumed:]
+
+    total_pages = doc.page_count
+    for pno in range(total_pages):
+        page = doc[pno]
+        footer_rect = fitz.Rect(margin_x, page_height - 35, page_width - margin_x, page_height - 15)
+        footer_str = f"LawFlow 智律工作台 · 电子文书存证副本 · 第 {pno + 1} 页 / 共 {total_pages} 页"
+        page.insert_textbox(footer_rect, footer_str, fontsize=8, fontname="china-s", align=1)
+
+    doc.save(pdf_path)
+    doc.close()
+    return total_pages > 0 and os.path.isfile(pdf_path)
+
+
 # ==============================================================================
 # 文书转换辅助函数：将 Word 转换为 PDF
 # ==============================================================================
 async def convert_docx_to_pdf(docx_path: str, pdf_path: str, title: str = "司法公文", text_summary: str = "") -> bool:
     """
-    优先调用 Stirling-PDF 容器服务；若未启动，使用 PyMuPDF 本地公文引擎生成标准 PDF
+    优先 LibreOffice (soffice)；其次 Stirling-PDF；最后 PyMuPDF 按行分页兜底。
+    全部失败时返回 False，不得生成缺页/空壳 PDF。
     """
-    # 1. 尝试 Stirling-PDF 转换
+    # 1. LibreOffice
+    if _convert_docx_via_soffice(docx_path, pdf_path):
+        logger.info(f"LibreOffice 成功将 {docx_path} 转换为 {pdf_path}")
+        return True
+
+    # 2. Stirling-PDF
     urls_to_try = [STIRLING_PDF_URL, "http://127.0.0.1:8081", "http://stirling-pdf:8080"]
     for url in urls_to_try:
         try:
@@ -83,61 +237,160 @@ async def convert_docx_to_pdf(docx_path: str, pdf_path: str, title: str = "司�
         except Exception:
             continue
 
-    # 2. 本地 PyMuPDF 兜底渲染机制 (支持任意长文多页流式排版，绝不丢字截断)
+    # 3. PyMuPDF 按行分页兜底
     try:
-        import docx
-        d = docx.Document(docx_path)
-        content_lines = [p.text for p in d.paragraphs if p.text.strip()]
-        paragraphs = content_lines if content_lines else ([text_summary] if text_summary else ["司法文书内容"])
-
-        page_width, page_height = 595, 842
-        margin_x, margin_top, margin_bottom = 54, 72, 60
-        max_lines_per_page = 42
-
-        # 逐段按字宽折行并分流至各页
-        pages_lines = []
-        curr_page = []
-        curr_lines = 0
-
-        for p in paragraphs:
-            # 依 38 字符折行
-            sub_lines = [p[i:i+38] for i in range(0, len(p), 38)]
-            for line_str in sub_lines:
-                if curr_lines >= max_lines_per_page:
-                    pages_lines.append(curr_page)
-                    curr_page = []
-                    curr_lines = 0
-                curr_page.append(line_str)
-                curr_lines += 1
-            # 段落间插入空行间隔
-            if curr_lines < max_lines_per_page:
-                curr_page.append("")
-                curr_lines += 1
-
-        if curr_page:
-            pages_lines.append(curr_page)
-
-        total_pages = max(1, len(pages_lines))
-        doc = fitz.open()
-
-        for pno, plines in enumerate(pages_lines, 1):
-            page = doc.new_page(width=page_width, height=page_height)
-            page_text = "\n".join(plines)
-            text_rect = fitz.Rect(margin_x, margin_top, page_width - margin_x, page_height - margin_bottom)
-            page.insert_textbox(text_rect, page_text, fontsize=11, fontname="china-s", align=0)
-
-            # 页脚加盖防伪水印说明与页码
-            footer_rect = fitz.Rect(margin_x, page_height - 35, page_width - margin_x, page_height - 15)
-            footer_str = f"LawFlow 智律工作台 · 电子文书存证副本 · 第 {pno} 页 / 共 {total_pages} 页 · 符合最高人民法院电子诉讼标准"
-            page.insert_textbox(footer_rect, footer_str, fontsize=8, fontname="china-s", align=1)
-
-        doc.save(pdf_path)
-        doc.close()
-        logger.info(f"PyMuPDF 成功为 {docx_path} 生成多页标准 PDF ({total_pages} 页): {pdf_path}")
-        return True
+        paragraphs = _extract_docx_paragraphs(docx_path, text_summary=text_summary)
+        ok = _pymupdf_paginated_render(paragraphs, pdf_path)
+        if ok:
+            logger.info(f"PyMuPDF 分页渲染成功: {pdf_path}")
+            return True
+        logger.error("PyMuPDF 分页渲染失败：未生成有效 PDF")
+        return False
     except Exception as e:
         logger.error(f"PDF 转换异常: {e}")
+        if os.path.isfile(pdf_path):
+            try:
+                os.remove(pdf_path)
+            except OSError:
+                pass
         return False
+
+
+def _highlight_placeholders_in_docx(docx_path: str) -> None:
+    """将文档中【待填写】文字标为黄色高亮。"""
+    try:
+        import docx as python_docx
+        from docx.enum.text import WD_COLOR_INDEX
+        d = python_docx.Document(docx_path)
+        targets = list(d.paragraphs)
+        for table in d.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    targets.extend(cell.paragraphs)
+        for p in targets:
+            for run in p.runs:
+                if PLACEHOLDER in (run.text or ""):
+                    run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+        d.save(docx_path)
+    except Exception as e:
+        logger.warning(f"黄色高亮占位符失败: {e}")
+
+
+def _or_placeholder(value: Optional[str], missing_fields: List[str], field_name: str) -> str:
+    if value is None or str(value).strip() == "":
+        missing_fields.append(field_name)
+        return PLACEHOLDER
+    s = str(value).strip()
+    # 禁止字段名充当内容
+    if s == field_name or s in ("法定代表人", "主要负责人", "性别", "出生日期"):
+        missing_fields.append(field_name)
+        return PLACEHOLDER
+    return s
+
+
+def _resolve_party(party: "PartyInfo", role: str, missing_fields: List[str]) -> Dict[str, Any]:
+    """按 party_type 解析当事人展示字段。"""
+    pid = (party.id_card_or_uscc or "").strip()
+    party_type = party.party_type
+    id_info = validate_and_parse_idcard(pid) if pid else {"valid": False}
+    uscc_info = validate_and_parse_uscc(pid) if pid else {"valid": False}
+
+    if party_type is None:
+        if uscc_info.get("valid"):
+            party_type = "legal"
+        elif id_info.get("valid"):
+            party_type = "natural"
+        else:
+            # 18 位且含字母倾向法人；否则自然人占位
+            if len(pid) == 18 and any(c.isalpha() for c in pid):
+                party_type = "legal"
+            else:
+                party_type = "natural"
+
+    result: Dict[str, Any] = {
+        "name": _or_placeholder(party.name, missing_fields, f"{role}.name"),
+        "address": _or_placeholder(party.address, missing_fields, f"{role}.address"),
+        "phone": _or_placeholder(party.phone, missing_fields, f"{role}.phone"),
+        "party_type": party_type,
+        "ethnicity": party.ethnicity or "汉族",
+        "id_card_or_uscc": pid or PLACEHOLDER,
+    }
+    if not pid:
+        missing_fields.append(f"{role}.id_card_or_uscc")
+
+    if party_type == "natural":
+        parsed_gender = id_info.get("gender") if id_info.get("valid") else None
+        parsed_birth = None
+        if id_info.get("valid") and id_info.get("birth_date"):
+            # 1990-03-07 → 1990年3月7日
+            parsed_birth = format_date_cn(id_info["birth_date"])
+
+        if party.gender and parsed_gender and party.gender != parsed_gender:
+            raise _http_422(
+                f"{role} 性别填写「{party.gender}」与身份证解析结果「{parsed_gender}」冲突"
+            )
+        if party.birth and parsed_birth:
+            # 宽松比较：去掉 0 填充差异
+            def _norm_birth(s: str) -> str:
+                return re.sub(r"年0*", "年", re.sub(r"月0*", "月", s.replace("日", "")))
+            if _norm_birth(party.birth) != _norm_birth(parsed_birth):
+                raise _http_422(
+                    f"{role} 出生日期填写「{party.birth}」与身份证解析结果「{parsed_birth}」冲突"
+                )
+
+        result["gender"] = party.gender or parsed_gender or PLACEHOLDER
+        result["birth"] = party.birth or parsed_birth or PLACEHOLDER
+        if result["gender"] == PLACEHOLDER:
+            missing_fields.append(f"{role}.gender")
+        if result["birth"] == PLACEHOLDER:
+            missing_fields.append(f"{role}.birth")
+        result["id_label"] = "公民身份号码"
+        result["legal_rep"] = ""
+        result["rep_position"] = ""
+    else:
+        result["gender"] = ""
+        result["birth"] = ""
+        result["id_label"] = "统一社会信用代码"
+        result["legal_rep"] = _or_placeholder(party.legal_rep, missing_fields, f"{role}.legal_rep")
+        result["rep_position"] = _or_placeholder(party.rep_position, missing_fields, f"{role}.rep_position")
+
+    return result
+
+
+def _build_claims_for_cause(
+    req: "GenerateLitigationPackageReq",
+    agreed_rate: Optional[float],
+    start_date_iso: str,
+    start_date_display: str,
+    interest_meta: Dict[str, Any],
+) -> List[str]:
+    """用户诉请原样写入；利息诉请按约定/上限格式化；不追加暂计金额。"""
+    claims: List[str] = []
+    for raw in req.claims or []:
+        c = str(raw).strip()
+        if not c:
+            continue
+        # 劳动争议用语规范化
+        if "劳动" in req.cause_of_action:
+            c = c.replace("判令被告", "裁决被申请人").replace("判令", "裁决")
+            c = c.replace("原告", "申请人").replace("被告", "被申请人")
+        # 利息诉请：有约定利率时改写为规范表述
+        if "利息" in c and ("借贷" in req.cause_of_action or agreed_rate is not None):
+            rate = interest_meta.get("applied_rate")
+            if rate is not None:
+                note = ""
+                if interest_meta.get("capped"):
+                    note = f"（约定年利率{agreed_rate:g}%超过法定上限，按上限年利率{rate:g}%主张）"
+                c = (
+                    f"判令被告支付利息（以{req.claim_amount:,.2f}元为基数，按年利率{rate:g}%，"
+                    f"自{start_date_display}起计算至实际清偿之日止）{note}"
+                )
+        # 律师费旁注
+        if "律师费" in c and "需有合同约定" not in c:
+            c = f"{c.rstrip('；;。.')}（需有合同约定或法律依据）"
+        claims.append(c)
+    return claims
+
 
 
 # ==============================================================================
@@ -219,14 +472,53 @@ class LaborCalcReq(BaseModel):
 
 class PartyInfo(BaseModel):
     name: str = Field(..., example="张三")
-    id_card_or_uscc: str = Field(..., example="110101199003072375")
-    gender: str = Field(default="男", example="男")
-    birth: str = Field(default="1990年3月7日", example="1990年3月7日")
-    ethnicity: str = Field(default="汉族", example="汉族")
-    address: str = Field(..., example="北京市朝阳区建国门外大街1号")
-    phone: str = Field(..., example="13800000000")
-    legal_rep: Optional[str] = Field(default=None, example="李某某 (企业法定代表人)")
-    rep_position: Optional[str] = Field(default="执行董事", example="执行董事")
+    id_card_or_uscc: str = Field(default="", example="110101199003072375")
+    gender: Optional[str] = Field(default=None, example="男")
+    birth: Optional[str] = Field(default=None, example="1990年3月7日")
+    ethnicity: Optional[str] = Field(default="汉族", example="汉族")
+    address: str = Field(default="", example="北京市朝阳区建国门外大街1号")
+    phone: Optional[str] = Field(default=None, example="13800000000")
+    legal_rep: Optional[str] = Field(default=None, example="李某某")
+    rep_position: Optional[str] = Field(default=None, example="执行董事")
+    party_type: Optional[Literal["natural", "legal"]] = Field(
+        default=None,
+        description="natural=自然人 / legal=法人或非法人组织；未传时自动判断",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _alias_id_fields(cls, data):
+        if isinstance(data, dict):
+            if not data.get("id_card_or_uscc"):
+                for alt in ("id_number", "id_card", "id", "uscc"):
+                    if data.get(alt):
+                        data["id_card_or_uscc"] = data[alt]
+                        break
+        return data
+
+    @model_validator(mode="after")
+    def _auto_party_type(self):
+        if self.party_type is not None:
+            return self
+        pid = (self.id_card_or_uscc or "").strip()
+        if len(pid) == 18:
+            if validate_and_parse_uscc(pid).get("valid"):
+                object.__setattr__(self, "party_type", "legal")
+            elif validate_and_parse_idcard(pid).get("valid"):
+                object.__setattr__(self, "party_type", "natural")
+        return self
+
+
+class EvidenceItem(BaseModel):
+    name: str = Field(..., description="证据名称")
+    source: Optional[str] = Field(default="", description="证据来源")
+    witness_name: Optional[str] = Field(default="", description="证人姓名")
+    witness_address: Optional[str] = Field(default="", description="证人住所")
+    category: Optional[str] = Field(default="书证")
+    purpose: Optional[str] = Field(default="")
+    pages: Optional[str] = Field(default="")
+    original_or_copy: Optional[str] = Field(default="复印件")
+
 
 class GenerateLitigationPackageReq(BaseModel):
     cause_of_action: str = Field(
@@ -237,11 +529,8 @@ class GenerateLitigationPackageReq(BaseModel):
     plaintiff: PartyInfo
     defendant: PartyInfo
     claims: List[str] = Field(
-        default_factory=lambda: [
-            "判令被告立即向原告偿还借款本金人民币 200,000 元；",
-            "判令被告向原告支付利息（按照全国银行间同业拆借中心公布的 LPR 4倍计算）；",
-            "判令本案诉讼费用由被告承担。"
-        ]
+        default_factory=list,
+        description="诉讼请求列表（原样写入文书）",
     )
     claim_amount: float = Field(default=200000.0)
     raw_case_notes: str = Field(
@@ -249,12 +538,20 @@ class GenerateLitigationPackageReq(BaseModel):
         description="律师碎片化案情笔记（AI将自动提炼并引用民法典或劳动合同法法条）",
         example="2022年3月5日，被告李四因公司资金周转，向原告借款20万元，原告当天通过招商银行网银全额转入被告账户。被告出具借条承诺1年内还清，年化利率15%。借款到期后原告多次通过微信及电话催促还款，被告拒不偿还本金和利息。"
     )
-    court_name: str = Field(default="北京市朝阳区", example="北京市朝阳区")
+    court_name: str = Field(default="北京市朝阳区人民法院", example="北京市朝阳区人民法院")
+    arbitration_committee: Optional[str] = Field(
+        default=None,
+        description="劳动争议致送机关全称；未填时按地区补全为××劳动人事争议仲裁委员会",
+    )
     lawyer_name: str = Field(default="王律师", example="王律师")
     law_firm: str = Field(default="北京市京师律师事务所", example="北京市京师律师事务所")
     lawyer_phone: str = Field(default="13900008888", example="13900008888")
     lawyer_license: str = Field(default="11101201510123456", example="11101201510123456")
     auto_generate_sub_docs: bool = Field(default=True, description="是否一并生成授权委托书、送达地址确认书、身份证明或保全申请书")
+    evidences: Optional[List[EvidenceItem]] = Field(default=None, description="证据和证据来源，证人姓名和住所")
+    copies: Optional[int] = Field(default=None, description="起诉状副本份数，默认等于被告人数")
+    agreed_annual_rate: Optional[float] = Field(default=None, description="约定年利率（百分数）")
+    contract_date: Optional[str] = Field(default=None, description="合同成立日 YYYY-MM-DD")
 
 
 # ==============================================================================
@@ -442,21 +739,37 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
     timestamp = int(time.time())
     package_id = f"pkg-{uuid.uuid4().hex[:10]}"
     filing_date_str = datetime.now().strftime("%Y年%m月%d日")
+    missing_fields: List[str] = []
 
-    # 1. 自动进行当事人主体资格与退休审查
-    p_id_info = validate_and_parse_idcard(req.plaintiff.id_card_or_uscc) if len(req.plaintiff.id_card_or_uscc) == 18 and req.plaintiff.id_card_or_uscc[:2].isdigit() else {"is_retired": False}
+    # 1. 当事人解析（自然人/法人）
+    plaintiff = _resolve_party(req.plaintiff, "plaintiff", missing_fields)
+    defendant = _resolve_party(req.defendant, "defendant", missing_fields)
 
-    # 2. 调用宿主机 gemma4:12b 重构《事实与理由》
+    court_full = normalize_court_name(req.court_name)
+    is_labor = "劳动" in req.cause_of_action
+    arbitration_full = ""
+    if is_labor:
+        region_hint = (req.court_name or "").replace("人民法院", "").replace("法院", "").strip()
+        arbitration_full = normalize_arbitration_committee(
+            req.arbitration_committee or req.court_name, region_hint=region_hint
+        )
+
+    # 退休审查（仅自然人身份证）
+    p_id_info: Dict[str, Any] = {"is_retired": False}
+    if plaintiff["party_type"] == "natural" and len(plaintiff["id_card_or_uscc"]) == 18:
+        p_id_info = validate_and_parse_idcard(plaintiff["id_card_or_uscc"])
+
+    # 2. 事实与理由：显式传入案由，禁止兜底猜案由
     prompt = f"""【案件案由】{req.cause_of_action}
 【诉讼请求】
-{chr(10).join(req.claims)}
+{chr(10).join(req.claims or [])}
 
 【律师案情碎片笔记】
 {req.raw_case_notes}
 
-【原告】{req.plaintiff.name} (住址: {req.plaintiff.address})
-【被告】{req.defendant.name} (住址: {req.defendant.address})
-【受诉法院】{req.court_name}人民法院
+【原告】{plaintiff['name']} (住址: {plaintiff['address']})
+【被告】{defendant['name']} (住址: {defendant['address']})
+【受诉法院】{court_full if not is_labor else arbitration_full}
 
 请将上述材料改写为条理清晰、因果严密、引用具体法律条文（如《民法典》或《劳动合同法》具体法条）的《事实与理由》。"""
 
@@ -464,288 +777,307 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         facts_polished = await ollama_client.generate(
             prompt=prompt,
             system_prompt=FACTS_POLISH_SYSTEM_PROMPT,
-            temperature=0.2
+            temperature=0.2,
+            cause_of_action=req.cause_of_action,
         )
     except Exception as e:
-        logger.warning(f"gemma4:12b 润色异常，降级使用原始笔记: {e}")
+        logger.warning(f"大模型润色异常，降级使用原始笔记: {e}")
         facts_polished = req.raw_case_notes
 
-    # 3. 经过零幻觉引注熔断网关 (Citation Guard) 进行废止法规与条号穿透核验
     from gateway.utils.citation_guard import audit_citations_in_text
     citation_audit = audit_citations_in_text(facts_polished, auto_sanitize=True)
     if citation_audit.get("has_abrogated_laws") and citation_audit.get("sanitized_text"):
-        # 自动将废止法律条文替换为现行《民法典》合法条文，杜绝废法写入法院起诉状
         facts_polished = citation_audit["sanitized_text"]
 
-    # 提取引用的法条
     statute_pattern = re.compile(r"《(?:中华人民共和国)?(?:民法典|劳动合同法|民事诉讼法)[^》]+》[第\d条款、及]+")
     statute_citations = statute_pattern.findall(facts_polished)
 
-    # 诉讼费预估
     court_fees = calculate_court_fees(req.claim_amount)
 
-    # 计算利息或仲裁补偿金说明
+    # 利息：约定利率 + private_lending_cap 上限，不再默认 4 倍 LPR
     interest_statement = ""
-    start_date_str = "2023-01-01"
-    start_date_display = "2023年1月1日"
+    start_date_str = extract_first_date_iso(req.raw_case_notes) or req.contract_date or "2023-01-01"
+    start_date_display = format_date_cn(start_date_str)
     total_interest_val = 0.0
+    agreed_rate = req.agreed_annual_rate
+    if agreed_rate is None:
+        agreed_rate = extract_agreed_annual_rate(req.raw_case_notes)
+    interest_meta: Dict[str, Any] = {"applied_rate": agreed_rate, "capped": False}
 
     if "借贷" in req.cause_of_action:
-        # 动态从案情笔记中提取真实借款或违约起息日
-        date_pattern = re.compile(r"(\d{4}[年\-\/\.]\d{1,2}[月\-\/\.]\d{1,2}日?)")
-        found_dates = date_pattern.findall(req.raw_case_notes)
-        if found_dates:
-            raw_d = found_dates[0]
-            norm_d = raw_d.replace("年", "-").replace("月", "-").replace("日", "").replace(".", "-").replace("/", "-")
-            d_parts = norm_d.split("-")
-            if len(d_parts) == 3:
-                try:
-                    start_date_str = f"{int(d_parts[0]):04d}-{int(d_parts[1]):02d}-{int(d_parts[2]):02d}"
-                    start_date_display = f"{int(d_parts[0])}年{int(d_parts[1])}月{int(d_parts[2])}日"
-                except Exception:
-                    start_date_display = raw_d
-        lpr_calc = calculate_lpr_interest(req.claim_amount, start_date_str, datetime.now().strftime("%Y-%m-%d"), multiplier=4.0)
-        interest_statement = lpr_calc.get("complaint_statement", "")
-        total_interest_val = float(lpr_calc.get("total_interest", 0.0))
-        if total_interest_val <= 0:
-            total_interest_val = round(req.claim_amount * 0.15, 2)
+        contract_date = req.contract_date or start_date_str
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        try:
+            lpr_calc = calculate_lpr_interest(
+                principal=req.claim_amount,
+                start_date=start_date_str,
+                end_date=end_date,
+                fixed_annual_rate=agreed_rate if agreed_rate is not None else None,
+                rule_mode="private_lending_cap",
+                contract_date=contract_date,
+            )
+            interest_statement = lpr_calc.get("complaint_statement", "")
+            total_interest_val = float(lpr_calc.get("total_interest", 0.0))
+            # 从分段取实际执行年利率
+            segs = lpr_calc.get("segments") or []
+            applied = None
+            capped = False
+            for seg in segs:
+                if seg.get("applied_annual_rate") is not None:
+                    applied = float(seg["applied_annual_rate"])
+                if seg.get("is_rate_capped"):
+                    capped = True
+            if applied is None and agreed_rate is not None:
+                applied = float(agreed_rate)
+            interest_meta = {"applied_rate": applied, "capped": capped, "agreed_rate": agreed_rate}
+        except Exception as e:
+            logger.warning(f"利息精算失败: {e}")
+            interest_meta = {"applied_rate": agreed_rate, "capped": False, "agreed_rate": agreed_rate}
 
-    # 3. 渲染主文书 .docx
+    claims_final = _build_claims_for_cause(req, agreed_rate, start_date_str, start_date_display, interest_meta)
+    if not claims_final:
+        claims_final = [PLACEHOLDER]
+        missing_fields.append("claims")
+
+    evidences = []
+    if req.evidences:
+        for ev in req.evidences:
+            evidences.append(ev.model_dump() if hasattr(ev, "model_dump") else dict(ev))
+    copies = req.copies if req.copies is not None else 1
+
+    # 当事人公共模板上下文
+    def _party_ctx(prefix: str, info: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            f"{prefix}_name": info["name"],
+            f"{prefix}_gender": info.get("gender") or "",
+            f"{prefix}_birth": info.get("birth") or "",
+            f"{prefix}_ethnicity": info.get("ethnicity") or "",
+            f"{prefix}_address": info["address"],
+            f"{prefix}_id": info["id_card_or_uscc"],
+            f"{prefix}_id_label": info.get("id_label") or "",
+            f"{prefix}_phone": info.get("phone") or PLACEHOLDER,
+            f"{prefix}_legal_rep": info.get("legal_rep") or "",
+            f"{prefix}_rep_position": info.get("rep_position") or "",
+            f"{prefix}_party_type": info["party_type"],
+            f"{prefix}_is_natural": info["party_type"] == "natural",
+            f"{prefix}_is_legal": info["party_type"] == "legal",
+        }
+
     generated_docs = []
+    common_party = {}
+    common_party.update(_party_ctx("plaintiff", plaintiff))
+    common_party.update(_party_ctx("defendant", defendant))
+    # 劳动仲裁用语别名
+    common_party.update(_party_ctx("applicant", plaintiff))
+    common_party.update(_party_ctx("respondent", defendant))
 
-    # 判定模板类型
     if "借贷" in req.cause_of_action:
         main_tpl = "civil_complaint_loan_template.docx"
         doc_label = "民事起诉状(民间借贷版)"
         context_main = {
-            "plaintiff_name": req.plaintiff.name,
-            "plaintiff_gender": req.plaintiff.gender,
-            "plaintiff_birth": req.plaintiff.birth,
-            "plaintiff_ethnicity": req.plaintiff.ethnicity,
-            "plaintiff_address": req.plaintiff.address,
-            "plaintiff_id": req.plaintiff.id_card_or_uscc,
-            "plaintiff_phone": req.plaintiff.phone,
-            "defendant_name": req.defendant.name,
-            "defendant_gender": req.defendant.gender,
-            "defendant_birth": req.defendant.birth,
-            "defendant_ethnicity": req.defendant.ethnicity,
-            "defendant_address": req.defendant.address,
-            "defendant_id": req.defendant.id_card_or_uscc,
-            "defendant_phone": req.defendant.phone,
+            **common_party,
+            "claims": claims_final,
             "loan_principal": f"{req.claim_amount:,.2f}",
             "loan_principal_capital": rmb_to_capital(req.claim_amount),
             "interest_start_date": start_date_display,
+            "interest_annual_rate": (
+                f"{interest_meta['applied_rate']:g}" if interest_meta.get("applied_rate") is not None else PLACEHOLDER
+            ),
+            "interest_base": f"{req.claim_amount:,.2f}",
             "interest_end_date": filing_date_str,
-            "total_interest": f"{total_interest_val:,.2f}",
-            "total_interest_capital": rmb_to_capital(total_interest_val),
-            "lawyer_fee": "根据民事委托代理协议及发票据实结算",
+            "total_interest": f"{total_interest_val:,.2f}" if total_interest_val else PLACEHOLDER,
+            "total_interest_capital": rmb_to_capital(total_interest_val) if total_interest_val else PLACEHOLDER,
+            "lawyer_fee_note": "需有合同约定或法律依据",
             "facts_and_reasons": facts_polished,
             "interest_calc_statement": interest_statement,
-            "court_name": req.court_name,
-            "filing_date": filing_date_str
+            "court_name": court_full,
+            "filing_date": filing_date_str,
+            "evidences": evidences,
+            "copies": copies,
         }
-    elif "劳动" in req.cause_of_action:
+    elif is_labor:
         main_tpl = "labor_arbitration_template.docx"
         doc_label = "劳动人事争议仲裁申请书"
         context_main = {
-            "applicant_name": req.plaintiff.name,
-            "applicant_gender": req.plaintiff.gender,
-            "applicant_birth": req.plaintiff.birth,
-            "applicant_address": req.plaintiff.address,
-            "applicant_id": req.plaintiff.id_card_or_uscc,
-            "applicant_phone": req.plaintiff.phone,
-            "respondent_name": req.defendant.name,
-            "respondent_address": req.defendant.address,
-            "respondent_id": req.defendant.id_card_or_uscc,
-            "respondent_legal_rep": req.defendant.legal_rep or "负责人",
-            "respondent_phone": req.defendant.phone,
-            "arbitration_claims": req.claims,
+            **common_party,
+            "respondent_legal_rep": defendant.get("legal_rep") or PLACEHOLDER,
+            "arbitration_claims": claims_final,
             "facts_and_reasons": facts_polished,
-            "arbitration_committee": req.court_name,
-            "filing_date": filing_date_str
+            "arbitration_committee": arbitration_full,
+            "filing_date": filing_date_str,
+            "evidences": evidences,
+            "arbitration_limitation_note": "仲裁时效一般为1年，具体以律师核实为准",
         }
     elif "买卖" in req.cause_of_action:
         main_tpl = "civil_complaint_sales_template.docx"
         doc_label = "民事起诉状(买卖合同版)"
         context_main = {
-            "plaintiff_name": req.plaintiff.name,
-            "plaintiff_address": req.plaintiff.address,
-            "plaintiff_id": req.plaintiff.id_card_or_uscc,
-            "plaintiff_legal_rep": req.plaintiff.legal_rep or req.plaintiff.name,
-            "plaintiff_rep_position": req.plaintiff.rep_position or "法定代表人",
-            "plaintiff_phone": req.plaintiff.phone,
-            "defendant_name": req.defendant.name,
-            "defendant_address": req.defendant.address,
-            "defendant_id": req.defendant.id_card_or_uscc,
-            "defendant_legal_rep": req.defendant.legal_rep or "法定代表人",
-            "defendant_phone": req.defendant.phone,
+            **common_party,
+            "claims": claims_final,
             "contract_arrears": f"{req.claim_amount:,.2f}",
             "contract_arrears_capital": rmb_to_capital(req.claim_amount),
-            "liquidated_damages": f"{req.claim_amount * 0.05:,.2f}",
-            # 利率描述改为模板变量；完整口径由批次7/律师确认，此处仅占位避免硬编码「加计50%」
+            "liquidated_damages": PLACEHOLDER,
             "overdue_rate_desc": "按照全国银行间同业拆借中心公布的一年期贷款市场报价利率（LPR）及合同约定或依法可主张的标准计算",
             "facts_and_reasons": facts_polished,
-            "court_name": req.court_name,
-            "filing_date": filing_date_str
+            "court_name": court_full,
+            "filing_date": filing_date_str,
+            "evidences": evidences,
+            "copies": copies,
         }
     else:
         main_tpl = "civil_complaint_template.docx"
         doc_label = "民事起诉状"
         context_main = {
-            "plaintiff_name": req.plaintiff.name,
-            "plaintiff_gender": req.plaintiff.gender,
-            "plaintiff_birth": req.plaintiff.birth,
-            "plaintiff_ethnicity": req.plaintiff.ethnicity,
-            "plaintiff_id": req.plaintiff.id_card_or_uscc,
-            "plaintiff_address": req.plaintiff.address,
-            "plaintiff_phone": req.plaintiff.phone,
-            "defendant_name": req.defendant.name,
-            "defendant_gender": req.defendant.gender,
-            "defendant_birth": req.defendant.birth,
-            "defendant_ethnicity": req.defendant.ethnicity,
-            "defendant_id": req.defendant.id_card_or_uscc,
-            "defendant_address": req.defendant.address,
-            "defendant_phone": req.defendant.phone,
-            "claims": req.claims,
+            **common_party,
+            "claims": claims_final,
             "facts_and_reasons": facts_polished,
-            "court_name": req.court_name,
-            "filing_date": filing_date_str
+            "court_name": court_full,
+            "filing_date": filing_date_str,
+            "evidences": evidences,
+            "copies": copies,
         }
 
-    # 渲染主诉状
     tpl_path = os.path.join(_templates_dir(), main_tpl)
-    main_docx_name = f"{doc_label}_{req.plaintiff.name}_{timestamp}.docx"
+    safe_party_name = sanitize_filename(plaintiff["name"]) or "当事人"
+    main_docx_name = f"{doc_label}_{safe_party_name}_{timestamp}.docx"
     main_docx_path = os.path.join(str(get_generated_dir()), main_docx_name)
-    main_pdf_name = f"{doc_label}_{req.plaintiff.name}_{timestamp}.pdf"
+    main_pdf_name = f"{doc_label}_{safe_party_name}_{timestamp}.pdf"
     main_pdf_path = os.path.join(str(get_generated_dir()), main_pdf_name)
 
     doc = DocxTemplate(tpl_path)
     doc.render(context_main)
     doc.save(main_docx_path)
+    _highlight_placeholders_in_docx(main_docx_path)
 
-    # 转换 PDF
-    await convert_docx_to_pdf(main_docx_path, main_pdf_path, title=doc_label, text_summary=facts_polished)
+    pdf_ok = await convert_docx_to_pdf(main_docx_path, main_pdf_path, title=doc_label, text_summary=facts_polished)
+    if not pdf_ok:
+        logger.error(f"主文书 PDF 转换失败: {main_docx_path}")
 
     generated_docs.append({
         "doc_type": doc_label,
         "filename_docx": main_docx_name,
+        "path": main_docx_path,
         "docx_url": f"/api/documents/download/{main_docx_name}",
-        "filename_pdf": main_pdf_name,
-        "pdf_url": f"/api/documents/download/{main_pdf_name}"
+        "filename_pdf": main_pdf_name if pdf_ok else None,
+        "pdf_path": main_pdf_path if pdf_ok else None,
+        "pdf_url": f"/api/documents/download/{main_pdf_name}" if pdf_ok else None,
     })
 
-    # 若开启生成配套文书
     if req.auto_generate_sub_docs:
-        # A. 民事授权委托书
         poa_tpl = os.path.join(_templates_dir(), "power_of_attorney_template.docx")
-        poa_docx_name = f"民事授权委托书_{req.plaintiff.name}_{timestamp}.docx"
+        poa_docx_name = f"民事授权委托书_{safe_party_name}_{timestamp}.docx"
         poa_docx_path = os.path.join(str(get_generated_dir()), poa_docx_name)
-        poa_pdf_name = f"民事授权委托书_{req.plaintiff.name}_{timestamp}.pdf"
+        poa_pdf_name = f"民事授权委托书_{safe_party_name}_{timestamp}.pdf"
         poa_pdf_path = os.path.join(str(get_generated_dir()), poa_pdf_name)
 
         doc_poa = DocxTemplate(poa_tpl)
         doc_poa.render({
-            "client_name": req.plaintiff.name,
-            "client_id": req.plaintiff.id_card_or_uscc,
-            "client_phone": req.plaintiff.phone,
-            "opponent_name": req.defendant.name,
+            "client_name": plaintiff["name"],
+            "client_id": plaintiff["id_card_or_uscc"],
+            "client_phone": plaintiff.get("phone") or PLACEHOLDER,
+            "opponent_name": defendant["name"],
             "cause_of_action": req.cause_of_action,
             "lawyer_name": req.lawyer_name,
             "law_firm": req.law_firm,
             "lawyer_license": req.lawyer_license,
             "lawyer_phone": req.lawyer_phone,
-            "authorization_scope": "特别授权：代为承认、放弃、变更诉讼请求，进行和解，提起反诉或者上诉，申请执行，签收法律文书等全部诉讼权利。",
-            "sign_date": filing_date_str
+            "court_name": court_full,
+            "authorization_scope": "□一般代理  □特别授权（□代为承认、放弃、变更诉讼请求 □进行和解 □提起反诉或上诉）",
+            "sign_date": filing_date_str,
         })
         doc_poa.save(poa_docx_path)
         await convert_docx_to_pdf(poa_docx_path, poa_pdf_path, title="民事授权委托书")
-
         generated_docs.append({
             "doc_type": "民事授权委托书",
             "filename_docx": poa_docx_name,
             "docx_url": f"/api/documents/download/{poa_docx_name}",
             "filename_pdf": poa_pdf_name,
-            "pdf_url": f"/api/documents/download/{poa_pdf_name}"
+            "pdf_url": f"/api/documents/download/{poa_pdf_name}",
         })
 
-        # B. 送达地址确认书
         addr_tpl = os.path.join(_templates_dir(), "service_address_template.docx")
-        addr_docx_name = f"送达地址确认书_{req.plaintiff.name}_{timestamp}.docx"
+        addr_docx_name = f"送达地址确认书_{safe_party_name}_{timestamp}.docx"
         addr_docx_path = os.path.join(str(get_generated_dir()), addr_docx_name)
         doc_addr = DocxTemplate(addr_tpl)
         doc_addr.render({
             "cause_of_action": req.cause_of_action,
-            "recipient_name": req.plaintiff.name,
-            "recipient_id": req.plaintiff.id_card_or_uscc,
+            "recipient_name": plaintiff["name"],
+            "recipient_id": plaintiff["id_card_or_uscc"],
             "lawyer_name": req.lawyer_name,
             "law_firm": req.law_firm,
             "lawyer_phone": req.lawyer_phone,
-            "mail_address": req.plaintiff.address,
-            "postal_code": "100022",
-            "mobile_phone": req.plaintiff.phone,
-            "email_address": "lawyer_service@lawflow.cn",
-            "sign_date": filing_date_str
+            "mail_address": plaintiff["address"],
+            "postal_code": PLACEHOLDER,
+            "mobile_phone": plaintiff.get("phone") or PLACEHOLDER,
+            "email_address": PLACEHOLDER,
+            "electronic_methods": "短信、电子邮件、统一微法院",
+            "sign_date": filing_date_str,
         })
         doc_addr.save(addr_docx_path)
         generated_docs.append({
             "doc_type": "送达地址确认书",
             "filename_docx": addr_docx_name,
-            "docx_url": f"/api/documents/download/{addr_docx_name}"
+            "docx_url": f"/api/documents/download/{addr_docx_name}",
         })
 
-        # C. 针对买卖合同欠款：自动生成《财产保全申请书》
         if "买卖" in req.cause_of_action or "借贷" in req.cause_of_action:
             preserv_tpl = os.path.join(_templates_dir(), "property_preservation_template.docx")
-            preserv_docx_name = f"财产保全申请书_{req.plaintiff.name}_{timestamp}.docx"
+            preserv_docx_name = f"财产保全申请书_{safe_party_name}_{timestamp}.docx"
             preserv_docx_path = os.path.join(str(get_generated_dir()), preserv_docx_name)
             doc_preserv = DocxTemplate(preserv_tpl)
             doc_preserv.render({
-                "applicant_name": req.plaintiff.name,
-                "applicant_id": req.plaintiff.id_card_or_uscc,
-                "applicant_phone": req.plaintiff.phone,
-                "respondent_name": req.defendant.name,
-                "respondent_id": req.defendant.id_card_or_uscc,
-                "respondent_address": req.defendant.address,
+                "applicant_name": plaintiff["name"],
+                "applicant_id": plaintiff["id_card_or_uscc"],
+                "applicant_phone": plaintiff.get("phone") or PLACEHOLDER,
+                "applicant_address": plaintiff["address"],
+                "applicant_legal_rep": plaintiff.get("legal_rep") or PLACEHOLDER,
+                "respondent_name": defendant["name"],
+                "respondent_id": defendant["id_card_or_uscc"],
+                "respondent_address": defendant["address"],
                 "preservation_amount": f"{req.claim_amount:,.2f}",
                 "preservation_amount_capital": rmb_to_capital(req.claim_amount),
                 "cause_of_action": req.cause_of_action,
-                "property_clues": f"1. 被申请人名下银行基本存款账户；\n2. 被申请人名下位于 {req.defendant.address} 之不动产或经营设备。",
-                "court_name": req.court_name,
-                "sign_date": filing_date_str
+                "property_clues": f"1. 被申请人名下银行基本存款账户；\n2. 被申请人名下位于 {defendant['address']} 之不动产或经营设备。",
+                "guarantee_method": PLACEHOLDER,
+                "guarantee_institution": PLACEHOLDER,
+                "preservation_type_pre": "□",
+                "preservation_type_in": "□",
+                "case_number": PLACEHOLDER,
+                "court_name": court_full,
+                "sign_date": filing_date_str,
             })
             doc_preserv.save(preserv_docx_path)
             generated_docs.append({
                 "doc_type": "财产保全申请书",
                 "filename_docx": preserv_docx_name,
-                "docx_url": f"/api/documents/download/{preserv_docx_name}"
+                "docx_url": f"/api/documents/download/{preserv_docx_name}",
             })
 
-        # D. 针对劳动争议：自动生成《经济补偿金计算清单》
-        if "劳动" in req.cause_of_action:
+        if is_labor:
             labor_tpl = os.path.join(_templates_dir(), "labor_compensation_calc_template.docx")
-            labor_docx_name = f"经济补偿金计算清单_{req.plaintiff.name}_{timestamp}.docx"
+            labor_docx_name = f"经济补偿金计算清单_{safe_party_name}_{timestamp}.docx"
             labor_docx_path = os.path.join(str(get_generated_dir()), labor_docx_name)
             labor_calc = calculate_labor_compensation(12000, "2021-03-01", datetime.now().strftime("%Y-%m-%d"))
             doc_labor = DocxTemplate(labor_tpl)
             doc_labor.render({
-                "applicant_name": req.plaintiff.name,
-                "respondent_name": req.defendant.name,
-                "hire_date": "2021年3月1日",
+                "applicant_name": plaintiff["name"],
+                "respondent_name": defendant["name"],
+                "hire_date": PLACEHOLDER,
                 "termination_date": filing_date_str,
                 "tenure_str": labor_calc["tenure_str"],
-                "monthly_salary": "12,000.00",
+                "monthly_salary": PLACEHOLDER,
                 "compensation_months": f"{labor_calc['compensation_months']}",
                 "amount_n": f"{labor_calc['tiers']['N']['amount']:,.2f}",
                 "amount_plus_1_notice": f"{labor_calc['tiers']['N+1']['notice_pay']:,.2f}",
                 "amount_2n": f"{labor_calc['tiers']['2N']['amount']:,.2f}",
                 "cap_reason": labor_calc["cap_reason"],
-                "filing_date": filing_date_str
+                "filing_date": filing_date_str,
             })
             doc_labor.save(labor_docx_path)
             generated_docs.append({
                 "doc_type": "经济补偿金计算清单",
                 "filename_docx": labor_docx_name,
-                "docx_url": f"/api/documents/download/{labor_docx_name}"
+                "docx_url": f"/api/documents/download/{labor_docx_name}",
             })
 
     return {
@@ -757,7 +1089,10 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         "citation_audit": citation_audit,
         "court_fees_estimate": court_fees,
         "retirement_check": p_id_info.get("retirement_note"),
-        "generated_documents": generated_docs
+        "missing_fields": missing_fields,
+        "generated_documents": generated_docs,
+        "main_docx_path": main_docx_path,
+        "main_pdf_path": main_pdf_path if pdf_ok else None,
     }
 
 

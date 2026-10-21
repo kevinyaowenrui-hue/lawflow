@@ -17,10 +17,19 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from gateway.core.ollama_client import ollama_client
-from gateway.utils.matter_vault_db import get_db_connection
+from gateway.utils.matter_vault_db import get_db_connection, get_matter_by_id
 from gateway.utils.citation_guard import audit_citations_in_text
+from gateway.utils.text_utils import normalize_court_name
 
 logger = logging.getLogger("lawflow.workflow_engine")
+
+
+class WorkflowValidationError(ValueError):
+    """终稿缺少必要字段时抛出，由路由映射为 HTTP 422。"""
+
+    def __init__(self, message: str, missing_fields: Optional[List[str]] = None):
+        super().__init__(message)
+        self.missing_fields = missing_fields or []
 
 
 class WorkflowStep:
@@ -279,6 +288,7 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
         conn.commit()
         return {
             "workflow_id": workflow_id,
+            "matter_id": row["matter_id"] or step_data.get("matter_id"),
             "current_step": next_step,
             "step_status": step_status,
             "step_name": "攻防策略与争议焦点核准（人工断点）",
@@ -297,125 +307,141 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
             "confirmed_at": now_str
         }
 
-        # 触发 Step 5: 生成终稿起诉状 / 答辩状
-        confirmed_claims = "\n".join([f"{i+1}. {c}" for i, c in enumerate(step_data["step2"].get("confirmed_claims", []))])
+        matter_id = row["matter_id"] or step_data.get("matter_id")
+        matter = get_matter_by_id(matter_id) if matter_id else None
+        matter = matter or {}
+
+        p_info = matter.get("plaintiff_info") or {}
+        d_info = matter.get("defendant_info") or {}
+        if isinstance(p_info, str):
+            try:
+                p_info = json.loads(p_info)
+            except Exception:
+                p_info = {}
+        if isinstance(d_info, str):
+            try:
+                d_info = json.loads(d_info)
+            except Exception:
+                d_info = {}
+
+        plaintiff_name = (
+            human_confirmed_data.get("plaintiff_name")
+            or (p_info.get("name") if isinstance(p_info, dict) else None)
+            or matter.get("plaintiff_name")
+            or ""
+        )
+        defendant_name = (
+            human_confirmed_data.get("defendant_name")
+            or (d_info.get("name") if isinstance(d_info, dict) else None)
+            or matter.get("defendant_name")
+            or ""
+        )
+        confirmed_claims_list = step_data.get("step2", {}).get("confirmed_claims") or []
+        if human_confirmed_data.get("confirmed_claims"):
+            confirmed_claims_list = human_confirmed_data["confirmed_claims"]
+        court_raw = (
+            human_confirmed_data.get("court_name")
+            or matter.get("court_name")
+            or step_data.get("court_name")
+            or ""
+        )
+        court_full = normalize_court_name(court_raw) if court_raw else ""
+
+        missing_fields: List[str] = []
+        if not str(plaintiff_name).strip():
+            missing_fields.append("plaintiff")
+        if not str(defendant_name).strip():
+            missing_fields.append("defendant")
+        if not confirmed_claims_list or not any(str(c).strip() for c in confirmed_claims_list):
+            missing_fields.append("claims")
+        if not court_raw or not str(court_raw).strip():
+            missing_fields.append("court")
+        if missing_fields:
+            raise WorkflowValidationError(
+                f"终稿缺少必要字段: {', '.join(missing_fields)}",
+                missing_fields=missing_fields,
+            )
+
+        confirmed_claims = "\n".join([f"{i+1}. {c}" for i, c in enumerate(confirmed_claims_list)])
         confirmed_basis = "\n".join([f"- {b}" for b in step_data["step2"].get("confirmed_legal_basis", [])])
-        defenses_accepted = "\n".join([f"- {d}" for d in step_data["step4"].get("accepted_defenses", [])])
+        facts_text = step_data.get("facts_text") or matter.get("case_summary") or "【待填写】"
+        cause = step_data["step2"].get("confirmed_cause", matter.get("cause_of_action") or "民事纠纷")
+        filing_date_str = datetime.now().strftime("%Y年%m月%d日")
 
-        prompt_final = f"""请作为资深执业律师，根据前序全部人工核准的办案要素，严格按照中国法院立案文书规范标准，撰写《民事起诉状》全套终稿：
+        # 仅用案件当事人与确认诉请渲染终稿，删除写死演示起诉状
+        final_pleading_text = (
+            f"民事起诉状\n\n"
+            f"原告：{plaintiff_name}\n"
+            f"被告：{defendant_name}\n\n"
+            f"案由：{cause}\n\n"
+            f"诉讼请求：\n{confirmed_claims}\n\n"
+            f"事实与理由：\n{facts_text}\n"
+        )
+        if confirmed_basis:
+            final_pleading_text += f"\n请求权基础：\n{confirmed_basis}\n"
+        final_pleading_text += (
+            f"\n此致\n{court_full}\n\n"
+            f"具状人：{plaintiff_name}\n"
+            f"日期：{filing_date_str}\n"
+        )
 
-【案由】{step_data['step2'].get('confirmed_cause', '民间借贷纠纷')}
-【当事人信息】
-原告：{step_data['case_title']}
-诉讼地位：{step_data['client_role']}
-
-【律师核定的诉讼请求】
-{confirmed_claims}
-
-【请求权基础】
-{confirmed_basis}
-
-【认定的案件事实与理由】
-{step_data['facts_text']}
-
-【已制定的抗辩反击预案】
-{defenses_accepted}
-特约论辩补充：{step_data['step4'].get('special_strategy_notes', '无')}
-
-请撰写结构严谨、法条引用权威完备（严格遵守现行民法典条文）的《民事起诉状》正文。包含：
-一、诉讼请求
-二、事实与理由（按事实发生时间线、履行与违约、请求权归责条文、保证责任论述）
-三、证据清单与证明目的
-此致
-受理法院人民法院
-起诉人签名/盖章
-"""
-        final_pleading_text = ""
-        try:
-            final_pleading_text = await ollama_client.generate(prompt=prompt_final, temperature=0.2)
-        except Exception as e:
-            logger.warning(f"终稿文书大模型生成异常，启用模板规则引擎兜底: {e}")
-
-        if (
-            not final_pleading_text 
-            or len(final_pleading_text) < 100 
-            or "诉讼请求：" not in final_pleading_text 
-            or "事实与理由：" not in final_pleading_text
-        ):
-            final_pleading_text = f"""民事起诉状
-
-原告：北京智律未来数据科技有限公司，统一社会信用代码：91110108MA01XXXXXX
-法定代表人：李立新，职务：董事长
-住所地：北京市海淀区中关村南大街1号
-
-被告一（主债务人）：某供应链管理（北京）有限公司
-法定代表人：王建国，住所地：北京市朝阳区望京SOHO
-被告二（保证人）：王建国，男，身份证号：11010119800101XXXX，住址同上
-
-诉讼请求：
-{confirmed_claims}
-
-事实与理由：
-{step_data['facts_text']}
-
-原告认为，原告与各被告签署的协议合法有效。原告已依约全额履行出借义务，各被告违约不还，王建国依约应承担连带保证责任。
-依据《中华人民共和国民法典》第五百零九条、第五百七十七条、第六百七十五条、第六百七十六条、第六百八十八条及民事诉讼法之规定，特诉请贵院判如所请。
-
-证据清单：
-1. 《借款合同及保证协议书》——证明双方借贷及连带保证关系；
-2. 《银行转账电子回单》——证明原告已全额交付款项；
-3. 《催告函及EMS签收凭证》——证明原告及时催收及诉讼时效连续中断。
-
-此致
-北京市海淀区人民法院
-具状人：北京智律未来数据科技有限公司（盖章）
-日期：{datetime.now().strftime('%Y年%m月%d日')}
-"""
-
-        # 触发后置“司法引注防火墙”进行条文合规与案号验真体检
         citation_audit = audit_citations_in_text(final_pleading_text, auto_sanitize=True)
         final_clean_text = citation_audit.get("sanitized_text", final_pleading_text)
 
-        # 渲染生成标准的 Word (.docx) 交付文件 (Priority 5)
         from gateway.core.paths import get_base_dir, get_generated_dir
         storage_dir = str(get_generated_dir())
         templates_dir = str(get_base_dir() / "templates")
 
-        
         docx_filename = f"民事起诉状_工作流_{workflow_id}.docx"
         docx_output_path = os.path.join(storage_dir, docx_filename)
         download_url = f"/api/documents/download/{docx_filename}"
-        
+
         try:
             from docxtpl import DocxTemplate
             tpl_path = os.path.join(templates_dir, "civil_complaint_template.docx")
+            p_address = (p_info.get("address") if isinstance(p_info, dict) else None) or "【待填写】"
+            d_address = (d_info.get("address") if isinstance(d_info, dict) else None) or "【待填写】"
+            p_id = (p_info.get("id_card_or_uscc") or p_info.get("id") or p_info.get("uscc") if isinstance(p_info, dict) else None) or "【待填写】"
+            d_id = (d_info.get("id_card_or_uscc") or d_info.get("id") or d_info.get("uscc") if isinstance(d_info, dict) else None) or "【待填写】"
             if os.path.exists(tpl_path):
                 doc_tpl = DocxTemplate(tpl_path)
-                filing_date_str = datetime.now().strftime("%Y年%m月%d日")
                 context_wf = {
-                    "plaintiff_name": step_data.get("case_title", "原告方"),
-                    "plaintiff_gender": "男",
-                    "plaintiff_birth": "1985年1月1日",
-                    "plaintiff_ethnicity": "汉族",
-                    "plaintiff_id": "11010119850101XXXX",
-                    "plaintiff_address": "北京市海淀区中关村南大街1号",
-                    "plaintiff_phone": "13800000000",
-                    "defendant_name": "某被告公司及保证人",
-                    "defendant_gender": "男",
-                    "defendant_birth": "1980年1月1日",
-                    "defendant_ethnicity": "汉族",
-                    "defendant_id": "11010119800101XXXX",
-                    "defendant_address": "北京市朝阳区望京SOHO",
-                    "defendant_phone": "13900000000",
-                    "claims": step_data["step2"].get("confirmed_claims", []),
-                    "facts_and_reasons": final_clean_text,
-                    "court_name": "北京市海淀区人民法院",
-                    "filing_date": filing_date_str
+                    "plaintiff_name": plaintiff_name,
+                    "plaintiff_gender": "",
+                    "plaintiff_birth": "",
+                    "plaintiff_ethnicity": "",
+                    "plaintiff_id": p_id,
+                    "plaintiff_id_label": "证件号码",
+                    "plaintiff_address": p_address,
+                    "plaintiff_phone": (p_info.get("phone") if isinstance(p_info, dict) else None) or "【待填写】",
+                    "plaintiff_party_type": "natural",
+                    "plaintiff_is_natural": True,
+                    "plaintiff_is_legal": False,
+                    "plaintiff_legal_rep": "",
+                    "plaintiff_rep_position": "",
+                    "defendant_name": defendant_name,
+                    "defendant_gender": "",
+                    "defendant_birth": "",
+                    "defendant_ethnicity": "",
+                    "defendant_id": d_id,
+                    "defendant_id_label": "证件号码",
+                    "defendant_address": d_address,
+                    "defendant_phone": (d_info.get("phone") if isinstance(d_info, dict) else None) or "【待填写】",
+                    "defendant_party_type": "natural",
+                    "defendant_is_natural": True,
+                    "defendant_is_legal": False,
+                    "defendant_legal_rep": "",
+                    "defendant_rep_position": "",
+                    "claims": confirmed_claims_list,
+                    "facts_and_reasons": facts_text,
+                    "court_name": court_full,
+                    "filing_date": filing_date_str,
+                    "evidences": [],
+                    "copies": 1,
                 }
                 doc_tpl.render(context_wf)
                 doc_tpl.save(docx_output_path)
             else:
-                # 简单备用 docx
                 import docx
                 d = docx.Document()
                 d.add_heading("民事起诉状", level=1)
@@ -425,6 +451,11 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
                 d.save(docx_output_path)
         except Exception as e_docx:
             logger.warning(f"工作流生成 docx 失败: {e_docx}")
+            import docx
+            d = docx.Document()
+            for line in final_clean_text.splitlines():
+                d.add_paragraph(line)
+            d.save(docx_output_path)
 
         step_data["step5"] = {
             "pleading_text": final_clean_text,
@@ -432,10 +463,10 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
             "completed_at": now_str,
             "verification_cert_id": citation_audit.get("audit_cert", {}).get("audit_id", "CG-CERT-OK"),
             "docx_filename": docx_filename,
+            "docx_path": docx_output_path,
             "download_url": download_url
         }
 
-        # 标记工作流已圆满完成
         cursor.execute("""
         UPDATE matter_workflows
         SET current_step = ?, step_status = ?, step_data_json = ?, is_completed = 1, updated_at = ?
@@ -450,6 +481,7 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
         conn.commit()
         return {
             "workflow_id": workflow_id,
+            "matter_id": matter_id,
             "current_step": WorkflowStep.STEP5_FINAL_COMPLETED,
             "step_status": WorkflowStatus.COMPLETED,
             "step_name": "文书终稿交付与引注防火墙认证（流程达成）",
@@ -460,6 +492,7 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
     else:
         return {
             "workflow_id": workflow_id,
+            "matter_id": row["matter_id"] or step_data.get("matter_id"),
             "current_step": current_step,
             "step_status": row["step_status"],
             "step_data": step_data

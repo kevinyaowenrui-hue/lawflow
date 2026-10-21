@@ -504,7 +504,7 @@ def format_workflow_response(res: Dict[str, Any]) -> Dict[str, Any]:
 
     wf_dict = {
         "workflow_id": res.get("workflow_id"),
-        "matter_id": res.get("matter_id"),
+        "matter_id": res.get("matter_id") or step_data.get("matter_id"),
         "current_step": res.get("current_step"),
         "status": res.get("step_status"),
         "step_status": res.get("step_status"),
@@ -572,10 +572,16 @@ async def api_start_workflow(req: WorkflowStartReq):
 
 @router.post("/workflows/{workflow_id}/advance", summary="核准断点数据并推进工作流")
 async def api_advance_workflow(workflow_id: str, req: WorkflowAdvanceReq):
+    from gateway.utils.workflow_engine import WorkflowValidationError
     try:
         decisions = req.confirmed_data or req.human_decisions or {}
         res = await advance_workflow_step(workflow_id, decisions)
         return format_workflow_response(res)
+    except WorkflowValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": str(e), "missing_fields": e.missing_fields},
+        )
     except Exception as e:
         logger.error(f"推进工作流失败: {e}")
         raise HTTPException(status_code=500, detail=f"推进工作流异常: {str(e)}")

@@ -92,8 +92,8 @@ fields:
     rows: 6
     required: True
   - 受诉人民法院名称: court_name
-    default: 北京市朝阳区
-    help: 填入法院全称，例如：北京市朝阳区人民法院
+    default: 北京市朝阳区人民法院
+    help: 填入法院全称，例如：北京市朝阳区人民法院（court_name 已为完整法院全称，无需再追加"人民法院"）
 ---
 id: review_and_download
 mandatory: True

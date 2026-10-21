@@ -499,7 +499,8 @@ class UniversalLLMClient:
         system_prompt: Optional[str] = None,
         temperature: float = 0.2,
         max_tokens: int = 4096,
-        custom_entities: Optional[List[Dict[str, str]]] = None
+        custom_entities: Optional[List[Dict[str, str]]] = None,
+        cause_of_action: Optional[str] = None,
     ) -> str:
         """
         统一文本生成入口：
@@ -516,7 +517,7 @@ class UniversalLLMClient:
             except Exception as e:
                 logger.warning(f"云端大模型调用失败，尝试降级: {e}")
                 if provider == "cloud":
-                    return self._generate_rule_fallback(prompt, system_prompt)
+                    return self._generate_rule_fallback(prompt, system_prompt, cause_of_action=cause_of_action)
 
         # 路径 B: 本地 Ollama (仅当确认本地 Ollama 在线时调用，避免无显卡用户每次请求堵塞 7 秒超时)
         if provider in ["auto", "ollama"]:
@@ -529,7 +530,7 @@ class UniversalLLMClient:
                 logger.debug("本地 Ollama 处于离线状态，直通专家规则兜底模式")
 
         # 路径 C: 专家规则兜底生成
-        return self._generate_rule_fallback(prompt, system_prompt)
+        return self._generate_rule_fallback(prompt, system_prompt, cause_of_action=cause_of_action)
 
     async def _generate_cloud(
         self,
@@ -670,10 +671,16 @@ class UniversalLLMClient:
         last_user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         return self._generate_rule_fallback(last_user_msg, None)
 
-    def _generate_rule_fallback(self, prompt: str, system_prompt: Optional[str]) -> str:
+    def _generate_rule_fallback(
+        self,
+        prompt: str,
+        system_prompt: Optional[str],
+        cause_of_action: Optional[str] = None,
+    ) -> str:
         """
         当未连接任何 AI 时的智能法律专家规则兜底生成器：
         根据提示词特征，生成具备高度司法实用价值的规范段落或 JSON。
+        案由必须由调用方显式传入 cause_of_action，禁止从提示词文本猜测。
         """
         # 1. 事实与理由润色场景 (Phase 1)
         if "事实与理由" in prompt or "律师案情碎片笔记" in prompt:
@@ -681,17 +688,33 @@ class UniversalLLMClient:
             if "【律师案情碎片笔记】" in prompt:
                 notes = prompt.split("【律师案情碎片笔记】")[-1].split("【原告】")[0].strip()
 
-            cause = "借贷纠纷" if "借贷" in prompt else ("劳动争议" if "劳动" in prompt else "买卖合同纠纷")
+            # 优先显式参数；其次读取 prompt 中【案件案由】标签；不再用关键词猜案由
+            cause = (cause_of_action or "").strip()
+            if not cause and "【案件案由】" in prompt:
+                cause = prompt.split("【案件案由】")[-1].split("\n")[0].strip()
+
             statute_quote = ""
+            cause_label = ""
             if "借贷" in cause:
+                cause_label = "民间借贷纠纷"
                 statute_quote = "《中华人民共和国民法典》第六百六十七条、第六百七十五条、第六百七十六条以及《最高人民法院关于审理民间借贷案件适用法律若干问题的规定》第二十八条"
             elif "劳动" in cause:
+                cause_label = "劳动争议"
                 statute_quote = "《中华人民共和国劳动合同法》第三十条、第四十六条、第四十七条、第八十七条"
-            else:
+            elif "买卖" in cause:
+                cause_label = "买卖合同纠纷"
                 statute_quote = "《中华人民共和国民法典》第五百零九条、第五百七十七条、第五百七十九条、第六百二十六条"
+            else:
+                # 案由不在支持列表：事实与理由留【待填写】，不得套用其他案由法条
+                return (
+                    f"【待填写】\n\n"
+                    f"（案由「{cause or '未填写'}」暂无规则兜底模板，请律师核实后手工撰写事实与理由，"
+                    f"不得自动套用其他案由法条。）\n\n"
+                    f"【案情笔记原文】：\n{notes}"
+                )
 
             return (
-                f"原告与被告之间存在真实、合法且有效的{cause}法律关系。\n\n"
+                f"原告与被告之间存在真实、合法且有效的{cause_label}法律关系。\n\n"
                 f"【案件事实查明】：\n"
                 f"{notes}\n\n"
                 f"【法律责任认定】：\n"

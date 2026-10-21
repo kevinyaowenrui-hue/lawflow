@@ -254,9 +254,20 @@ def test_R22_enforcement_no_demo_numbers():
         assert bad not in serialized
 
 
-@pytest.mark.xfail(strict=True, reason="待批次7修复")
 @pytest.mark.parametrize("court_name", ["北京市朝阳区人民法院", "北京市朝阳区"])
-def test_R23_litigation_package_court_name(court_name, client):
+def test_R23_litigation_package_court_name(court_name, client, monkeypatch):
+    # 无模型模式，避免依赖 Ollama
+    from gateway.core.ollama_client import ollama_client
+
+    async def _offline(*args, **kwargs):
+        return False
+
+    monkeypatch.setattr(ollama_client, "_is_ollama_online", _offline)
+    monkeypatch.setattr(
+        ollama_client,
+        "settings",
+        {**ollama_client.settings, "provider": "ollama", "api_key": ""},
+    )
     from gateway.routers.phase1_litigation import GenerateLitigationPackageReq
 
     payload = {

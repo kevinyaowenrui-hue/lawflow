@@ -109,104 +109,16 @@ def chinese_law_chunker(raw_text: str, law_name: str = "法律法规") -> List[D
 
 
 # ==============================================================================
-# 2. 双库数据定义：公共法规库 (Statutes) 与 律所私有胜诉案例库 (Private Cases)
+# 2. 双库数据：公共法规走 statute_db；私有案例走 data/demo/private_cases_demo.json
 # ==============================================================================
-PUBLIC_STATUTES_CORPUS = [
-    {
-        "id": "statute-001",
-        "law_name": "中华人民共和国民法典",
-        "citation": "《中华人民共和国民法典》第五百七十九条",
-        "content": "第五百七十九条 当事人一方未支付价款、报酬、租金、利息，或者不履行其他金钱债务的，对方可以请求其支付。",
-        "keywords": ["支付价款", "报酬", "租金", "利息", "金钱债务", "欠款"],
-        "category": "合同编"
-    },
-    {
-        "id": "statute-002",
-        "law_name": "中华人民共和国民法典",
-        "citation": "《中华人民共和国民法典》第五百八十五条",
-        "content": "第五百八十五条 当事人可以约定一方违约时应当根据违约情况向对方支付一定数额的违约金，也可以约定因违约产生的损失赔偿额的计算方法。\n约定的违约金低于造成的损失的，人民法院或者仲裁机构可以根据当事人的请求予以增加；约定的违约金过分高于造成的损失的，人民法院或者仲裁机构可以根据当事人的请求予以适当减少。",
-        "keywords": ["违约金", "损失赔偿", "违约金调减", "过分高于损失"],
-        "category": "合同编"
-    },
-    {
-        "id": "statute-003",
-        "law_name": "中华人民共和国民法典",
-        "citation": "《中华人民共和国民法典》第六百六十七条",
-        "content": "第六百六十七条 借款合同是借款人向贷款人借款，到期返还借款并支付利息的合同。",
-        "keywords": ["借款合同", "还本付息", "民间借贷"],
-        "category": "借款合同编"
-    },
-    {
-        "id": "statute-004",
-        "law_name": "中华人民共和国民法典",
-        "citation": "《中华人民共和国民法典》第六百七十五条",
-        "content": "第六百七十五条 借款人应当按照约定的期限返还借款。对借款期限没有约定或者约定不明确，依据本法第五百一十条的规定仍不能确定的，借款人可以随时返还；贷款人可以催告借款人在合理期限内返还。",
-        "keywords": ["返还借款", "借款期限", "催告还款"],
-        "category": "借款合同编"
-    },
-    {
-        "id": "statute-005",
-        "law_name": "民间借贷司法解释",
-        "citation": "《最高人民法院关于审理民间借贷案件适用法律若干问题的规定》第二十五条",
-        "content": "第二十五条 出借人请求借款人按照合同约定利率支付利息的，人民法院应予支持，但是以不超过合同成立时一年期贷款市场报价利率四倍为限。",
-        "keywords": ["合同约定利率", "一年期LPR四倍", "民间借贷利息上限"],
-        "category": "民间借贷司法解释"
-    },
-    {
-        "id": "statute-006",
-        "law_name": "中华人民共和国劳动合同法",
-        "citation": "《中华人民共和国劳动合同法》第十条",
-        "content": "第十条 建立劳动关系，应当订立书面劳动合同。已建立劳动关系，未同时订立书面劳动合同的，应当自用工之日起一个月内订立书面劳动合同。",
-        "keywords": ["书面劳动合同", "建立劳动关系", "一个月内订立"],
-        "category": "劳动合同法"
-    },
-    {
-        "id": "statute-007",
-        "law_name": "中华人民共和国劳动合同法",
-        "citation": "《中华人民共和国劳动合同法》第四十七条",
-        "content": "第四十七条 经济补偿按劳动者在本单位工作的年限，每满一年支付一个月工资的标准向劳动者支付。六个月以上不满一年的，按一年计算；不满六个月的，向劳动者支付半个月工资的经济补偿。\n劳动者月工资高于用人单位所在直辖市、设区的市级人民政府公布的本地区上年度职工月平均工资三倍的，向其支付经济补偿的标准按职工月平均工资三倍的数额支付，向其支付经济补偿的年限最高不超过十二年。",
-        "keywords": ["经济补偿金", "工作年限", "月平均工资", "社平三倍封顶", "最高十二年"],
-        "category": "劳动合同法"
-    },
-    {
-        "id": "statute-008",
-        "law_name": "中华人民共和国劳动合同法",
-        "citation": "《中华人民共和国劳动合同法》第八十七条",
-        "content": "第八十七条 用人单位违反本法规定解除或者终止劳动合同的，应当依照本法第四十七条规定的经济补偿标准的二倍向劳动者支付赔偿金。",
-        "keywords": ["违法解除", "终止劳动合同", "二倍赔偿金", "2N"],
-        "category": "劳动合同法"
-    }
-]
-
-PRIVATE_CASES_CORPUS = [
-    {
-        "id": "case-win-001",
-        "title": "【胜诉案例】借条原件灭失仅凭微信转账及补强聊天记录确立借贷合意案",
-        "law_firm": "律所主办胜诉案例库",
-        "cause": "民间借贷纠纷",
-        "win_strategy": "在借条原件灭失的情况下，重点固定微信聊天记录中对方对转账性质的承认，以及原告出借资金时的催要回复。通过将银行流水交易附言、借款前后的微信语音和文字结合，构建排他性闭环，打消法官对系投资款或货款的合理怀疑，全额支持借款本金及利息。",
-        "winning_brief_quote": "原告主张：借条原件虽因不可抗力遗失，但原告提供的《银行转账电子回单》与双方微信往来记录形成紧密证据链。被告在微信中多次陈述'借你的钱下周必还'，清晰表明双方在转账前后具有高度确凿的借贷合意，被告主张系投资款缺乏任何合作协议及分红结算记录支持。",
-        "keywords": ["借条丢失", "借条灭失", "银行转账", "微信聊天记录", "借贷合意", "排他性证明"]
-    },
-    {
-        "id": "case-win-002",
-        "title": "【胜诉案例】未签订书面劳动合同二倍工资仲裁时效抗辩成功案",
-        "law_firm": "律所主办胜诉案例库",
-        "cause": "劳动人事争议",
-        "win_strategy": "抓住劳动者主张入职未签合同满一年后提起仲裁的致命时效瑕疵。二倍工资差额属于惩罚性赔偿而非劳动报酬，适用《劳动争议调解仲裁法》第27条一年普通时效，且自满一年的次日起逐月单独起算，成功为用人单位减免全部二倍工资差额。",
-        "winning_brief_quote": "代理意见指出：根据全国各高级法院劳动争议裁判指导意见，用人单位未签书面合同二倍工资差额非劳动报酬，不适用离职起算特殊时效，应逐月起算。申请人起诉时已超过法定一年仲裁时效，对其主张依法应予驳回。",
-        "keywords": ["未签合同", "二倍工资", "仲裁时效", "惩罚性赔偿", "非劳动报酬"]
-    },
-    {
-        "id": "case-win-003",
-        "title": "【胜诉案例】买卖合同欠款中库管微信对账单有效性认定案",
-        "law_firm": "律所主办胜诉案例库",
-        "cause": "买卖合同纠纷",
-        "win_strategy": "针对被告抗辩称对账单仅为库管员微信签字、未加盖公司公章的抗辩，原告律师通过调取库管员社保缴纳记录、历史收货签收单以及公司法定代表人知晓的聊天记录，成功被法庭认定构成职务行为与表见代理，全额支持原告货款诉请。",
-        "winning_brief_quote": "代理意见认为：库管员长期作为被告唯一指定收货联络人，其在微信对账单中的签字和金额核对系履行职务行为。被告享受了货物交付带来的生产利益，事后以内部未盖章抗辩恶意逃避债务，违反诚实信用原则。",
-        "keywords": ["买卖合同", "对账单", "未盖公章", "职务行为", "表见代理", "微信对账"]
-    }
-]
+def _private_cases_corpus():
+    from gateway.utils.legal_data import load_private_cases_demo
+    rows = []
+    for cs in load_private_cases_demo():
+        item = dict(cs)
+        item["is_demo"] = True
+        rows.append(item)
+    return rows
 
 
 # ==============================================================================
@@ -282,10 +194,22 @@ async def api_rag_search(req: RAGSearchReq):
         seen_citations = set()
         try:
             from gateway.utils.statute_db import search_statutes_hybrid
-            db_statutes = search_statutes_hybrid(req.query, limit=req.top_k * 2)
-            for art in db_statutes:
-                cite_str = f"《{art['full_name']}》{art['article_no_cn']}"
-                if cite_str not in seen_citations:
+
+            # 整句检索 + 分词补召（替代原 PUBLIC_STATUTES_CORPUS 关键词表）
+            probe_queries = [req.query]
+            for t in query_terms:
+                if len(t) >= 2 and t not in probe_queries:
+                    probe_queries.append(t)
+            # 常见请求权锚点：保证借贷/违约类查询仍能命中法典库
+            for anchor in ("借款合同", "违约金", "借贷", "劳动合同", "经济补偿"):
+                if anchor in query_lower or any(anchor in t for t in query_terms):
+                    probe_queries.append(anchor)
+
+            for pq in probe_queries:
+                for art in search_statutes_hybrid(pq, limit=req.top_k * 2):
+                    cite_str = f"《{art['full_name']}》{art['article_no_cn']}"
+                    if cite_str in seen_citations:
+                        continue
                     seen_citations.add(cite_str)
                     statute_results.append({
                         "score": 10,
@@ -293,36 +217,17 @@ async def api_rag_search(req: RAGSearchReq):
                             "citation": cite_str,
                             "content": art["content"],
                             "keywords": [art.get("short_name", ""), art.get("claim_basis_type", "")],
-                            "source": "国家权威法典库(FTS5)"
-                        }
+                            "source": "国家权威法典库(FTS5)",
+                        },
                     })
         except Exception as e_db:
             logger.debug(f"statute_db 混合检索略过: {e_db}")
 
-        # 结合内置核心请求权要件规范
-        for st in PUBLIC_STATUTES_CORPUS:
-            if st["citation"] in seen_citations:
-                continue
-            score = 0
-            for kw in st["keywords"]:
-                kw_low = kw.lower()
-                if kw_low in query_lower:
-                    score += 6
-                elif any(t in kw_low for t in query_terms if len(t) >= 2):
-                    score += 3
-            for t in query_terms:
-                if len(t) >= 2:
-                    if t in st["content"]:
-                        score += 2
-                    if t in st["citation"]:
-                        score += 3
-            if score > 0:
-                statute_results.append({"score": score, "item": {**st, "source": "公共法规库"}})
         statute_results.sort(key=lambda x: x["score"], reverse=True)
 
     # 2. 检索律所私有胜诉案例库
     if req.corpus_type in ["all", "private_cases"]:
-        for cs in PRIVATE_CASES_CORPUS:
+        for cs in _private_cases_corpus():
             score = 0
             for kw in cs["keywords"]:
                 kw_low = kw.lower()
@@ -337,7 +242,7 @@ async def api_rag_search(req: RAGSearchReq):
                     if t in cs["win_strategy"]:
                         score += 2
             if score > 0:
-                case_results.append({"score": score, "item": {**cs, "source": "律所胜诉案例库"}})
+                case_results.append({"score": score, "item": {**cs, "source": "律所胜诉案例库(演示)", "is_demo": True}})
         case_results.sort(key=lambda x: x["score"], reverse=True)
 
     final_statutes = [s["item"] for s in statute_results[:req.top_k]]

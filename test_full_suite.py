@@ -746,17 +746,24 @@ def run_tests():
     )
 
     # 8.5 零幻觉引注熔断网关：已废止旧法探测与民法典自动净化
+    # 旧断言未传 incident_date 却期望自动替换，违反时间效力规则；现要求 incident_date>=2021-01-01，
+    # 且定点替换后同句「第五百八十五条」只出现一次（避免全文 replace 重复引用）。
     bad_text_abrogated = "原告与被告于2022年订立买卖合同，依据《中华人民共和国合同法》第一百一十四条及《民法典》第五百八十五条之规定，被告逾期付款应当承担违约金责任。"
     r_audit_abrogated = client.post("/api/v1/guard/audit-citations", json={
         "text": bad_text_abrogated,
-        "auto_sanitize": True
+        "auto_sanitize": True,
+        "incident_date": "2022-01-01",
     })
     assert r_audit_abrogated.status_code == 200, r_audit_abrogated.text
     audit_res1 = r_audit_abrogated.json()
+    sanitized1 = audit_res1.get("sanitized_text", "")
     log_test(
-        "第三优先级: 零幻觉引注熔断 - 废止《合同法》探测拦截与自动净化重写",
-        audit_res1.get("has_abrogated_laws") is True and "合同法" not in audit_res1.get("sanitized_text", "") and "第五百八十五条" in audit_res1.get("sanitized_text", ""),
-        f"净化前包含废止法条 | 净化后文本: {audit_res1.get('sanitized_text')}"
+        "第三优先级: 引注熔断 - 废止《合同法》探测拦截与自动净化重写",
+        audit_res1.get("has_abrogated_laws") is True
+        and "合同法" not in sanitized1
+        and "第五百八十五条" in sanitized1
+        and sanitized1.count("第五百八十五条") == 1,
+        f"净化前包含废止法条 | 净化后文本: {sanitized1}"
     )
 
     # 8.6 零幻觉引注熔断网关：虚构法条与条号越界熔断拦截（大模型幻觉拦截）

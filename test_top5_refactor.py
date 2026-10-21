@@ -30,7 +30,6 @@ from gateway.utils.citation_guard import (
     audit_citations_in_text,
     verify_single_citation,
     get_official_max_article,
-    OFFICIAL_STATUTE_MAX_ARTICLES
 )
 from gateway.utils.ocr_engine import extract_evidence_text
 from gateway.utils.redline_builder import (
@@ -63,9 +62,9 @@ def test_priority1_citation_guard_and_calc():
     
     # 1. 验证法定条数上限映射
     assert get_official_max_article("中华人民共和国民法典") == 1260
-    assert get_official_max_article("民诉法") == 307
+    assert get_official_max_article("民诉法") == 306  # A-01：2023修正共306条（原误写307）
     assert get_official_max_article("劳动合同法") == 98
-    print("  [PASS] 法定总条数映射准确 (民法典=1260, 劳动合同法=98)")
+    print("  [PASS] 法定总条数映射准确 (民法典=1260, 民诉法=306, 劳动合同法=98)")
 
     # 2. 验证民法典第1064条（夫妻共债）、第1165条（侵权责任）不再被误杀为幻觉
     text_with_high_articles = "依据《中华人民共和国民法典》第一千零六十四条关于夫妻共同债务之规定，以及第一千一百六十五条侵权责任条文。"
@@ -81,14 +80,18 @@ def test_priority1_citation_guard_and_calc():
     print("  [PASS] 超越法定上限法条 (民法典第1265条, 劳动合同法第200条) 精确触发拦截")
 
     # 4. 验证单个法条探测接口
+    # S-05：本地库未收录条文不再计为“有效放行”，仅为未收录待核验
     single_valid = verify_single_citation("中华人民共和国民法典", 1064)
-    assert single_valid["is_valid"] is True
-    assert single_valid["audit_status"] in ["VERIFIED_VALID", "VALID_STRUCTURE_UNINDEXED"]
-    
+    assert single_valid["audit_status"] in ["LOCAL_MATCH", "UNINDEXED_UNVERIFIABLE", "PENDING_VERIFICATION"]
+    if single_valid["audit_status"] == "LOCAL_MATCH":
+        assert single_valid["is_valid"] is True
+    else:
+        assert single_valid["is_valid"] is False
+
     single_fake = verify_single_citation("中华人民共和国民法典", 1300)
     assert single_fake["is_valid"] is False
     assert single_fake["audit_status"] == "HALLUCINATION_EXCEEDED"
-    print("  [PASS] 单法条穿透核验: 第1064条有效放行，第1300条超限熔断")
+    print("  [PASS] 单法条穿透核验: 第1064条本地库状态正确，第1300条超限熔断")
 
 
 def test_priority2_ocr_and_direct_upload():

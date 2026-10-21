@@ -1125,137 +1125,106 @@ def calculate_preservation_renewal(
 
 # ==============================================================================
 # 9. 规范性法律文件现行有效性与废止拦截核验引擎
+# 废止表/关键现行法名一律从 data/legal 统一加载（见 gateway.utils.legal_data）
 # ==============================================================================
-ABROGATED_LAWS_DB = {
-    "合同法": {
-        "full_name": "《中华人民共和国合同法》",
-        "status": "已废止",
-        "abrogated_date": "2021-01-01",
-        "replaced_by": "《中华人民共和国民法典》第三编合同（第四百六十三条至第七百一十三条）",
-        "risk_tip": "严禁在2021年1月1日后起诉状中作为现行有效法条援引。若法律事实发生于2021年前，依《最高法关于适用民法典时间效力的若干规定》第一条第二款可适用当时法律，但必须显式注明溯及力依据。"
-    },
-    "民法通则": {
-        "full_name": "《中华人民共和国民法通则》",
-        "status": "已废止",
-        "abrogated_date": "2021-01-01",
-        "replaced_by": "《中华人民共和国民法典》第一编总则",
-        "risk_tip": "已于2021年1月1日废止。民事权利能力、诉讼时效等已被《民法典》总则编吸收重构。"
-    },
-    "民法总则": {
-        "full_name": "《中华人民共和国民法总则》",
-        "status": "已废止",
-        "abrogated_date": "2021-01-01",
-        "replaced_by": "《中华人民共和国民法典》第一编总则",
-        "risk_tip": "已于2021年1月1日废止，全部内容融入《民法典》第一编。"
-    },
-    "物权法": {
-        "full_name": "《中华人民共和国物权法》",
-        "status": "已废止",
-        "abrogated_date": "2021-01-01",
-        "replaced_by": "《中华人民共和国民法典》第二编物权",
-        "risk_tip": "已于2021年1月1日废止。居住权、动产质押与浮动抵押规则全面升级为民法典物权编。"
-    },
-    "担保法": {
-        "full_name": "《中华人民共和国担保法》",
-        "status": "已废止",
-        "abrogated_date": "2021-01-01",
-        "replaced_by": "《民法典》物权编担保物权及《最高法适用民法典有关担保制度的解释》（法释〔2020〕28号）",
-        "risk_tip": "《担保法》及担保法解释已全面废止。注意保证方式推定规则重大逆转：未约定保证方式的，《民法典》第686条推定为【一般保证】（原担保法第19条推定为连带责任保证）！"
-    },
-    "侵权责任法": {
-        "full_name": "《中华人民共和国侵权责任法》",
-        "status": "已废止",
-        "abrogated_date": "2021-01-01",
-        "replaced_by": "《中华人民共和国民法典》第七编侵权责任",
-        "risk_tip": "已于2021年1月1日废止。自甘风险原则、自力救济及高空抛物规则已在民法典侵权编中全新确立。"
-    },
-    "婚姻法": {
-        "full_name": "《中华人民共和国婚姻法》",
-        "status": "已废止",
-        "abrogated_date": "2021-01-01",
-        "replaced_by": "《中华人民共和国民法典》第五编婚姻家庭",
-        "risk_tip": "已废止。离婚冷静期、夫妻共同债务（共债共签）均适用民法典新规。"
-    },
-    "继承法": {
-        "full_name": "《中华人民共和国继承法》",
-        "status": "已废止",
-        "abrogated_date": "2021-01-01",
-        "replaced_by": "《中华人民共和国民法典》第六编继承",
-        "risk_tip": "已废止。遗嘱效力规则重大改变：公证遗嘱不再具有法定最高效力，多份遗嘱冲突以【最后的遗嘱】为准。"
-    }
-}
+def _load_abrogated_laws_db():
+    """从统一数据文件加载废止法规（兼容旧字段形状）。"""
+    from gateway.utils.legal_data import load_abrogated_laws, normalize_law_name
 
-VALID_KEY_STATUTES = {
-    "民法典": {
-        "full_name": "《中华人民共和国民法典》",
-        "status": "现行有效",
-        "effective_date": "2021-01-01",
-        "core_articles": {
-            "577": "违约责任基本规范（当事人一方不履行合同义务或者履行合同义务不符合约定的，应当承担继续履行、采取补救措施或者赔偿损失等违约责任）",
-            "585": "约定违约金及其司法调减（约定的违约金低于造成的损失的，可以增加；过分高于造成的损失的，可以适当减少）",
-            "563": "合同法定解除权情形",
-            "667": "借款合同定义与要件",
-            "675": "借款人还款期限与合理期限催告",
-            "676": "借款人逾期利息责任",
-            "188": "普通民事诉讼时效期间三年",
-            "195": "诉讼时效中断事由（主张权利、同意履行、提起诉讼/仲裁）",
-            "985": "不当得利返还请求权"
+    out = {}
+    for row in load_abrogated_laws():
+        key = normalize_law_name(row.get("name") or "")
+        if not key or key.startswith("TODO"):
+            continue
+        out[key] = {
+            "full_name": f"《{row.get('full_name') or row.get('name')}》",
+            "status": "已废止",
+            "abrogated_date": row.get("abrogated_date"),
+            "replaced_by": row.get("replaced_by"),
+            "risk_tip": row.get("risk_tip") or "",
+            "basis": row.get("basis"),
+            "verified": row.get("verified", 1),
         }
-    },
-    "民间借贷司法解释": {
-        "full_name": "《最高人民法院关于审理民间借贷案件适用法律若干问题的规定》（法释〔2020〕17号）",
-        "status": "现行有效",
-        "effective_date": "2020-08-20",
-        "core_articles": {
-            "25": "借贷双方约定的利率未超过合同成立时一年期LPR四倍的，人民法院应予支持",
-            "28": "逾期利息、违约金或者其他费用总计不得超过一年期LPR四倍上限",
-            "13": "套取金融机构贷款转贷、以向其他营利法人借贷取得的资金转贷的，借贷合同无效"
-        }
-    },
-    "九民纪要": {
-        "full_name": "《全国法院民商事审判工作会议纪要》（法发〔2019〕25号）",
-        "status": "审判业务指导文件（现行参照适用）",
-        "effective_date": "2019-11-14",
-        "core_articles": {
-            "46": "合同解除的效力与违约金条款的适用关系",
-            "53": "盖章行为与代表行为效力认定（看人不看章、盖章人是否享有代理权）",
-            "71": "让与担保的效力与清算义务"
-        }
-    }
-}
+    return out
+
+
+def _extract_law_names_for_validity(citation_text: str) -> List[str]:
+    """书名号优先；无书名号时对已知规范名做最长匹配且要求前后非汉字延续。"""
+    import re
+    from gateway.utils.legal_data import (
+        get_abrogated_by_normalized,
+        known_law_canonical_names,
+        normalize_law_name,
+    )
+
+    found: List[str] = []
+    for m in re.finditer(r"《([^》]+)》", citation_text):
+        found.append(normalize_law_name(m.group(1)))
+
+    if found:
+        return found
+
+    # 无书名号：最长匹配优先
+    known = sorted(known_law_canonical_names() | set(get_abrogated_by_normalized().keys()), key=len, reverse=True)
+    occupied = [False] * len(citation_text)
+    for name in known:
+        if not name or len(name) < 2:
+            continue
+        start = 0
+        while True:
+            idx = citation_text.find(name, start)
+            if idx < 0:
+                break
+            end = idx + len(name)
+            # 前后不得是汉字延续
+            before_ok = idx == 0 or not ("\u4e00" <= citation_text[idx - 1] <= "\u9fff")
+            after_ok = end >= len(citation_text) or not ("\u4e00" <= citation_text[end] <= "\u9fff")
+            if before_ok and after_ok and not any(occupied[idx:end]):
+                found.append(name)
+                for i in range(idx, end):
+                    occupied[i] = True
+            start = idx + 1
+    return found
+
 
 def verify_statutory_validity(citation_text: str, incident_date: Optional[str] = None) -> Dict[str, Any]:
     """
     核验引用的法条或规范性文件是否现行有效、是否已被废止或由新法吸收替换。
     结合争议发生时间（incident_date）进行法不溯及既往的时间效力分析。
     """
+    from gateway.utils.legal_data import get_abrogated_by_normalized, known_law_canonical_names
+    from gateway.utils.legal_texts import CIVIL_CODE_TIME_EFFECT_ART1_PARA2
+
     clean_text = citation_text.strip()
     detected_abrogated = []
     detected_valid = []
+    abrogated_map = get_abrogated_by_normalized()
+    known_valid = known_law_canonical_names() - set(abrogated_map.keys())
 
-    # 1. 检查已废止法律
-    for key, info in ABROGATED_LAWS_DB.items():
-        if key in clean_text:
+    names = _extract_law_names_for_validity(clean_text)
+    seen = set()
+    for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
+        if name in abrogated_map:
+            info = abrogated_map[name]
             detected_abrogated.append({
-                "keyword": key,
-                "full_name": info["full_name"],
-                "status": info["status"],
-                "abrogated_date": info["abrogated_date"],
-                "replaced_by": info["replaced_by"],
-                "risk_tip": info["risk_tip"]
+                "keyword": name,
+                "full_name": f"《{info.get('full_name') or name}》" if not str(info.get("full_name", "")).startswith("《") else info.get("full_name"),
+                "status": "已废止",
+                "abrogated_date": info.get("abrogated_date"),
+                "replaced_by": info.get("replaced_by"),
+                "risk_tip": info.get("risk_tip") or "",
             })
-
-    # 2. 检查现行有效法律
-    for key, info in VALID_KEY_STATUTES.items():
-        if key in clean_text:
+        elif name in known_valid:
             detected_valid.append({
-                "keyword": key,
-                "full_name": info["full_name"],
-                "status": info["status"],
-                "effective_date": info["effective_date"]
+                "keyword": name,
+                "full_name": f"《{name}》",
+                "status": "现行有效或可识别",
+                "effective_date": None,
             })
 
-    # 3. 时间效力分析
     time_validity_note = ""
     is_safe = len(detected_abrogated) == 0
 
@@ -1267,7 +1236,7 @@ def verify_statutory_validity(citation_text: str, incident_date: Optional[str] =
                 time_validity_note = (
                     f"争议法律事实发生于 {incident_date}（早于《民法典》施行日2021年1月1日）。"
                     "依照《最高人民法院关于适用〈中华人民共和国民法典〉时间效力的若干规定》第一条第二款："
-                    "『民法典施行前的法律事实引起的民事纠纷案件，适用当时的法律规定，但是法律、司法解释另有规定的除外。』"
+                    f"『{CIVIL_CODE_TIME_EFFECT_ART1_PARA2}』"
                     "本案援引旧法可能被法院采纳，但文书中必须增加民法典时间效力适用过渡条款说明！"
                 )
             else:
@@ -1276,7 +1245,10 @@ def verify_statutory_validity(citation_text: str, incident_date: Optional[str] =
                     "绝对禁止直接引用已废止的旧法作为裁判或诉求依据，否则将产生致命败诉或补正质证破绽！"
                 )
         else:
-            time_validity_note = "检测到援引了已废止法规！请确认法律事实发生时间；若属于2021年之后案情，必须全面替换为《民法典》及现行司法解释对应条款。"
+            time_validity_note = (
+                "检测到援引了已废止法规！请确认法律事实发生时间；"
+                f"时间效力规定第一条第二款：{CIVIL_CODE_TIME_EFFECT_ART1_PARA2}"
+            )
 
     return {
         "query_citation": clean_text,

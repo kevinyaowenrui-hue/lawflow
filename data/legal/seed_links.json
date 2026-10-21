@@ -1,0 +1,68 @@
+[
+  {
+    "parent_article_id": "civil_code_2021:art_585",
+    "child_article_id": "contract_interp_2023:art_64",
+    "relation_type": "程序衔接与举证分配",
+    "notes": "《民法典》第585条只规定可调减，本条进一步锁死程序截止线：必须在一审辩论终结前提出，未在举证期提交证据的由法官释明并承担不举证后果。"
+  },
+  {
+    "parent_article_id": "civil_code_2021:art_585",
+    "child_article_id": "contract_interp_2023:art_65",
+    "relation_type": "细化裁量标准",
+    "notes": "【核心裁判硬指标】确立违约金调减的“30% 损失上限红线”：超过造成损失30%的一般认定为过分高于，主张过高方承担举证责任。"
+  },
+  {
+    "parent_article_id": "civil_code_2021:art_585",
+    "child_article_id": "nine_minutes_2019:art_46",
+    "relation_type": "审判指导规范",
+    "notes": "确立民商事审判中法官对显失公平畸高违约金的主动释明义务与综合考量规则。"
+  },
+  {
+    "parent_article_id": "civil_code_2021:art_667",
+    "child_article_id": "private_lending_2020:art_13",
+    "relation_type": "效力阻断与反洗钱转贷规制",
+    "notes": "套取金融机构贷款转贷、以向公众非法吸收存款等方式取得资金转贷的，借贷合同直接认定为法定无效。"
+  },
+  {
+    "parent_article_id": "civil_code_2021:art_676",
+    "child_article_id": "private_lending_2020:art_25",
+    "relation_type": "细化利息裁量上限",
+    "notes": "逾期利息不得突破合同成立时一年期 LPR 四倍的法定司法保护上限红线。"
+  },
+  {
+    "parent_article_id": "civil_code_2021:art_676",
+    "child_article_id": "private_lending_2020:art_28",
+    "relation_type": "利息与违约金综合穿透封顶",
+    "notes": "逾期利息、违约金、资金占用费并存时，总计综合费率突破 LPR 四倍部分法院绝对不予支持。"
+  },
+  {
+    "parent_article_id": "civil_code_2021:art_686",
+    "child_article_id": "guarantee_interp_2021:art_25",
+    "relation_type": "程序衔接与裁判主文执行顺序",
+    "notes": "落实一般保证推定后，债权人仅起诉保证人的法院必须释明追加主债务人；裁判主文必须明确先执行主债务人财产。"
+  },
+  {
+    "parent_article_id": "civil_code_2021:art_686",
+    "child_article_id": "guarantee_interp_2021:art_32",
+    "relation_type": "除斥期间与时效起算",
+    "notes": "约定不明时保证期间推定为主债务届满后六个月，六个月内不起诉主债务人保证人彻底免责。"
+  },
+  {
+    "parent_article_id": "company_law_2024:art_10",
+    "child_article_id": "nine_minutes_2019:art_53",
+    "relation_type": "审判实践认定规则",
+    "notes": "最高院确立“看人不看章”原则：法定代表人或代理人享有代表权时，私刻假章依然有效；无权代理时真实印章亦不能绑架公司。"
+  },
+  {
+    "parent_article_id": "criminal_law_2024:art_224",
+    "child_article_id": "prosecution_standards_2022:art_69",
+    "relation_type": "立案追诉门槛与刑民界限",
+    "notes": "确立合同诈骗罪涉案数额在两万元以上应予刑事立案追诉，明确以非法占有为目的区别于民事合同违约。"
+  },
+  {
+    "parent_article_id": "criminal_law_2024:art_175_1",
+    "child_article_id": "prosecution_standards_2022:art_19",
+    "relation_type": "立案追诉门槛",
+    "notes": "骗取贷款罪给金融机构造成直接经济损失达五十万元以上应立案，防止将民事贷款展期纠纷简单推向刑事化。"
+  }
+]

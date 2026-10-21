@@ -169,13 +169,11 @@ def test_R13_guarantee_insufficient_data():
     assert res["guarantee_audits"] == []
 
 
-@pytest.mark.xfail(strict=True, reason="待批次3修复")
 def test_R14_verify_labor_contract_law():
     res = verify_statutory_validity("依据《劳动合同法》第四十七条")
     assert res["is_safe"] is True
 
 
-@pytest.mark.xfail(strict=True, reason="待批次3修复")
 def test_R15_abrogated_civil_law_general():
     res = audit_citations_in_text(
         raw_text="依据《民法总则》第一百八十八条", auto_sanitize=False
@@ -184,7 +182,6 @@ def test_R15_abrogated_civil_law_general():
     assert res["overall_status"] != "PERFECT_PASSED"
 
 
-@pytest.mark.xfail(strict=True, reason="待批次3修复")
 def test_R16_unrecognized_law():
     res = audit_citations_in_text(
         raw_text="依据《中华人民共和国智能合约促进法》第3条", auto_sanitize=False
@@ -193,7 +190,6 @@ def test_R16_unrecognized_law():
     assert res["badge"]["color"] != "green"
 
 
-@pytest.mark.xfail(strict=True, reason="待批次3修复")
 def test_R17_unindexed_civil_code():
     res = audit_citations_in_text(
         raw_text="依据《民法典》第五百八十四条", auto_sanitize=False
@@ -203,7 +199,6 @@ def test_R17_unindexed_civil_code():
     assert res["badge"]["color"] != "green"
 
 
-@pytest.mark.xfail(strict=True, reason="待批次3修复")
 def test_R18_case_number_not_perfect():
     res = audit_citations_in_text(
         raw_text="参照（2025）京0105民初12345号判决", auto_sanitize=False
@@ -212,7 +207,6 @@ def test_R18_case_number_not_perfect():
     assert "验真通过" not in res["badge"]["label"]
 
 
-@pytest.mark.xfail(strict=True, reason="待批次3修复")
 def test_R19_contract_law_no_replace_without_incident_date():
     res = audit_citations_in_text(
         raw_text="2019年签订合同，依据《合同法》第一百一十四条主张违约金。",

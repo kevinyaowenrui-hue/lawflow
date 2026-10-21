@@ -1,0 +1,261 @@
+[
+  {
+    "law_name": "中华人民共和国民法典",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 1260,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国民事诉讼法",
+    "versions": [
+      {
+        "effective_from": "2024-01-01",
+        "max_articles": 306,
+        "source": "2023修正",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国刑法",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 452,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国公司法",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 266,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国劳动合同法",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 98,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国劳动法",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 107,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国行政诉讼法",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 101,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国劳动争议调解仲裁法",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 54,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国个人信息保护法",
+    "versions": [
+      {
+        "effective_from": "2021-11-01",
+        "max_articles": 74,
+        "source": "全国人大",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国反不正当竞争法",
+    "versions": [
+      {
+        "effective_from": "TODO(律师核实)",
+        "max_articles": 33,
+        "source": "旧版",
+        "verified": false
+      },
+      {
+        "effective_from": "2025-10-15",
+        "max_articles": 41,
+        "source": "npc.gov.cn 2025-06-27",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国数据安全法",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 55,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国网络安全法",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 79,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国消费者权益保护法",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 63,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民法院关于审理民间借贷案件适用法律若干问题的规定",
+    "versions": [
+      {
+        "effective_from": "TODO(律师核实)",
+        "max_articles": 32,
+        "source": "TODO(律师核实)",
+        "verified": false
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民法院关于适用〈中华人民共和国民法典〉合同编通则若干问题的解释",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 69,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民法院关于适用〈中华人民共和国民法典〉有关担保制度的解释",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 71,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民法院关于适用〈中华人民共和国民法典〉总则编若干问题的解释",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 39,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民法院关于适用〈中华人民共和国民法典〉时间效力的若干规定",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 28,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民法院关于适用〈中华人民共和国民事诉讼法〉的解释",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 552,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民法院关于审理劳动争议案件适用法律问题的解释（一）",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 54,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民法院关于民事诉讼证据的若干规定",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 100,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "全国法院民商事审判工作会议纪要",
+    "versions": [
+      {
+        "effective_from": "1970-01-01",
+        "max_articles": 130,
+        "source": "legacy",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "劳动人事争议仲裁办案规则",
+    "versions": [
+      {
+        "effective_from": "TODO(律师核实)",
+        "max_articles": 66,
+        "source": "TODO(律师核实)",
+        "verified": false
+      }
+    ]
+  }
+]

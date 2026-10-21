@@ -56,6 +56,10 @@ class ConflictRegisterReq(BaseModel):
 class CitationAuditReq(BaseModel):
     text: str = Field(..., description="需要核验法条与司法案号真伪与现行有效性的文本")
     auto_sanitize: Optional[bool] = Field(True, description="是否自动修正已废止法律条文为现行民法典条文")
+    incident_date: Optional[str] = Field(
+        None,
+        description="法律事实发生日期 YYYY-MM-DD；未提供或早于2021-01-01时不自动替换废止法条",
+    )
 
 class CitationVerifySingleReq(BaseModel):
     law_name: str = Field(..., description="法律名称，如《民法典》")
@@ -131,7 +135,11 @@ async def api_register_conflict_case(req: ConflictRegisterReq):
 @router.post("/guard/audit-citations", summary="文本全量司法法条与裁判案号引用真伪与废止探测")
 async def api_audit_citations(req: CitationAuditReq):
     try:
-        report = audit_citations_in_text(text=req.text, auto_sanitize=req.auto_sanitize)
+        report = audit_citations_in_text(
+            text=req.text,
+            auto_sanitize=req.auto_sanitize,
+            incident_date=req.incident_date,
+        )
         return report
     except Exception as e:
         logger.error(f"法条与案号防幻觉审查失败: {e}", exc_info=True)

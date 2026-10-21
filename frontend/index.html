@@ -8858,17 +8858,26 @@
       }
 
       const itemsHtml = items.map((it, idx) => {
-        let badgeBg = '#E8F5E9';
-        let badgeColor = '#2E7D32';
-        let label = '权威现行有效';
-        if (it.audit_status === 'ABROGATED_BLOCKED') {
+        const st = it.audit_status || it.status || '';
+        let badgeBg = '#FFF8E1';
+        let badgeColor = '#B78103';
+        let label = '待核验';
+        if (st === 'LOCAL_MATCH') {
+          badgeBg = '#E8F5E9';
+          badgeColor = '#2E7D32';
+          label = '本地库比对一致';
+        } else if (st === 'ABROGATED_BLOCKED' || st === 'CONTENT_MISMATCH' || st === 'HALLUCINATION_EXCEEDED') {
           badgeBg = '#FFEBEE';
           badgeColor = '#D32F2F';
-          label = '已废止法规(已熔断)';
-        } else if (it.audit_status === 'HALLUCINATION_EXCEEDED') {
-          badgeBg = '#FFF3E0';
-          badgeColor = '#E65100';
-          label = '虚构条号拦截';
+          label = st === 'ABROGATED_BLOCKED' ? '已废止·禁止引用' : (st === 'CONTENT_MISMATCH' ? '正文不一致' : '虚构条号');
+        } else if (st === 'UNRECOGNIZED_LAW') {
+          badgeBg = '#FFEBEE';
+          badgeColor = '#C62828';
+          label = '未识别法律名称';
+        } else if (st === 'UNINDEXED_UNVERIFIABLE' || st === 'PENDING_VERIFICATION') {
+          badgeBg = '#FFF8E1';
+          badgeColor = '#B78103';
+          label = st === 'PENDING_VERIFICATION' ? '已收录·待核验' : '未收录·无法核验';
         }
 
         let replaceHtml = '';
@@ -8913,17 +8922,25 @@
             <span>🏛️ 司法审判案号（裁判文书）穿透反查 (${cases.length} 项)</span>
           </div>
         ` + cases.map((c, idx) => {
-          let badgeBg = '#E8F5E9';
-          let badgeColor = '#2E7D32';
-          let label = '判例库已验真';
-          if (c.is_hallucination) {
+          let badgeBg = '#FFF8E1';
+          let badgeColor = '#B78103';
+          let label = '案号格式合规·未核验';
+          if (c.status === 'DEMO_DATA_BLOCKED' || (c.is_hallucination && c.status === 'DEMO_DATA_BLOCKED')) {
             badgeBg = '#FFEBEE';
             badgeColor = '#D32F2F';
-            label = '虚构案号拦截';
-          } else if (c.status === 'SYNTAX_VALID_UNINDEXED') {
+            label = '演示数据·不得引用';
+          } else if (c.is_hallucination) {
+            badgeBg = '#FFEBEE';
+            badgeColor = '#D32F2F';
+            label = '案号异常拦截';
+          } else if (c.status === 'STRUCTURE_ONLY_UNVERIFIED' || c.status === 'SYNTAX_VALID_UNINDEXED' || c.status === 'VALID_STRUCTURE_UNVERIFIED_IN_LOCAL_DB') {
             badgeBg = '#FFF8E1';
             badgeColor = '#B78103';
-            label = '格式合规(判例库未收录)';
+            label = '案号格式合规·本地库未收录';
+          } else if (c.status === 'LOCAL_MATCH') {
+            badgeBg = '#E8F5E9';
+            badgeColor = '#2E7D32';
+            label = '本地库比对一致';
           }
 
           let precHtml = '';
@@ -8965,24 +8982,32 @@
         return;
       }
       const autoSanitize = document.getElementById('cg-auto-sanitize-chk').checked;
+      const incidentDateEl = document.getElementById('cg-incident-date');
+      const incidentDate = incidentDateEl && incidentDateEl.value ? incidentDateEl.value : null;
 
       try {
+        const payload = { text: text, auto_sanitize: autoSanitize };
+        if (incidentDate) payload.incident_date = incidentDate;
         const resp = await fetch(`${API_BASE}/api/v1/guard/audit-citations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: text, auto_sanitize: autoSanitize })
+          body: JSON.stringify(payload)
         });
         const res = await resp.json();
         renderCitationAuditReport(res);
 
         const resBox = document.getElementById('cg-custom-result');
         resBox.style.display = 'block';
+        const warnHtml = (res.warnings && res.warnings.length)
+          ? `<div style="font-size: 11.5px; color: #B78103; margin-bottom: 8px;">${res.warnings.join('<br>')}</div>`
+          : '';
         resBox.innerHTML = `
-          <div style="font-weight: 700; font-size: 12.5px; color: var(--primary-navy); margin-bottom: 6px;">反查与净化结果：</div>
-          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">${res.audit_report}</div>
-          ${res.sanitized_text && res.has_abrogated_laws ? `
+          <div style="font-weight: 700; font-size: 12.5px; color: var(--primary-navy); margin-bottom: 6px;">本地库比对与净化结果：</div>
+          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">${res.audit_report || ''}</div>
+          ${warnHtml}
+          ${res.sanitized_text ? `
             <div style="margin-top: 8px;">
-              <div style="font-weight: 600; font-size: 11px; color: #2E7D32; margin-bottom: 4px;">净化后文书（已自动将废止法条升级为民法典现行条文）：</div>
+              <div style="font-weight: 600; font-size: 11px; color: #2E7D32; margin-bottom: 4px;">处理后文本：</div>
               <textarea class="quick-input" rows="4" readonly style="font-size: 11.5px; line-height: 1.5; background: #fff;">${res.sanitized_text}</textarea>
             </div>
           ` : ''}
@@ -12740,13 +12765,17 @@
             <label class="form-label">粘贴待审查文本（起诉状事实理由、代理词、庭审提纲或外部文书）</label>
             <textarea id="cg-custom-text" class="quick-input" rows="6" placeholder="输入含法条引用的文本，例如：依《中华人民共和国民法典》第五百八十五条及《中华人民共和国合同法》第一百一十四条之规定..."></textarea>
           </div>
+          <div class="form-group">
+            <label class="form-label">法律事实发生日期（决定是否可自动替换废止法条；未填或早于 2021-01-01 则不替换）</label>
+            <input type="date" id="cg-incident-date" class="quick-input" style="max-width: 220px;" />
+          </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <label style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer;">
               <input type="checkbox" id="cg-auto-sanitize-chk" checked>
-              <span>自动净化已废止法律条文为现行《民法典》合法条文 (Sanitize Abrogated Laws)</span>
+              <span>在法律事实发生于民法典施行后时，自动替换律师确认的合同法对应条文</span>
             </label>
             <button type="button" class="btn" onclick="runCustomCitationAudit()" style="background: #14233C;">
-              执行穿透反查与自动净化
+              执行本地库比对与净化
             </button>
           </div>
           <div id="cg-custom-result" style="display: none; background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 12px;">

@@ -190,7 +190,8 @@ def test_api_enforcement_export_docx_endpoint():
     assert "/api/documents/download/" in data["download_url"]
     assert data["file_size"] > 0
 
-    storage_path = os.path.join("storage", "generated", data["filename"])
+    from gateway.core.paths import get_generated_dir
+    storage_path = str(get_generated_dir() / data["filename"])
     assert os.path.exists(storage_path)
 
     doc = docx.Document(storage_path)
@@ -217,5 +218,6 @@ def test_api_enforcement_export_docx_endpoint():
     assert resp_law.status_code == 200
     data_law = resp_law.json()
     assert data_law["file_size"] > 0
-    law_path = os.path.join("storage", "generated", data_law["filename"])
+    from gateway.core.paths import get_generated_dir
+    law_path = str(get_generated_dir() / data_law["filename"])
     assert os.path.exists(law_path)

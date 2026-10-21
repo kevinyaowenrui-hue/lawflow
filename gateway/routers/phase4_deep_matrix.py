@@ -32,9 +32,7 @@ from gateway.utils.cn_legal_calc import (
 
 from gateway.utils.enforcement_and_asset_engine import analyze_enforcement_and_asset_penetration
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-STORAGE_DIR = os.path.join(BASE_DIR, "storage", "generated")
-os.makedirs(STORAGE_DIR, exist_ok=True)
+from gateway.core.paths import get_generated_dir
 
 logger = logging.getLogger("lawflow.deep_matrix")
 router = APIRouter(tags=["核心深度：请求权基础与要件事实推演中枢"])
@@ -1066,7 +1064,7 @@ async def api_enforcement_export_docx(req: EnforcementExportDocxRequest):
 
         safe_title = sanitize_filename(req.title)
         filename = f"{safe_title}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.docx"
-        filepath = safe_join(STORAGE_DIR, filename)
+        filepath = safe_join(str(get_generated_dir()), filename)
         doc.save(filepath)
 
         return {

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 LawFlow 智律工作台 - 第三批功能自动化端到端实证校验脚本 (test_batch3_e2e.py)
 校验目标：
@@ -10,6 +10,7 @@ LawFlow 智律工作台 - 第三批功能自动化端到端实证校验脚本 (t
 
 import sys
 import os
+os.environ.setdefault("LAWFLOW_SEED_DEMO", "1")
 import json
 import httpx
 from fastapi.testclient import TestClient

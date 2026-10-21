@@ -47,10 +47,11 @@ from gateway.utils.appeal_and_precedent_engine import analyze_first_instance_jud
 logger = logging.getLogger("lawflow.phase1")
 router = APIRouter(tags=["阶段一：立案文书自动化与法律精算"])
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-STORAGE_DIR = os.path.join(BASE_DIR, "storage", "generated")
-os.makedirs(STORAGE_DIR, exist_ok=True)
+from gateway.core.paths import get_base_dir, get_generated_dir
+
+
+def _templates_dir() -> str:
+    return str(get_base_dir() / "templates")
 
 STIRLING_PDF_URL = os.getenv("STIRLING_PDF_URL", "http://127.0.0.1:8081").rstrip("/")
 
@@ -531,11 +532,11 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         }
 
     # 渲染主诉状
-    tpl_path = os.path.join(TEMPLATES_DIR, main_tpl)
+    tpl_path = os.path.join(_templates_dir(), main_tpl)
     main_docx_name = f"{doc_label}_{req.plaintiff.name}_{timestamp}.docx"
-    main_docx_path = os.path.join(STORAGE_DIR, main_docx_name)
+    main_docx_path = os.path.join(str(get_generated_dir()), main_docx_name)
     main_pdf_name = f"{doc_label}_{req.plaintiff.name}_{timestamp}.pdf"
-    main_pdf_path = os.path.join(STORAGE_DIR, main_pdf_name)
+    main_pdf_path = os.path.join(str(get_generated_dir()), main_pdf_name)
 
     doc = DocxTemplate(tpl_path)
     doc.render(context_main)
@@ -555,11 +556,11 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
     # 若开启生成配套文书
     if req.auto_generate_sub_docs:
         # A. 民事授权委托书
-        poa_tpl = os.path.join(TEMPLATES_DIR, "power_of_attorney_template.docx")
+        poa_tpl = os.path.join(_templates_dir(), "power_of_attorney_template.docx")
         poa_docx_name = f"民事授权委托书_{req.plaintiff.name}_{timestamp}.docx"
-        poa_docx_path = os.path.join(STORAGE_DIR, poa_docx_name)
+        poa_docx_path = os.path.join(str(get_generated_dir()), poa_docx_name)
         poa_pdf_name = f"民事授权委托书_{req.plaintiff.name}_{timestamp}.pdf"
-        poa_pdf_path = os.path.join(STORAGE_DIR, poa_pdf_name)
+        poa_pdf_path = os.path.join(str(get_generated_dir()), poa_pdf_name)
 
         doc_poa = DocxTemplate(poa_tpl)
         doc_poa.render({
@@ -587,9 +588,9 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         })
 
         # B. 送达地址确认书
-        addr_tpl = os.path.join(TEMPLATES_DIR, "service_address_template.docx")
+        addr_tpl = os.path.join(_templates_dir(), "service_address_template.docx")
         addr_docx_name = f"送达地址确认书_{req.plaintiff.name}_{timestamp}.docx"
-        addr_docx_path = os.path.join(STORAGE_DIR, addr_docx_name)
+        addr_docx_path = os.path.join(str(get_generated_dir()), addr_docx_name)
         doc_addr = DocxTemplate(addr_tpl)
         doc_addr.render({
             "cause_of_action": req.cause_of_action,
@@ -613,9 +614,9 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
 
         # C. 针对买卖合同欠款：自动生成《财产保全申请书》
         if "买卖" in req.cause_of_action or "借贷" in req.cause_of_action:
-            preserv_tpl = os.path.join(TEMPLATES_DIR, "property_preservation_template.docx")
+            preserv_tpl = os.path.join(_templates_dir(), "property_preservation_template.docx")
             preserv_docx_name = f"财产保全申请书_{req.plaintiff.name}_{timestamp}.docx"
-            preserv_docx_path = os.path.join(STORAGE_DIR, preserv_docx_name)
+            preserv_docx_path = os.path.join(str(get_generated_dir()), preserv_docx_name)
             doc_preserv = DocxTemplate(preserv_tpl)
             doc_preserv.render({
                 "applicant_name": req.plaintiff.name,
@@ -640,9 +641,9 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
 
         # D. 针对劳动争议：自动生成《经济补偿金计算清单》
         if "劳动" in req.cause_of_action:
-            labor_tpl = os.path.join(TEMPLATES_DIR, "labor_compensation_calc_template.docx")
+            labor_tpl = os.path.join(_templates_dir(), "labor_compensation_calc_template.docx")
             labor_docx_name = f"经济补偿金计算清单_{req.plaintiff.name}_{timestamp}.docx"
-            labor_docx_path = os.path.join(STORAGE_DIR, labor_docx_name)
+            labor_docx_path = os.path.join(str(get_generated_dir()), labor_docx_name)
             labor_calc = calculate_labor_compensation(12000, "2021-03-01", datetime.now().strftime("%Y-%m-%d"))
             doc_labor = DocxTemplate(labor_tpl)
             doc_labor.render({
@@ -686,7 +687,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
 async def download_doc(filename: str):
     safe_name = validate_download_filename(filename)
     try:
-        file_path = safe_join(STORAGE_DIR, safe_name)
+        file_path = safe_join(str(get_generated_dir()), safe_name)
     except HTTPException:
         raise
     if not os.path.exists(file_path):
@@ -778,7 +779,7 @@ async def api_appeal_export_docx(req: AppealExportDocxRequest):
 
         safe_title = sanitize_filename(req.title)
         filename = f"{safe_title}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.docx"
-        filepath = safe_join(STORAGE_DIR, filename)
+        filepath = safe_join(str(get_generated_dir()), filename)
         doc.save(filepath)
 
         return {

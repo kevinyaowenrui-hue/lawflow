@@ -58,12 +58,11 @@ from gateway.utils.redline_builder import (
 logger = logging.getLogger("lawflow.phase2")
 router = APIRouter(tags=["阶段二：证据清洗与庭审提纲 Agent"])
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-STORAGE_DIR = os.path.join(BASE_DIR, "storage", "generated")
-UPLOADS_DIR = os.path.join(BASE_DIR, "storage", "uploads")
-os.makedirs(STORAGE_DIR, exist_ok=True)
-os.makedirs(UPLOADS_DIR, exist_ok=True)
+from gateway.core.paths import get_base_dir, get_generated_dir, get_uploads_dir
+
+
+def _templates_dir() -> str:
+    return str(get_base_dir() / "templates")
 
 
 # ==============================================================================
@@ -162,7 +161,7 @@ async def process_evidence_bates_stamping(
         if batch_total > batch_cap:
             raise HTTPException(status_code=413, detail="单次上传总量超过上限")
         validate_magic_bytes(raw, ext)
-        temp_path = safe_join(UPLOADS_DIR, storage_name(ext))
+        temp_path = safe_join(str(get_uploads_dir()), storage_name(ext))
         with open(temp_path, "wb") as buffer:
             buffer.write(raw)
 
@@ -188,7 +187,7 @@ async def process_evidence_bates_stamping(
                 conv_path = temp_path
                 # 若为 HEIC/TIFF 或带透明通道，临时导出标准 RGB PNG 供 PyMuPDF 插入
                 if ext in [".heic", ".heif", ".tiff", ".tif"] or img.mode in ("RGBA", "LA", "P"):
-                    conv_path = os.path.join(UPLOADS_DIR, f"temp_conv_{timestamp}_{idx}.png")
+                    conv_path = os.path.join(str(get_uploads_dir()), f"temp_conv_{timestamp}_{idx}.png")
                     if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
                         bg = Image.new("RGB", img.size, (255, 255, 255))
                         bg.paste(img, mask=img.convert("RGBA").split()[3])
@@ -226,7 +225,7 @@ async def process_evidence_bates_stamping(
             page.insert_text(fitz.Point(380, 32), bates_text, fontname="china-s", fontsize=11, color=(0.82, 0.12, 0.12))
 
     merged_filename = f"合卷证据包_{evidence_label}_{timestamp}.pdf"
-    output_path = os.path.join(STORAGE_DIR, merged_filename)
+    output_path = os.path.join(str(get_generated_dir()), merged_filename)
     merged_doc.save(output_path)
     merged_doc.close()
 
@@ -248,10 +247,10 @@ async def redact_sensitive_information(req: RedactSensitiveReq):
     """
     一键对 PDF 中的 18 位身份证号码与银行卡号进行物理脱敏涂黑 (PyMuPDF Redaction)
     """
-    # 仅接受纯文件名，在 STORAGE_DIR / UPLOADS_DIR 内 safe_join 查找
+    # 仅接受纯文件名，在 str(get_generated_dir()) / str(get_uploads_dir()) 内 safe_join 查找
     plain_name = validate_plain_filename(req.pdf_filename)
     input_path = None
-    for base in (STORAGE_DIR, UPLOADS_DIR):
+    for base in (str(get_generated_dir()), str(get_uploads_dir())):
         try:
             candidate = safe_join(base, plain_name)
         except HTTPException:
@@ -297,7 +296,7 @@ async def redact_sensitive_information(req: RedactSensitiveReq):
         page.apply_redactions()
 
     output_filename = f"已脱敏_{req.pdf_filename}"
-    output_path = os.path.join(STORAGE_DIR, output_filename)
+    output_path = os.path.join(str(get_generated_dir()), output_filename)
     doc.save(output_path)
     doc.close()
 
@@ -370,7 +369,7 @@ async def auto_generate_evidence_catalog(req: AutoEvidenceCatalogReq):
         ]
 
     # 渲染至 Word 模板
-    tpl_path = os.path.join(TEMPLATES_DIR, "evidence_catalog_template.docx")
+    tpl_path = os.path.join(_templates_dir(), "evidence_catalog_template.docx")
     filing_date_str = datetime.now().strftime("%Y年%m月%d日")
     timestamp = int(time.time())
 
@@ -384,7 +383,7 @@ async def auto_generate_evidence_catalog(req: AutoEvidenceCatalogReq):
     doc = DocxTemplate(tpl_path)
     doc.render(context)
     catalog_filename = f"证据目录_{req.plaintiff_name}_{timestamp}.docx"
-    output_path = os.path.join(STORAGE_DIR, catalog_filename)
+    output_path = os.path.join(str(get_generated_dir()), catalog_filename)
     doc.save(output_path)
 
     return {
@@ -632,7 +631,7 @@ async def upload_contract_source_docx(file: UploadFile = File(...)):
     raw = await read_upload_bounded(file)
     validate_magic_bytes(raw, ext)
     stored = storage_name(".docx")
-    dest = safe_join(UPLOADS_DIR, stored)
+    dest = safe_join(str(get_uploads_dir()), stored)
     with open(dest, "wb") as buf:
         buf.write(raw)
     source_file_id = os.path.splitext(stored)[0]
@@ -684,7 +683,7 @@ async def export_redline_contract_docx(req: ExportRedlineReq):
     timestamp = int(time.time())
     safe_title = sanitize_filename(req.contract_title, default="合同")[:30]
     filename = f"合同红线修订稿_{safe_title}_{timestamp}.docx"
-    output_path = safe_join(STORAGE_DIR, filename)
+    output_path = safe_join(str(get_generated_dir()), filename)
 
     if req.source_file_id:
         fid = validate_plain_filename(req.source_file_id)
@@ -693,7 +692,7 @@ async def export_redline_contract_docx(req: ExportRedlineReq):
         source_path = None
         for name in candidates:
             try:
-                cand = safe_join(UPLOADS_DIR, name)
+                cand = safe_join(str(get_uploads_dir()), name)
             except HTTPException:
                 continue
             if os.path.exists(cand):

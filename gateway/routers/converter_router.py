@@ -22,13 +22,12 @@ from gateway.core.security import (
     storage_name,
     validate_magic_bytes,
 )
+from gateway.core.paths import get_uploads_dir
 from gateway.utils.file_converter_engine import (
     get_converter_status,
     convert_file_unified,
     convert_images_to_court_pdf,
     convert_pdf_to_images,
-    UPLOADS_DIR,
-    STORAGE_DIR
 )
 
 _CONVERTER_EXTS = [
@@ -64,7 +63,7 @@ async def api_convert_file(
     ext = assert_allowed_extension(file.filename, _CONVERTER_EXTS)
     raw = await read_upload_bounded(file)
     validate_magic_bytes(raw, ext)
-    temp_path = safe_join(UPLOADS_DIR, storage_name(ext))
+    temp_path = safe_join(str(get_uploads_dir()), storage_name(ext))
 
     try:
         with open(temp_path, "wb") as buffer:
@@ -124,7 +123,7 @@ async def api_batch_merge_evidence(
             if batch_total > batch_cap:
                 raise HTTPException(status_code=413, detail="单次上传总量超过上限")
             validate_magic_bytes(raw, ext)
-            tmp_p = safe_join(UPLOADS_DIR, storage_name(ext))
+            tmp_p = safe_join(str(get_uploads_dir()), storage_name(ext))
             with open(tmp_p, "wb") as buf:
                 buf.write(raw)
             saved_paths.append(tmp_p)

@@ -32,9 +32,7 @@ from gateway.utils.redline_builder import compute_text_diff_chunks, add_diff_to_
 
 logger = logging.getLogger("lawflow.version_comparator")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-STORAGE_DIR = os.path.join(BASE_DIR, "storage", "generated")
-os.makedirs(STORAGE_DIR, exist_ok=True)
+from gateway.core.paths import get_generated_dir
 
 
 def split_contract_into_clauses(text: str) -> List[Dict[str, Any]]:
@@ -391,7 +389,7 @@ def export_version_diff_docx(
     """
     if not output_filename:
         output_filename = f"合同多版本对比修订与偏离度审计表_{datetime.now().strftime('%Y%m%d%H%M%S')}.docx"
-    filepath = os.path.join(STORAGE_DIR, output_filename)
+    filepath = os.path.join(str(get_generated_dir()), output_filename)
 
     doc = docx.Document()
 

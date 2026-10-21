@@ -12,13 +12,13 @@ LawFlow 智律工作台 - 矩阵式批量阅卷表与单元格局部重刷引擎
 5. 表格导出：支持将多维阅卷审查网格导出为 CSV / Excel 友好格式。
 """
 
+import json
+import logging
 import os
 import re
-import json
 import uuid
-import logging
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from gateway.core.ollama_client import ollama_client
 from gateway.utils.matter_vault_db import get_db_connection, get_matter_by_id
@@ -65,188 +65,99 @@ DEFAULT_REVIEW_COLUMNS = [
 ]
 
 
-def init_review_tables_schema():
-    """确保 matter_review_tables 数据表已创建"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS matter_review_tables (
-        table_id TEXT PRIMARY KEY,
-        matter_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        description TEXT,
-        columns_json TEXT NOT NULL,
-        rows_json TEXT NOT NULL,
-        cells_json TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        FOREIGN KEY (matter_id) REFERENCES matters (matter_id) ON DELETE CASCADE
-    );
-    """)
+def _should_seed_demo() -> bool:
+    return os.environ.get("LAWFLOW_SEED_DEMO", "").strip() in ("1", "true", "True", "yes", "YES")
 
-    # 检查是否需要为种子案件预置默认审查表
-    cursor.execute("SELECT COUNT(*) as cnt FROM matter_review_tables;")
-    if cursor.fetchone()["cnt"] == 0:
+
+def init_review_tables_schema():
+    """确保 matter_review_tables 数据表已创建；演示表仅在 LAWFLOW_SEED_DEMO 时写入。"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS matter_review_tables (
+            table_id TEXT PRIMARY KEY,
+            matter_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            columns_json TEXT NOT NULL,
+            rows_json TEXT NOT NULL,
+            cells_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (matter_id) REFERENCES matters (matter_id) ON DELETE CASCADE
+        );
+        """)
+
+    if _should_seed_demo():
+        seed_demo_review_tables()
+
+
+def seed_demo_review_tables() -> int:
+    """写入带【演示】前缀的阅卷表；仅当 MATTER-2026-001 存在且表为空时写入。"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(*) as cnt FROM matter_review_tables;")
+            if cursor.fetchone()["cnt"] > 0:
+                return 0
+            m1_id = "MATTER-2026-001"
+            cursor.execute("SELECT matter_id FROM matters WHERE matter_id = ?", (m1_id,))
+            if not cursor.fetchone():
+                return 0
+        except Exception:
+            return 0
+
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        m1_id = "MATTER-2026-001"
         t1_id = "TABLE-2026-SEED-01"
 
         seed_rows = [
             {
                 "row_id": "row_doc_1",
                 "doc_id": "doc_1",
-                "doc_title": "《企业间借款合同及最高额保证合同》.pdf",
+                "doc_title": "【演示】《企业间借款合同及最高额保证合同》.pdf",
                 "doc_type": "contract",
-                "content_text": "甲方（出借人）：北京智律未来数据科技有限公司。乙方（借款人）：某供应链管理（北京）有限公司。丙方（保证人）：王建国。借款本金：人民币5,000,000.00元整。借期1年，自2023年3月16日至2024年3月15日止。年利率14.4%。丙方自愿为乙方债务承担最高额连带责任保证。发生争议向北京市海淀区人民法院起诉。"
+                "content_text": "【演示】借款合同示意文本。细节 TODO(律师核实)。"
             },
             {
                 "row_id": "row_doc_2",
                 "doc_id": "doc_2",
-                "doc_title": "《招商银行大额电子汇划业务凭单》.pdf",
+                "doc_title": "【演示】《招商银行大额电子汇划业务凭单》.pdf",
                 "doc_type": "evidence",
-                "content_text": "付款人：北京智律未来数据科技有限公司。收款人：某供应链管理（北京）有限公司。账号：6226**********6601。金额：¥5,000,000.00。日期：2023-03-16 10:14:22。用途：企业借款本金。业务流水号：2023031600129。印鉴核对相符。"
+                "content_text": "【演示】电汇凭证示意。流水号 TODO(律师核实)。"
             },
             {
                 "row_id": "row_doc_3",
                 "doc_id": "doc_3",
-                "doc_title": "《律师催告函及中国邮政EMS寄递详情单》.pdf",
+                "doc_title": "【演示】《律师催告函及中国邮政EMS寄递详情单》.pdf",
                 "doc_type": "pleading",
-                "content_text": "寄件人：北京市君合律师事务所经办律师。收件人：王建国、某供应链管理公司。内容：借款500万已于2024年3月15日到期，请于收函后5日内结清本息。EMS编号：1189283749921，于2024年4月2日由门卫签收。"
+                "content_text": "【演示】催告函与 EMS 签收示意。编号 TODO(律师核实)。"
             }
         ]
 
         seed_cells = {
             "row_doc_1": {
-                "col_parties": {
-                    "value": "出借人: 北京智律未来数据科技; 借款人: 某供应链管理公司; 保证人: 王建国",
-                    "confidence": 0.98,
-                    "source_quote": "甲方（出借人）：北京智律未来数据科技有限公司...丙方（保证人）：王建国 [卷宗 P1 §1]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_date": {
-                    "value": "2023-03-16 至 2024-03-15 (借期1年)",
-                    "confidence": 0.96,
-                    "source_quote": "借期1年，自2023年3月16日至2024年3月15日止 [卷宗 P1 §2]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_amount": {
-                    "value": "¥5,000,000.00 (借款本金)",
-                    "confidence": 0.99,
-                    "source_quote": "借款本金：人民币5,000,000.00元整 [卷宗 P1 §2]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_breach": {
-                    "value": "年利率14.4% (符合借款时LPR四倍法定保护限额)",
-                    "confidence": 0.94,
-                    "source_quote": "年利率14.4% [卷宗 P1 §2]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_dispute": {
-                    "value": "北京市海淀区人民法院",
-                    "confidence": 0.97,
-                    "source_quote": "发生争议向北京市海淀区人民法院起诉 [卷宗 P2 §5]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_evidence_opinion": {
-                    "value": "认可真实性与证明目的。合法成立有效，直接证明借贷合意及王建国连带担保承诺。",
-                    "confidence": 0.95,
-                    "source_quote": "丙方自愿为乙方债务承担最高额连带责任保证 [卷宗 P2 §3]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                }
+                "col_parties": {"value": "【演示】出借人/借款人/保证人示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_date": {"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_amount": {"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_breach": {"value": "【演示】利率约定示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_dispute": {"value": "【演示】管辖法院示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_evidence_opinion": {"value": "【演示】三性意见示意，细节 TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
             },
             "row_doc_2": {
-                "col_parties": {
-                    "value": "付款方: 北京智律未来; 收款方: 某供应链公司",
-                    "confidence": 0.99,
-                    "source_quote": "付款人：北京智律未来数据科技有限公司。收款人：某供应链管理（北京）有限公司 [卷宗 P1 §1]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_date": {
-                    "value": "2023-03-16 10:14:22",
-                    "confidence": 0.99,
-                    "source_quote": "日期：2023-03-16 10:14:22 [卷宗 P1 §1]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_amount": {
-                    "value": "¥5,000,000.00 (银行电汇实付)",
-                    "confidence": 0.99,
-                    "source_quote": "金额：¥5,000,000.00。用途：企业借款本金 [卷宗 P1 §1]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_breach": {
-                    "value": "凭证未约定，以主合同为准",
-                    "confidence": 0.90,
-                    "source_quote": "-",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_dispute": {
-                    "value": "无争议管辖约定，以主合同约定法院管辖",
-                    "confidence": 0.92,
-                    "source_quote": "-",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_evidence_opinion": {
-                    "value": "真实性与关联性认可。银行大额电汇回单原件，直接锁死民间借贷合同之'款项实际交付要件'。",
-                    "confidence": 0.98,
-                    "source_quote": "业务流水号：2023031600129。印鉴核对相符 [卷宗 P1 §2]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                }
+                "col_parties": {"value": "【演示】付款/收款方示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_date": {"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_amount": {"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_breach": {"value": "凭证未约定，以主合同为准", "confidence": 0.9, "source_quote": "-", "status": "DONE", "updated_at": now_str},
+                "col_dispute": {"value": "无争议管辖约定", "confidence": 0.9, "source_quote": "-", "status": "DONE", "updated_at": now_str},
+                "col_evidence_opinion": {"value": "【演示】交付要件示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
             },
             "row_doc_3": {
-                "col_parties": {
-                    "value": "发函人: 原告律师; 受送达人: 王建国、某供应链公司",
-                    "confidence": 0.95,
-                    "source_quote": "收件人：王建国、某供应链管理公司 [卷宗 P1 §1]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_date": {
-                    "value": "2024-04-02 签收",
-                    "confidence": 0.95,
-                    "source_quote": "于2024年4月2日由门卫签收 [卷宗 P1 §2]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_amount": {
-                    "value": "督促催告清偿¥5,000,000.00本息",
-                    "confidence": 0.93,
-                    "source_quote": "借款500万已于2024年3月15日到期 [卷宗 P1 §1]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_breach": {
-                    "value": "催要全部本息并保留追究迟延违约责任",
-                    "confidence": 0.91,
-                    "source_quote": "请于收函后5日内结清本息 [卷宗 P1 §1]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_dispute": {
-                    "value": "保留向海淀法院申请立案起诉权利",
-                    "confidence": 0.90,
-                    "source_quote": "-",
-                    "status": "DONE",
-                    "updated_at": now_str
-                },
-                "col_evidence_opinion": {
-                    "value": "认可真实性与证明目的。证明原告在借款到期后1个月内即行使催告权利，诉讼时效依法中断，保证期间依法锁定。",
-                    "confidence": 0.97,
-                    "source_quote": "EMS编号：1189283749921，于2024年4月2日签收 [卷宗 P1 §2]",
-                    "status": "DONE",
-                    "updated_at": now_str
-                }
+                "col_parties": {"value": "【演示】发函人/受送达人示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_date": {"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_amount": {"value": "【演示】催告清偿本息示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_breach": {"value": "【演示】催要全部本息示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_dispute": {"value": "【演示】保留起诉权利示意", "confidence": 0.9, "source_quote": "-", "status": "DONE", "updated_at": now_str},
+                "col_evidence_opinion": {"value": "【演示】时效中断示意，细节 TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
             }
         }
 
@@ -257,55 +168,59 @@ def init_review_tables_schema():
         """, (
             t1_id,
             m1_id,
-            "重点证据与借贷合同要素矩阵阅卷表 (Harvey Review Grid)",
-            "对本案借款协议、大额电汇回单及催告送达凭单进行六大关键法律要素并发提取与三性质证汇总",
+            "【演示】重点证据与借贷合同要素矩阵阅卷表",
+            "【演示】对本案借款协议等材料进行要素提取示意。细节 TODO(律师核实)。",
             json.dumps(DEFAULT_REVIEW_COLUMNS, ensure_ascii=False),
             json.dumps(seed_rows, ensure_ascii=False),
             json.dumps(seed_cells, ensure_ascii=False),
             now_str,
             now_str
         ))
+        return 1
 
-    conn.commit()
-    conn.close()
+
+def delete_demo_review_tables() -> int:
+    """删除标题含【演示】的阅卷表。"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM matter_review_tables WHERE title LIKE ?", ("%【演示】%",))
+        return cursor.rowcount
 
 
 def list_review_tables(matter_id: str) -> List[Dict[str, Any]]:
     """查询指定案件下的所有阅卷表"""
     init_review_tables_schema()
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    SELECT table_id, matter_id, title, description, columns_json, rows_json, created_at, updated_at
-    FROM matter_review_tables
-    WHERE matter_id = ?
-    ORDER BY created_at DESC
-    """, (matter_id,))
-    rows = cursor.fetchall()
-    tables = []
-    for r in rows:
-        tables.append({
-            "table_id": r["table_id"],
-            "matter_id": r["matter_id"],
-            "title": r["title"],
-            "description": r["description"],
-            "columns_count": len(json.loads(r["columns_json"])),
-            "rows_count": len(json.loads(r["rows_json"])),
-            "created_at": r["created_at"],
-            "updated_at": r["updated_at"]
-        })
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT table_id, matter_id, title, description, columns_json, rows_json, created_at, updated_at
+        FROM matter_review_tables
+        WHERE matter_id = ?
+        ORDER BY created_at DESC
+        """, (matter_id,))
+        rows = cursor.fetchall()
+        tables = []
+        for r in rows:
+            tables.append({
+                "table_id": r["table_id"],
+                "matter_id": r["matter_id"],
+                "title": r["title"],
+                "description": r["description"],
+                "columns_count": len(json.loads(r["columns_json"])),
+                "rows_count": len(json.loads(r["rows_json"])),
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"]
+            })
     return tables
 
 
 def get_review_table(table_id: str) -> Optional[Dict[str, Any]]:
     """获取单张阅卷表的完整网格数据（包含行、列、单元格数据字典）"""
     init_review_tables_schema()
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM matter_review_tables WHERE table_id = ?", (table_id,))
-    row = cursor.fetchone()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM matter_review_tables WHERE table_id = ?", (table_id,))
+        row = cursor.fetchone()
     if not row:
         return None
 
@@ -356,25 +271,24 @@ def create_review_table(matter_id: str, title: str, description: str = "", colum
             })
             cells[rid] = {}
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    INSERT INTO matter_review_tables (
-        table_id, matter_id, title, description, columns_json, rows_json, cells_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        table_id,
-        matter_id,
-        title,
-        description,
-        json.dumps(cols, ensure_ascii=False),
-        json.dumps(doc_rows, ensure_ascii=False),
-        json.dumps(cells, ensure_ascii=False),
-        now_str,
-        now_str
-    ))
-    conn.commit()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO matter_review_tables (
+            table_id, matter_id, title, description, columns_json, rows_json, cells_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            table_id,
+            matter_id,
+            title,
+            description,
+            json.dumps(cols, ensure_ascii=False),
+            json.dumps(doc_rows, ensure_ascii=False),
+            json.dumps(cells, ensure_ascii=False),
+            now_str,
+            now_str
+        ))
+        conn.commit()
 
     return get_review_table(table_id)
 
@@ -395,15 +309,14 @@ def add_column_to_table(table_id: str, col_name: str, instruction: str, col_type
     table["columns"].append(new_col)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    UPDATE matter_review_tables
-    SET columns_json = ?, updated_at = ?
-    WHERE table_id = ?
-    """, (json.dumps(table["columns"], ensure_ascii=False), now_str, table_id))
-    conn.commit()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        UPDATE matter_review_tables
+        SET columns_json = ?, updated_at = ?
+        WHERE table_id = ?
+        """, (json.dumps(table["columns"], ensure_ascii=False), now_str, table_id))
+        conn.commit()
 
     return table
 
@@ -420,20 +333,19 @@ def delete_column_from_table(table_id: str, col_id: str) -> Dict[str, Any]:
             del table["cells"][r_id][col_id]
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    UPDATE matter_review_tables
-    SET columns_json = ?, cells_json = ?, updated_at = ?
-    WHERE table_id = ?
-    """, (
-        json.dumps(table["columns"], ensure_ascii=False),
-        json.dumps(table["cells"], ensure_ascii=False),
-        now_str,
-        table_id
-    ))
-    conn.commit()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        UPDATE matter_review_tables
+        SET columns_json = ?, cells_json = ?, updated_at = ?
+        WHERE table_id = ?
+        """, (
+            json.dumps(table["columns"], ensure_ascii=False),
+            json.dumps(table["cells"], ensure_ascii=False),
+            now_str,
+            table_id
+        ))
+        conn.commit()
 
     return table
 
@@ -457,20 +369,19 @@ def add_row_to_table(table_id: str, doc_title: str, doc_type: str, content_text:
         table["cells"][row_id] = {}
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    UPDATE matter_review_tables
-    SET rows_json = ?, cells_json = ?, updated_at = ?
-    WHERE table_id = ?
-    """, (
-        json.dumps(table["rows"], ensure_ascii=False),
-        json.dumps(table["cells"], ensure_ascii=False),
-        now_str,
-        table_id
-    ))
-    conn.commit()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        UPDATE matter_review_tables
+        SET rows_json = ?, cells_json = ?, updated_at = ?
+        WHERE table_id = ?
+        """, (
+            json.dumps(table["rows"], ensure_ascii=False),
+            json.dumps(table["cells"], ensure_ascii=False),
+            now_str,
+            table_id
+        ))
+        conn.commit()
 
     return table
 
@@ -595,15 +506,14 @@ async def run_single_cell_refresh(table_id: str, row_id: str, col_id: str) -> Di
     table["cells"][row_id][col_id] = cell_res
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    UPDATE matter_review_tables
-    SET cells_json = ?, updated_at = ?
-    WHERE table_id = ?
-    """, (json.dumps(table["cells"], ensure_ascii=False), now_str, table_id))
-    conn.commit()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        UPDATE matter_review_tables
+        SET cells_json = ?, updated_at = ?
+        WHERE table_id = ?
+        """, (json.dumps(table["cells"], ensure_ascii=False), now_str, table_id))
+        conn.commit()
 
     return {
         "table_id": table_id,
@@ -636,15 +546,14 @@ async def run_column_refresh(table_id: str, col_id: str) -> Dict[str, Any]:
         table["cells"][rid][col_id] = res
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    UPDATE matter_review_tables
-    SET cells_json = ?, updated_at = ?
-    WHERE table_id = ?
-    """, (json.dumps(table["cells"], ensure_ascii=False), now_str, table_id))
-    conn.commit()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        UPDATE matter_review_tables
+        SET cells_json = ?, updated_at = ?
+        WHERE table_id = ?
+        """, (json.dumps(table["cells"], ensure_ascii=False), now_str, table_id))
+        conn.commit()
 
     return get_review_table(table_id)
 
@@ -671,15 +580,14 @@ async def run_all_table_extraction(table_id: str) -> Dict[str, Any]:
             table["cells"][rid][cid] = res
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    UPDATE matter_review_tables
-    SET cells_json = ?, updated_at = ?
-    WHERE table_id = ?
-    """, (json.dumps(table["cells"], ensure_ascii=False), now_str, table_id))
-    conn.commit()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        UPDATE matter_review_tables
+        SET cells_json = ?, updated_at = ?
+        WHERE table_id = ?
+        """, (json.dumps(table["cells"], ensure_ascii=False), now_str, table_id))
+        conn.commit()
 
     return get_review_table(table_id)
 

@@ -83,25 +83,24 @@ async def list_laws(
 ):
     try:
         init_statute_database()
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
 
-        sql = "SELECT * FROM laws WHERE 1=1"
-        params: List[Any] = []
-        if domain and domain != "全部":
-            sql += " AND domain = ?"
-            params.append(domain)
-        if hierarchy:
-            sql += " AND hierarchy = ?"
-            params.append(hierarchy)
-        if status and status != "ALL":
-            sql += " AND status = ?"
-            params.append(status)
+            sql = "SELECT * FROM laws WHERE 1=1"
+            params: List[Any] = []
+            if domain and domain != "全部":
+                sql += " AND domain = ?"
+                params.append(domain)
+            if hierarchy:
+                sql += " AND hierarchy = ?"
+                params.append(hierarchy)
+            if status and status != "ALL":
+                sql += " AND status = ?"
+                params.append(status)
 
-        sql += " ORDER BY hierarchy ASC, effective_date DESC"
-        cursor.execute(sql, params)
-        laws = [dict(r) for r in cursor.fetchall()]
-        conn.close()
+            sql += " ORDER BY hierarchy ASC, effective_date DESC"
+            cursor.execute(sql, params)
+            laws = [dict(r) for r in cursor.fetchall()]
 
         return {
             "status": "success",
@@ -117,26 +116,24 @@ async def list_laws(
 async def get_law_detail(law_id: str):
     try:
         init_statute_database()
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM laws WHERE id = ?", (law_id,))
-        law_row = cursor.fetchone()
-        if not law_row:
-            conn.close()
-            raise HTTPException(status_code=404, detail=f"未找到指定的法律: {law_id}")
+            cursor.execute("SELECT * FROM laws WHERE id = ?", (law_id,))
+            law_row = cursor.fetchone()
+            if not law_row:
+                raise HTTPException(status_code=404, detail=f"未找到指定的法律: {law_id}")
 
-        law_info = dict(law_row)
+            law_info = dict(law_row)
 
-        cursor.execute("""
-        SELECT id, law_id, part_name, chapter_name, section_name, article_no_cn, article_no_int,
-               content, has_proviso, key_terms, claim_basis_type
-        FROM articles
-        WHERE law_id = ?
-        ORDER BY article_no_int ASC, id ASC
-        """, (law_id,))
-        articles = [dict(r) for r in cursor.fetchall()]
-        conn.close()
+            cursor.execute("""
+            SELECT id, law_id, part_name, chapter_name, section_name, article_no_cn, article_no_int,
+                   content, has_proviso, key_terms, claim_basis_type
+            FROM articles
+            WHERE law_id = ?
+            ORDER BY article_no_int ASC, id ASC
+            """, (law_id,))
+            articles = [dict(r) for r in cursor.fetchall()]
 
         return {
             "status": "success",
@@ -219,20 +216,32 @@ async def import_statute(req: StatuteImportRequest):
 async def create_link(req: LinkCreationRequest):
     try:
         init_statute_database()
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM articles WHERE id = ?", (req.parent_article_id,))
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"母法条文不存在: {req.parent_article_id}",
+                )
+            cursor.execute("SELECT id FROM articles WHERE id = ?", (req.child_article_id,))
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"子法条文不存在: {req.child_article_id}",
+                )
 
-        cursor.execute("""
-        INSERT OR REPLACE INTO parent_child_links (parent_article_id, child_article_id, relation_type, notes)
-        VALUES (?, ?, ?, ?)
-        """, (req.parent_article_id, req.child_article_id, req.relation_type, req.notes))
-        conn.commit()
-        conn.close()
+            cursor.execute("""
+            INSERT OR REPLACE INTO parent_child_links (parent_article_id, child_article_id, relation_type, notes)
+            VALUES (?, ?, ?, ?)
+            """, (req.parent_article_id, req.child_article_id, req.relation_type, req.notes))
 
         return {
             "status": "success",
             "message": f"成功建立子母法图谱关联: {req.parent_article_id} ➔ {req.child_article_id}"
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"建立子母法图谱失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

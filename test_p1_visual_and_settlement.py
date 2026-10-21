@@ -1,4 +1,4 @@
-"""
+﻿"""
 LawFlow 智律工作台 - P1 阶段全面实证测试套件
 测试范围：
 1. 商业和解与以物抵债现值/回收率精算引擎 (calculate_settlement_npv_and_recovery)
@@ -8,6 +8,7 @@ LawFlow 智律工作台 - P1 阶段全面实证测试套件
 """
 
 import os
+os.environ.setdefault("LAWFLOW_SEED_DEMO", "1")
 import re
 import base64
 import pytest
@@ -16,8 +17,18 @@ import pymupdf as fitz
 
 from gateway.main import app
 from gateway.utils.cn_legal_calc import calculate_settlement_npv_and_recovery
-from gateway.utils.matter_vault_db import get_matter_by_id
+from gateway.utils.matter_vault_db import get_matter_by_id, init_matter_vault_db
+from gateway.utils.conflict_checker import init_conflict_database
+from gateway.utils.agent_task_db import init_agent_task_db
+from gateway.utils.review_table_engine import init_review_tables_schema
+from gateway.seed_demo import seed_all_demo_data
 
+# 确保建表 / 演示案在模块级 TestClient 下可用（不依赖 lifespan 上下文）
+init_matter_vault_db()
+init_conflict_database()
+init_review_tables_schema()
+init_agent_task_db()
+seed_all_demo_data()
 client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
 

@@ -6,102 +6,112 @@ LawFlow 智律工作台 - 案件独立空间数据库引擎 (Matter Vault Databa
 3. 存储案件核心图谱（时间线、主体关系、资金流水）及阶段式人机协同工作流状态。
 """
 
-import os
+from __future__ import annotations
+
 import json
+import os
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-VAULT_DB_PATH = os.path.join(BASE_DIR, "storage", "matter_vault.db")
+from gateway.core.db import connect
+from gateway.core.paths import get_vault_db_path
 
 
-def get_db_connection() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(VAULT_DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(VAULT_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+@contextmanager
+def get_db_connection() -> Iterator[sqlite3.Connection]:
+    with connect(get_vault_db_path(), row_factory=sqlite3.Row) as conn:
+        yield conn
+
+
+def _should_seed_demo() -> bool:
+    return os.environ.get("LAWFLOW_SEED_DEMO", "").strip() in ("1", "true", "True", "yes", "YES")
 
 
 def init_matter_vault_db():
-    """初始化 Matter Vault 空间数据表及预置种子案件"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    """初始化 Matter Vault 空间数据表；演示案件仅在 LAWFLOW_SEED_DEMO=1 时写入。"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    # 1. 案件空间表 (matters)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS matters (
-        matter_id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        cause_of_action TEXT NOT NULL,
-        court_name TEXT,
-        case_number TEXT,
-        client_role TEXT DEFAULT '原告',
-        plaintiff_info TEXT, -- JSON
-        defendant_info TEXT, -- JSON
-        principal_amount REAL DEFAULT 0.0,
-        case_summary TEXT,
-        status TEXT DEFAULT 'active', -- active / archived / draft
-        tags TEXT, -- JSON array
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-    );
-    """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS matters (
+            matter_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            cause_of_action TEXT NOT NULL,
+            court_name TEXT,
+            case_number TEXT,
+            client_role TEXT DEFAULT '原告',
+            plaintiff_info TEXT,
+            defendant_info TEXT,
+            principal_amount REAL DEFAULT 0.0,
+            case_summary TEXT,
+            status TEXT DEFAULT 'active',
+            tags TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """)
 
-    # 2. 空间案卷材料与证据表 (matter_documents)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS matter_documents (
-        doc_id TEXT PRIMARY KEY,
-        matter_id TEXT NOT NULL,
-        doc_type TEXT NOT NULL, -- 'evidence' / 'contract' / 'pleading' / 'transcript' / 'precedent'
-        title TEXT NOT NULL,
-        file_path TEXT,
-        file_size INTEGER DEFAULT 0,
-        text_content TEXT,
-        metadata_json TEXT, -- JSON: 页码、凭证号、签署日等
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (matter_id) REFERENCES matters (matter_id) ON DELETE CASCADE
-    );
-    """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS matter_documents (
+            doc_id TEXT PRIMARY KEY,
+            matter_id TEXT NOT NULL,
+            doc_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            file_path TEXT,
+            file_size INTEGER DEFAULT 0,
+            text_content TEXT,
+            metadata_json TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (matter_id) REFERENCES matters (matter_id) ON DELETE CASCADE
+        );
+        """)
 
-    # 3. 案件核心图谱缓存表 (matter_graphs)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS matter_graphs (
-        graph_id TEXT PRIMARY KEY,
-        matter_id TEXT UNIQUE NOT NULL,
-        timeline_json TEXT, -- 事实时间线
-        entity_graph_json TEXT, -- 人物主体与担保关系图
-        cashflow_json TEXT, -- 交易资金穿透流水图
-        updated_at TEXT NOT NULL,
-        FOREIGN KEY (matter_id) REFERENCES matters (matter_id) ON DELETE CASCADE
-    );
-    """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS matter_graphs (
+            graph_id TEXT PRIMARY KEY,
+            matter_id TEXT UNIQUE NOT NULL,
+            timeline_json TEXT,
+            entity_graph_json TEXT,
+            cashflow_json TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (matter_id) REFERENCES matters (matter_id) ON DELETE CASCADE
+        );
+        """)
 
-    # 4. 人机协同断点工作流状态机表 (matter_workflows)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS matter_workflows (
-        workflow_id TEXT PRIMARY KEY,
-        matter_id TEXT NOT NULL,
-        workflow_type TEXT NOT NULL DEFAULT 'litigation_drafting',
-        current_step INTEGER NOT NULL DEFAULT 1,
-        step_status TEXT NOT NULL DEFAULT 'IN_PROGRESS', -- IN_PROGRESS / WAITING_HUMAN / COMPLETED
-        step_data_json TEXT NOT NULL, -- 步骤持久化上下文
-        is_completed INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        FOREIGN KEY (matter_id) REFERENCES matters (matter_id) ON DELETE CASCADE
-    );
-    """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS matter_workflows (
+            workflow_id TEXT PRIMARY KEY,
+            matter_id TEXT NOT NULL,
+            workflow_type TEXT NOT NULL DEFAULT 'litigation_drafting',
+            current_step INTEGER NOT NULL DEFAULT 1,
+            step_status TEXT NOT NULL DEFAULT 'IN_PROGRESS',
+            step_data_json TEXT NOT NULL,
+            is_completed INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (matter_id) REFERENCES matters (matter_id) ON DELETE CASCADE
+        );
+        """)
 
-    # 检查并预置经典种子实务案例（如果为空）
-    cursor.execute("SELECT COUNT(*) AS cnt FROM matters;")
-    count = cursor.fetchone()["cnt"]
+    if _should_seed_demo():
+        seed_demo_matters()
 
-    if count == 0:
+
+def seed_demo_matters() -> int:
+    """写入带【演示】前缀的种子案件；已存在则跳过。返回新写入条数。"""
+    inserted = 0
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) AS cnt FROM matters;")
+        count = cursor.fetchone()["cnt"]
+        if count > 0:
+            return 0
+
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # 种子案件 1：某科技公司借款及企业间拆借连带保证案
+
         m1_id = "MATTER-2026-001"
         cursor.execute("""
         INSERT INTO matters (
@@ -110,27 +120,25 @@ def init_matter_vault_db():
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             m1_id,
-            "北京某数据科技公司诉某供应链管理公司借款纠纷及连带保证责任案",
+            "【演示】北京某数据科技公司诉某供应链管理公司借款纠纷及连带保证责任案",
             "企业间民间借贷纠纷",
             "北京市海淀区人民法院",
-            "（2026）京0108民初1892号",
+            "TODO(律师核实)",
             "原告",
-            json.dumps({"name": "北京智律未来数据科技有限公司", "type": "企业", "uscc": "91110108MA01XXXXXX", "rep": "李立新"}, ensure_ascii=False),
+            json.dumps({"name": "北京智律未来数据科技有限公司", "type": "企业", "uscc": "TODO(律师核实)", "rep": "李立新"}, ensure_ascii=False),
             json.dumps({"name": "某供应链管理（北京）有限公司", "guarantor": "王建国", "type": "企业+自然人连带"}, ensure_ascii=False),
             5000000.0,
-            "原告于2023年3月15日向被告出借人民币500万元，约定借期1年，年利率14.4%，被告法定代表人王建国提供个人无限连带责任保证。到期后被告仅付息30万元，本金分文未还。",
+            "【演示】原告于某日向被告出借人民币500万元，约定借期1年。到期后被告仅付息，本金未还。案号与细节请律师核实。",
             "active",
-            json.dumps(["企业间借贷", "连带保证", "LPR 4倍红线", "大额资金穿透"], ensure_ascii=False),
+            json.dumps(["【演示】", "企业间借贷", "连带保证"], ensure_ascii=False),
             now_str,
             now_str
         ))
+        inserted += 1
 
-        # 种子 1 的核心图谱初始化
         timeline_seed = [
-            {"date": "2023-03-15", "event": "双方签署《借款合同》及《最高额个人保证合同》，约定本金500万元，借期12个月，年利率14.4%", "evidence_ref": "证据一：借款协议及股东会决议", "legal_tag": "合同订立生效"},
-            {"date": "2023-03-16", "event": "原告招商银行账户向被告民生银行账户电汇本金500万元整，附言标明'借款本金'", "evidence_ref": "证据二：银行转账电子回单", "legal_tag": "借款实际交付"},
-            {"date": "2023-09-20", "event": "被告向原告指定账户转账支付借款利息30万元整，此后再未支付任何利息", "evidence_ref": "证据三：银行流水明细", "legal_tag": "部分履约还息"},
-            {"date": "2024-03-15", "event": "合同借期届满，被告未能按期归还500万元本金，保证人王建国亦未履行保证代偿责任", "evidence_ref": "证据四：到期催告函与EMS寄递凭据", "legal_tag": "实质性违约"}
+            {"date": "2023-03-15", "event": "【演示】双方签署借款合同及保证合同", "evidence_ref": "证据一", "legal_tag": "合同订立生效"},
+            {"date": "2023-03-16", "event": "【演示】原告向被告电汇本金", "evidence_ref": "证据二", "legal_tag": "借款实际交付"},
         ]
         entities_seed = [
             {"id": "e1", "name": "北京智律未来数据科技", "role": "原告/出借人", "type": "企业主体"},
@@ -138,13 +146,11 @@ def init_matter_vault_db():
             {"id": "e3", "name": "王建国", "role": "第二被告/连带保证人", "type": "自然人(法定代表人)"}
         ]
         relations_seed = [
-            {"source": "e1", "target": "e2", "type": "借贷主合同法律关系", "detail": "本金500万，年利率14.4%"},
-            {"source": "e3", "target": "e2", "type": "任职与控股主体", "detail": "持股65%并担任法定代表人"},
-            {"source": "e3", "target": "e1", "type": "个人无限连带保证法律关系", "detail": "担保范围涵盖本金、利息与实现债权费用"}
+            {"source": "e1", "target": "e2", "type": "借贷主合同法律关系", "detail": "本金500万"},
+            {"source": "e3", "target": "e1", "type": "个人无限连带保证法律关系", "detail": "担保范围涵盖本金、利息"}
         ]
         cashflow_seed = [
-            {"flow_id": "cf1", "date": "2023-03-16", "payer": "原告招商银行账户(尾号8819)", "payee": "被告民生银行账户(尾号6601)", "amount": 5000000.0, "currency": "CNY", "purpose": "借款本金出借", "voucher": "招行电汇凭单 2023031600129", "status": "CONFIRMED"},
-            {"flow_id": "cf2", "date": "2023-09-20", "payer": "被告民生银行账户(尾号6601)", "payee": "原告招商银行账户(尾号8819)", "amount": 300000.0, "currency": "CNY", "purpose": "还款利息", "voucher": "民生网银电子回单 202309200441", "status": "CONFIRMED"}
+            {"flow_id": "cf1", "date": "2023-03-16", "payer": "原告", "payee": "被告", "amount": 5000000.0, "currency": "CNY", "purpose": "借款本金出借", "voucher": "TODO(律师核实)", "status": "CONFIRMED"},
         ]
 
         cursor.execute("""
@@ -159,7 +165,6 @@ def init_matter_vault_db():
             now_str
         ))
 
-        # 挂载种子案卷材料
         cursor.execute("""
         INSERT INTO matter_documents (doc_id, matter_id, doc_type, title, text_content, metadata_json, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -167,25 +172,12 @@ def init_matter_vault_db():
             str(uuid.uuid4()),
             m1_id,
             "contract",
-            "《企业间借款合同及保证协议书》.pdf",
-            "第一条：借款金额为人民币伍佰万元整（￥5,000,000.00）。第二条：借款期限自2023年3月15日至2024年3月15日。年利率为14.4%（未超过同期LPR4倍红线）。第三条：王建国自愿以个人名义为主合同债务提供连带保证责任。",
-            json.dumps({"pages": 4, "signed_date": "2023-03-15"}, ensure_ascii=False),
-            now_str
-        ))
-        cursor.execute("""
-        INSERT INTO matter_documents (doc_id, matter_id, doc_type, title, text_content, metadata_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            str(uuid.uuid4()),
-            m1_id,
-            "evidence",
-            "《招商银行电汇凭单与转账明细》.pdf",
-            "收款人：某供应链管理（北京）有限公司，账号：6226**********6601，开户行：民生银行北京望京支行，汇款金额：人民币5,000,000.00元整，交易时间：2023-03-16 10:14:22，业务凭证号：2023031600129，款项用途：借款本金。",
-            json.dumps({"pages": 2, "bank": "招商银行"}, ensure_ascii=False),
+            "【演示】《企业间借款合同及保证协议书》.pdf",
+            "【演示】借款合同示意：丙方自愿以个人名义为主合同债务提供连带保证责任。具体条款 TODO(律师核实)。",
+            json.dumps({"pages": 4, "signed_date": "TODO(律师核实)"}, ensure_ascii=False),
             now_str
         ))
 
-        # 种子案件 2：软件技术服务合同纠纷案
         m2_id = "MATTER-2026-002"
         cursor.execute("""
         INSERT INTO matters (
@@ -194,121 +186,126 @@ def init_matter_vault_db():
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             m2_id,
-            "上海某软件技术开发公司与某新零售集团软件著作权交付与服务费结算纠纷",
+            "【演示】上海某软件技术开发公司与某新零售集团软件著作权交付与服务费结算纠纷",
             "技术开发与软件服务合同纠纷",
             "上海市浦东新区人民法院",
-            "（2026）沪0115民初2410号",
+            "TODO(律师核实)",
             "原告",
-            json.dumps({"name": "上海启航云智软件技术有限公司", "type": "企业", "uscc": "91310115MA78XXXXXX", "rep": "周鹏"}, ensure_ascii=False),
+            json.dumps({"name": "上海启航云智软件技术有限公司", "type": "企业", "uscc": "TODO(律师核实)", "rep": "周鹏"}, ensure_ascii=False),
             json.dumps({"name": "某新零售科技股份有限公司", "type": "企业"}, ensure_ascii=False),
             1850000.0,
-            "原告为被告开发全渠道新零售SaaS中台系统，系统已通过上线初验并投入实际商用运营。被告以细微Bug为由拒绝签署终验单，并拖欠尾款185万元及逾期违约金。",
+            "【演示】软件开发合同尾款纠纷示意案情。细节 TODO(律师核实)。",
             "active",
-            json.dumps(["软件开发", "知识产权", "初验投入商用视同合格", "三栏修订"], ensure_ascii=False),
+            json.dumps(["【演示】", "软件开发", "知识产权"], ensure_ascii=False),
             now_str,
             now_str
         ))
+        inserted += 1
 
-    conn.commit()
-    conn.close()
+    return inserted
+
+
+def delete_demo_matters() -> int:
+    """删除标题含【演示】的案件及其级联数据。"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT matter_id FROM matters WHERE title LIKE ?", ("%【演示】%",))
+        ids = [r["matter_id"] for r in cursor.fetchall()]
+        for mid in ids:
+            cursor.execute("DELETE FROM matter_documents WHERE matter_id = ?", (mid,))
+            cursor.execute("DELETE FROM matter_graphs WHERE matter_id = ?", (mid,))
+            cursor.execute("DELETE FROM matter_workflows WHERE matter_id = ?", (mid,))
+            cursor.execute("DELETE FROM matters WHERE matter_id = ?", (mid,))
+        return len(ids)
 
 
 def list_all_matters(status: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
     """查询案件列表"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    sql = "SELECT * FROM matters WHERE 1=1"
-    params = []
-    if status:
-        sql += " AND status = ?"
-        params.append(status)
-    if search:
-        sql += " AND (title LIKE ? OR cause_of_action LIKE ? OR case_number LIKE ?)"
-        wild = f"%{search}%"
-        params.extend([wild, wild, wild])
+        sql = "SELECT * FROM matters WHERE 1=1"
+        params: List[Any] = []
+        if status:
+            sql += " AND status = ?"
+            params.append(status)
+        if search:
+            sql += " AND (title LIKE ? OR cause_of_action LIKE ? OR case_number LIKE ?)"
+            wild = f"%{search}%"
+            params.extend([wild, wild, wild])
 
-    sql += " ORDER BY updated_at DESC"
-    cursor.execute(sql, params)
-    rows = cursor.fetchall()
-    results = []
-    for r in rows:
-        d = dict(r)
-        d["plaintiff_info"] = json.loads(d["plaintiff_info"]) if d["plaintiff_info"] else {}
-        d["defendant_info"] = json.loads(d["defendant_info"]) if d["defendant_info"] else {}
-        d["tags"] = json.loads(d["tags"]) if d["tags"] else []
-        results.append(d)
-    conn.close()
-    return results
+        sql += " ORDER BY updated_at DESC"
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            d["plaintiff_info"] = json.loads(d["plaintiff_info"]) if d["plaintiff_info"] else {}
+            d["defendant_info"] = json.loads(d["defendant_info"]) if d["defendant_info"] else {}
+            d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+            results.append(d)
+        return results
 
 
 def get_matter_by_id(matter_id: str) -> Optional[Dict[str, Any]]:
     """获取单案件完整空间数据（含案卷、核心图谱与最新工作流）"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM matters WHERE matter_id = ?", (matter_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return None
+        cursor.execute("SELECT * FROM matters WHERE matter_id = ?", (matter_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
 
-    matter = dict(row)
-    matter["plaintiff_info"] = json.loads(matter["plaintiff_info"]) if matter["plaintiff_info"] else {}
-    matter["defendant_info"] = json.loads(matter["defendant_info"]) if matter["defendant_info"] else {}
-    matter["tags"] = json.loads(matter["tags"]) if matter["tags"] else []
+        matter = dict(row)
+        matter["plaintiff_info"] = json.loads(matter["plaintiff_info"]) if matter["plaintiff_info"] else {}
+        matter["defendant_info"] = json.loads(matter["defendant_info"]) if matter["defendant_info"] else {}
+        matter["tags"] = json.loads(matter["tags"]) if matter["tags"] else []
 
-    # 关联案卷材料
-    cursor.execute("SELECT * FROM matter_documents WHERE matter_id = ? ORDER BY created_at ASC", (matter_id,))
-    doc_rows = cursor.fetchall()
-    documents = []
-    for dr in doc_rows:
-        dd = dict(dr)
-        dd["metadata_json"] = json.loads(dd["metadata_json"]) if dd["metadata_json"] else {}
-        documents.append(dd)
-    matter["documents"] = documents
+        cursor.execute("SELECT * FROM matter_documents WHERE matter_id = ? ORDER BY created_at ASC", (matter_id,))
+        documents = []
+        for dr in cursor.fetchall():
+            dd = dict(dr)
+            dd["metadata_json"] = json.loads(dd["metadata_json"]) if dd["metadata_json"] else {}
+            documents.append(dd)
+        matter["documents"] = documents
 
-    # 关联核心图谱
-    cursor.execute("SELECT * FROM matter_graphs WHERE matter_id = ?", (matter_id,))
-    graph_row = cursor.fetchone()
-    if graph_row:
-        matter["graphs"] = {
-            "timeline": json.loads(graph_row["timeline_json"]) if graph_row["timeline_json"] else [],
-            "entity_graph": json.loads(graph_row["entity_graph_json"]) if graph_row["entity_graph_json"] else {"nodes": [], "edges": []},
-            "cashflow": json.loads(graph_row["cashflow_json"]) if graph_row["cashflow_json"] else []
-        }
-    else:
-        matter["graphs"] = {
-            "timeline": [],
-            "entity_graph": {"nodes": [], "edges": []},
-            "cashflow": []
-        }
+        cursor.execute("SELECT * FROM matter_graphs WHERE matter_id = ?", (matter_id,))
+        graph_row = cursor.fetchone()
+        if graph_row:
+            matter["graphs"] = {
+                "timeline": json.loads(graph_row["timeline_json"]) if graph_row["timeline_json"] else [],
+                "entity_graph": json.loads(graph_row["entity_graph_json"]) if graph_row["entity_graph_json"] else {"nodes": [], "edges": []},
+                "cashflow": json.loads(graph_row["cashflow_json"]) if graph_row["cashflow_json"] else []
+            }
+        else:
+            matter["graphs"] = {
+                "timeline": [],
+                "entity_graph": {"nodes": [], "edges": []},
+                "cashflow": []
+            }
 
-    # 关联最新未完成工作流
-    cursor.execute("SELECT * FROM matter_workflows WHERE matter_id = ? ORDER BY updated_at DESC LIMIT 1", (matter_id,))
-    wf_row = cursor.fetchone()
-    if wf_row:
-        matter["active_workflow"] = {
-            "workflow_id": wf_row["workflow_id"],
-            "workflow_type": wf_row["workflow_type"],
-            "current_step": wf_row["current_step"],
-            "step_status": wf_row["step_status"],
-            "step_data": json.loads(wf_row["step_data_json"]) if wf_row["step_data_json"] else {},
-            "is_completed": bool(wf_row["is_completed"])
-        }
-    else:
-        matter["active_workflow"] = None
+        cursor.execute("SELECT * FROM matter_workflows WHERE matter_id = ? ORDER BY updated_at DESC LIMIT 1", (matter_id,))
+        wf_row = cursor.fetchone()
+        if wf_row:
+            matter["active_workflow"] = {
+                "workflow_id": wf_row["workflow_id"],
+                "workflow_type": wf_row["workflow_type"],
+                "current_step": wf_row["current_step"],
+                "step_status": wf_row["step_status"],
+                "step_data": json.loads(wf_row["step_data_json"]) if wf_row["step_data_json"] else {},
+                "is_completed": bool(wf_row["is_completed"])
+            }
+        else:
+            matter["active_workflow"] = None
 
-    conn.close()
-    return matter
+        return matter
 
 
 def create_new_matter(data: Dict[str, Any]) -> Dict[str, Any]:
     """新建案件独立空间"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    matter_id = data.get("matter_id") or f"MATTER-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    date_part = datetime.now().strftime("%Y%m%d")
+    matter_id = data.get("matter_id") or f"MATTER-{date_part}-{uuid.uuid4().hex[:8]}"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     title = data.get("title") or "新收立案案件"
@@ -322,127 +319,118 @@ def create_new_matter(data: Dict[str, Any]) -> Dict[str, Any]:
     summary = data.get("case_summary") or ""
     tags = json.dumps(data.get("tags") or [], ensure_ascii=False)
 
-    cursor.execute("""
-    INSERT INTO matters (
-        matter_id, title, cause_of_action, court_name, case_number, client_role,
-        plaintiff_info, defendant_info, principal_amount, case_summary, status, tags, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        matter_id, title, cause, court, c_num, client_role,
-        p_info, d_info, principal, summary, 'active', tags, now_str, now_str
-    ))
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO matters (
+            matter_id, title, cause_of_action, court_name, case_number, client_role,
+            plaintiff_info, defendant_info, principal_amount, case_summary, status, tags, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            matter_id, title, cause, court, c_num, client_role,
+            p_info, d_info, principal, summary, 'active', tags, now_str, now_str
+        ))
 
-    # 初始化空图谱记录
-    cursor.execute("""
-    INSERT INTO matter_graphs (graph_id, matter_id, timeline_json, entity_graph_json, cashflow_json, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-    """, (str(uuid.uuid4()), matter_id, "[]", '{"nodes":[],"edges":[]}', "[]", now_str))
+        cursor.execute("""
+        INSERT INTO matter_graphs (graph_id, matter_id, timeline_json, entity_graph_json, cashflow_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (str(uuid.uuid4()), matter_id, "[]", '{"nodes":[],"edges":[]}', "[]", now_str))
 
-    conn.commit()
-    conn.close()
     return get_matter_by_id(matter_id)
 
 
 def update_matter_record(matter_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """更新案件信息"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM matters WHERE matter_id = ?", (matter_id,))
-    if not cursor.fetchone():
-        conn.close()
-        return None
+        cursor.execute("SELECT * FROM matters WHERE matter_id = ?", (matter_id,))
+        if not cursor.fetchone():
+            return None
 
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    fields = []
-    values = []
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        fields = []
+        values: List[Any] = []
 
-    for k in ["title", "cause_of_action", "court_name", "case_number", "client_role", "principal_amount", "case_summary", "status"]:
-        if k in data:
-            fields.append(f"{k} = ?")
-            values.append(data[k])
+        for k in ["title", "cause_of_action", "court_name", "case_number", "client_role", "principal_amount", "case_summary", "status"]:
+            if k in data:
+                fields.append(f"{k} = ?")
+                values.append(data[k])
 
-    if "plaintiff_info" in data:
-        fields.append("plaintiff_info = ?")
-        values.append(json.dumps(data["plaintiff_info"], ensure_ascii=False))
+        if "plaintiff_info" in data:
+            fields.append("plaintiff_info = ?")
+            values.append(json.dumps(data["plaintiff_info"], ensure_ascii=False))
 
-    if "defendant_info" in data:
-        fields.append("defendant_info = ?")
-        values.append(json.dumps(data["defendant_info"], ensure_ascii=False))
+        if "defendant_info" in data:
+            fields.append("defendant_info = ?")
+            values.append(json.dumps(data["defendant_info"], ensure_ascii=False))
 
-    if "tags" in data:
-        fields.append("tags = ?")
-        values.append(json.dumps(data["tags"], ensure_ascii=False))
+        if "tags" in data:
+            fields.append("tags = ?")
+            values.append(json.dumps(data["tags"], ensure_ascii=False))
 
-    fields.append("updated_at = ?")
-    values.append(now_str)
-    values.append(matter_id)
+        fields.append("updated_at = ?")
+        values.append(now_str)
+        values.append(matter_id)
 
-    sql = f"UPDATE matters SET {', '.join(fields)} WHERE matter_id = ?"
-    cursor.execute(sql, values)
-    conn.commit()
-    conn.close()
+        sql = f"UPDATE matters SET {', '.join(fields)} WHERE matter_id = ?"
+        cursor.execute(sql, values)
+
     return get_matter_by_id(matter_id)
 
 
 def save_matter_graphs_db(matter_id: str, timeline: List[Dict[str, Any]], entity_graph: Dict[str, Any], cashflow: List[Dict[str, Any]]) -> bool:
     """持久化保存案件三大核心图谱"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    cursor.execute("""
-    INSERT INTO matter_graphs (graph_id, matter_id, timeline_json, entity_graph_json, cashflow_json, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(matter_id) DO UPDATE SET
-        timeline_json = excluded.timeline_json,
-        entity_graph_json = excluded.entity_graph_json,
-        cashflow_json = excluded.cashflow_json,
-        updated_at = excluded.updated_at;
-    """, (
-        str(uuid.uuid4()),
-        matter_id,
-        json.dumps(timeline, ensure_ascii=False),
-        json.dumps(entity_graph, ensure_ascii=False),
-        json.dumps(cashflow, ensure_ascii=False),
-        now_str
-    ))
+        cursor.execute("""
+        INSERT INTO matter_graphs (graph_id, matter_id, timeline_json, entity_graph_json, cashflow_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(matter_id) DO UPDATE SET
+            timeline_json = excluded.timeline_json,
+            entity_graph_json = excluded.entity_graph_json,
+            cashflow_json = excluded.cashflow_json,
+            updated_at = excluded.updated_at;
+        """, (
+            str(uuid.uuid4()),
+            matter_id,
+            json.dumps(timeline, ensure_ascii=False),
+            json.dumps(entity_graph, ensure_ascii=False),
+            json.dumps(cashflow, ensure_ascii=False),
+            now_str
+        ))
 
-    # 同时更新案件的主更新时间
-    cursor.execute("UPDATE matters SET updated_at = ? WHERE matter_id = ?", (now_str, matter_id))
-    conn.commit()
-    conn.close()
+        cursor.execute("UPDATE matters SET updated_at = ? WHERE matter_id = ?", (now_str, matter_id))
     return True
 
 
 def add_document_to_matter(matter_id: str, doc_data: Dict[str, Any]) -> Dict[str, Any]:
     """向案件空间挂载案卷材料"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
     doc_id = str(uuid.uuid4())
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    cursor.execute("""
-    INSERT INTO matter_documents (
-        doc_id, matter_id, doc_type, title, file_path, file_size, text_content, metadata_json, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        doc_id,
-        matter_id,
-        doc_data.get("doc_type", "evidence"),
-        doc_data.get("title", "未命名材料"),
-        doc_data.get("file_path", ""),
-        doc_data.get("file_size", 0),
-        doc_data.get("text_content", ""),
-        json.dumps(doc_data.get("metadata", {}), ensure_ascii=False),
-        now_str
-    ))
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    # 更新案件主表更新时间
-    cursor.execute("UPDATE matters SET updated_at = ? WHERE matter_id = ?", (now_str, matter_id))
-    conn.commit()
-    conn.close()
+        cursor.execute("""
+        INSERT INTO matter_documents (
+            doc_id, matter_id, doc_type, title, file_path, file_size, text_content, metadata_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            doc_id,
+            matter_id,
+            doc_data.get("doc_type", "evidence"),
+            doc_data.get("title", "未命名材料"),
+            doc_data.get("file_path", ""),
+            doc_data.get("file_size", 0),
+            doc_data.get("text_content", ""),
+            json.dumps(doc_data.get("metadata", {}), ensure_ascii=False),
+            now_str
+        ))
+
+        cursor.execute("UPDATE matters SET updated_at = ? WHERE matter_id = ?", (now_str, matter_id))
 
     doc_data["doc_id"] = doc_id
     doc_data["matter_id"] = matter_id

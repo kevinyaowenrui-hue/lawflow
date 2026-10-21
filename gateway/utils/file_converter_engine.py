@@ -27,15 +27,15 @@ except Exception:
 
 import pymupdf as fitz
 
+from gateway.core.paths import get_base_dir, get_generated_dir, get_uploads_dir
+
 logger = logging.getLogger("lawflow.converter")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-STORAGE_DIR = os.path.join(BASE_DIR, "storage", "generated")
-UPLOADS_DIR = os.path.join(BASE_DIR, "storage", "uploads")
-TOOLS_FILEE_DIR = os.path.join(BASE_DIR, "tools", "filee")
-os.makedirs(STORAGE_DIR, exist_ok=True)
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-os.makedirs(TOOLS_FILEE_DIR, exist_ok=True)
+
+def _tools_filee_dir() -> str:
+    path = get_base_dir() / "tools" / "filee"
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
 
 
 def find_filee_executable() -> Optional[str]:
@@ -49,9 +49,9 @@ def find_filee_executable() -> Optional[str]:
 
     # 2. tools/filee/ 目录内置
     candidates = [
-        os.path.join(TOOLS_FILEE_DIR, "Filee.exe"),
-        os.path.join(TOOLS_FILEE_DIR, "filee.exe"),
-        os.path.join(TOOLS_FILEE_DIR, "filee"),
+        os.path.join(_tools_filee_dir(), "Filee.exe"),
+        os.path.join(_tools_filee_dir(), "filee.exe"),
+        os.path.join(_tools_filee_dir(), "filee"),
     ]
     for c in candidates:
         if os.path.isfile(c):
@@ -97,7 +97,7 @@ def get_converter_status() -> Dict[str, Any]:
         "engine_mode": "filee_accelerated" if has_filee else "native_legal",
         "engine_label": "Filee 离线全格式引擎 (244+ 格式)" if has_filee else "LawFlow 司法内置快速转码引擎",
         "heif_supported": HEIF_SUPPORTED,
-        "tools_filee_dir": TOOLS_FILEE_DIR,
+        "tools_filee_dir": _tools_filee_dir(),
         "supported_inputs": native_inputs + (["180+ 工业/CAD/HWP/音视频 (Filee已解锁)"] if has_filee else []),
         "supported_outputs": native_outputs,
         "quick_presets": [
@@ -134,7 +134,7 @@ def convert_images_to_court_pdf(
                 w, h = img.size
 
                 # 临时保存为标准 RGB PNG，供 PyMuPDF 嵌入
-                temp_png = os.path.join(UPLOADS_DIR, f"temp_trans_{int(time.time())}_{idx}.png")
+                temp_png = os.path.join(str(get_uploads_dir()), f"temp_trans_{int(time.time())}_{idx}.png")
                 # 若为 RGBA 或包含透明通道，合成白色底色
                 if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
                     bg = Image.new("RGB", img.size, (255, 255, 255))
@@ -180,7 +180,7 @@ def convert_images_to_court_pdf(
             logger.error(f"处理图片 {path} 失败: {e}")
             raise RuntimeError(f"文件 {os.path.basename(path)} 格式解析失败: {e}")
 
-    out_path = os.path.join(STORAGE_DIR, output_filename)
+    out_path = os.path.join(str(get_generated_dir()), output_filename)
     merged_doc.save(out_path)
     merged_doc.close()
 
@@ -208,7 +208,7 @@ def convert_pdf_to_images(pdf_path: str, output_prefix: str, fmt: str = "png") -
         # 150 DPI 高清渲染（适合法律文书文字阅读，防卡死）
         pix = page.get_pixmap(dpi=150)
         out_name = f"{output_prefix}_page_{pno + 1}_{timestamp}.{fmt}"
-        out_path = os.path.join(STORAGE_DIR, out_name)
+        out_path = os.path.join(str(get_generated_dir()), out_name)
         pix.save(out_path)
         generated_files.append({
             "page": pno + 1,
@@ -280,7 +280,7 @@ def convert_table_to_court_pdf(table_path: str, output_filename: str) -> Dict[st
 
         y += 16
 
-    out_path = os.path.join(STORAGE_DIR, output_filename)
+    out_path = os.path.join(str(get_generated_dir()), output_filename)
     doc.save(out_path)
     doc.close()
 
@@ -348,7 +348,7 @@ def convert_file_unified(
     # 1. 尝试优先使用 Filee CLI
     filee_exe = find_filee_executable()
     if filee_exe:
-        filee_out = execute_filee_cli_conversion(file_path, target_format, STORAGE_DIR)
+        filee_out = execute_filee_cli_conversion(file_path, target_format, str(get_generated_dir()))
         if filee_out and os.path.exists(filee_out):
             out_base = os.path.basename(filee_out)
             return {
@@ -372,7 +372,7 @@ def convert_file_unified(
 
     # 场景 B: 图片转格式 (如 HEIC -> JPG, TIFF -> PNG)
     elif src_ext in ["heic", "heif", "jpg", "jpeg", "png", "webp", "bmp", "tiff", "gif"] and target_format in ["jpg", "jpeg", "png", "webp"]:
-        out_path = os.path.join(STORAGE_DIR, out_filename)
+        out_path = os.path.join(str(get_generated_dir()), out_filename)
         with Image.open(file_path) as raw_img:
             img = ImageOps.exif_transpose(raw_img)
             if target_format in ["jpg", "jpeg"] and img.mode in ("RGBA", "LA", "P"):
@@ -425,7 +425,7 @@ def convert_file_unified(
             page.insert_textbox(rect, text, fontname="china-s", fontsize=11, color=(0.2, 0.2, 0.2))
             y += max(20, int(len(text) / 35 * 18) + 10)
 
-        out_path = os.path.join(STORAGE_DIR, out_filename)
+        out_path = os.path.join(str(get_generated_dir()), out_filename)
         pdf_doc.save(out_path)
         pdf_doc.close()
 
@@ -441,7 +441,7 @@ def convert_file_unified(
     # 场景 F: 音频处理
     elif src_ext in ["m4a", "amr", "wav", "mp3", "aac", "flac"] and target_format in ["mp3", "wav"]:
         # 尝试使用 pydub
-        out_path = os.path.join(STORAGE_DIR, out_filename)
+        out_path = os.path.join(str(get_generated_dir()), out_filename)
         try:
             from pydub import AudioSegment
             audio = AudioSegment.from_file(file_path)

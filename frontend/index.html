@@ -2664,7 +2664,9 @@
           <span id="gcase-cause">民间借贷纠纷</span>
         </div>
         <div class="case-title-text" id="gcase-title-display" onclick="openCaseContextModal()" title="点击查看/编辑在办案件全局信息与事实">
-          <span id="gcase-title">张三诉李四民间借贷纠纷案</span>
+          <span id="gcase-title">未选择案件</span>
+          <span id="gcase-demo-badge" style="display:none; margin-left:8px; font-size:11px; color:#B45309; background:#FEF3C7; padding:2px 8px; border-radius:4px;">演示数据</span>
+          <button type="button" id="gcase-clear-demo-btn" style="display:none; margin-left:6px;" class="btn btn-secondary btn-sm" onclick="clearDemoDataUI()">清空演示数据</button>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
         </div>
         <div class="case-parties-pill" id="gcase-parties-display">
@@ -4129,7 +4131,7 @@
             </div>
             <div>
               <label style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">案件标题</label>
-              <input type="text" id="deep-custom-title" class="quick-input" value="张三诉李四民间借贷纠纷案" style="margin-top: 3px;">
+              <input type="text" id="deep-custom-title" class="quick-input" value="" style="margin-top: 3px;">
             </div>
             <div>
               <label style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">原告/权利人</label>
@@ -4892,7 +4894,7 @@
             <div>
               <div style="font-size: 14px; font-weight: 700; color: var(--primary-navy); display: flex; align-items: center; gap: 8px;">
                 <span>📋 智能办案任务看板</span>
-                <span class="badge" style="background: #EEF2F6; color: var(--primary-navy); font-size: 11px;" id="task-header-count">共 5 项任务</span>
+                <span class="badge" style="background: #EEF2F6; color: var(--primary-navy); font-size: 11px;" id="task-header-count">共 0 项任务</span>
               </div>
               <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
                 语音对话中交办的工作将自动提炼并按办案阶段与优先级落盘归纳
@@ -4910,12 +4912,12 @@
 
           <!-- 阶段筛选栏 -->
           <div class="task-stage-filter-bar">
-            <button type="button" class="task-filter-pill active" onclick="filterTaskByStage(this, 'all')">全部 (<span id="cnt-stage-all">5</span>)</button>
-            <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '立案')">立案 (<span id="cnt-stage-立案">1</span>)</button>
-            <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '精算')">精算 (<span id="cnt-stage-精算">1</span>)</button>
-            <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '证据')">证据 (<span id="cnt-stage-证据">1</span>)</button>
-            <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '检索')">检索 (<span id="cnt-stage-检索">1</span>)</button>
-            <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '庭审')">庭审 (<span id="cnt-stage-庭审">1</span>)</button>
+            <button type="button" class="task-filter-pill active" onclick="filterTaskByStage(this, 'all')">全部 (<span id="cnt-stage-all">0</span>)</button>
+            <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '立案')">立案 (<span id="cnt-stage-立案">0</span>)</button>
+            <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '精算')">精算 (<span id="cnt-stage-精算">0</span>)</button>
+            <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '证据')">证据 (<span id="cnt-stage-证据">0</span>)</button>
+            <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '检索')">检索 (<span id="cnt-stage-检索">0</span>)</button>
+            <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '庭审')">庭审 (<span id="cnt-stage-庭审">0</span>)</button>
             <button type="button" class="task-filter-pill" onclick="filterTaskByStage(this, '执行')">执行 (<span id="cnt-stage-执行">0</span>)</button>
           </div>
 
@@ -4923,9 +4925,9 @@
           <div style="padding: 6px 16px; background: #FFFFFF; border-bottom: 1px solid var(--border-hairline); display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; gap: 8px;">
               <span style="font-size: 11.5px; color: var(--text-secondary); cursor: pointer;" id="tab-status-all" onclick="filterTaskByStatus('all')"><strong>全部</strong></span>
-              <span style="font-size: 11.5px; color: var(--text-muted); cursor: pointer;" id="tab-status-todo" onclick="filterTaskByStatus('todo')">待处理 (<span id="cnt-status-todo">3</span>)</span>
-              <span style="font-size: 11.5px; color: var(--text-muted); cursor: pointer;" id="tab-status-in_progress" onclick="filterTaskByStatus('in_progress')">进行中 (<span id="cnt-status-in_progress">1</span>)</span>
-              <span style="font-size: 11.5px; color: var(--text-muted); cursor: pointer;" id="tab-status-done" onclick="filterTaskByStatus('done')">已完成 (<span id="cnt-status-done">1</span>)</span>
+              <span style="font-size: 11.5px; color: var(--text-muted); cursor: pointer;" id="tab-status-todo" onclick="filterTaskByStatus('todo')">待处理 (<span id="cnt-status-todo">0</span>)</span>
+              <span style="font-size: 11.5px; color: var(--text-muted); cursor: pointer;" id="tab-status-in_progress" onclick="filterTaskByStatus('in_progress')">进行中 (<span id="cnt-status-in_progress">0</span>)</span>
+              <span style="font-size: 11.5px; color: var(--text-muted); cursor: pointer;" id="tab-status-done" onclick="filterTaskByStatus('done')">已完成 (<span id="cnt-status-done">0</span>)</span>
             </div>
             <span style="font-size: 11px; color: var(--text-muted);">点击复选框即时更新状态</span>
           </div>
@@ -8001,38 +8003,34 @@
     const CaseContextStore = {
       KEY: 'lawflow_case_context_v2',
       defaultState: {
-        title: "张三诉李四民间借贷纠纷案",
-        cause: "民间借贷纠纷",
-        court: "北京市朝阳区人民法院",
-        amount: 500000,
+        title: "",
+        cause: "",
+        court: "",
+        amount: 0,
         plaintiff: {
-          name: "李四",
-          id: "110101199003072375",
-          phone: "13800000000",
-          address: "北京市朝阳区建国门外大街1号"
+          name: "",
+          id: "",
+          phone: "",
+          address: ""
         },
         defendant: {
-          name: "张三",
-          id: "110101198506121234",
-          phone: "13900000000",
-          address: "北京市海淀区中关村南大街5号"
+          name: "",
+          id: "",
+          phone: "",
+          address: ""
         },
         interest_calc: {
-          principal: 500000,
-          start_date: "2023-01-01",
-          end_date: "2024-01-01",
-          interest_total: 26701.37,
-          formal_statement: "自2023年01月01日起至实际清偿之日止，以本金500,000.00元为基数，按同期全国银行间同业拆借中心公布的一年期贷款市场报价利率（LPR）计算至2024年01月01日暂计为26,701.37元；",
-          court_fee: 8800,
-          preservation_fee: 3020
+          principal: 0,
+          start_date: "",
+          end_date: "",
+          interest_total: 0,
+          formal_statement: "",
+          court_fee: 0,
+          preservation_fee: 0
         },
-        statutes: [
-          { id: "law_civ_code.art_667", law_name: "中华人民共和国民法典", article_no: "第六百六十七条", content: "借款合同是借款人向贷款人借款，到期返还借款并支付利息的合同。" },
-          { id: "law_civ_code.art_675", law_name: "中华人民共和国民法典", article_no: "第六百七十五条", content: "借款人应当按照约定的期限返还借款。对借款期限没有约定或者约定不明确，依据本法第五百一十条的规定仍不能确定的，借款人可以随时返还；贷款人可以催告借款人在合理期限内返还。" },
-          { id: "law_civ_code.art_676", law_name: "中华人民共和国民法典", article_no: "第六百七十六条", content: "借款人未按照约定的期限返还借款的，应当按照约定或者国家有关规定支付逾期利息。" }
-        ],
-        facts: "2023年3月10日，被告张三因资金周转困难向原告李四借款50万元，约定借期半年，年利率6%。原告当天依约定全额转账。借期届满后原告多次催讨，被告推脱拒付，至今分文未还。",
-        evidence_notes: "证据一：2023年3月10日出具借条原件\n证据二：招商银行个人网银电子转账回单50万元\n证据三：方圆公证处电子数据保全公证书（微信催讨与自认欠款记录）"
+        statutes: [],
+        facts: "",
+        evidence_notes: ""
       },
       get() {
         try {
@@ -8082,7 +8080,7 @@
       const causeEl = document.getElementById('gcase-cause');
       if (causeEl) causeEl.innerText = c.cause || "在办案件";
       const titleEl = document.getElementById('gcase-title');
-      if (titleEl) titleEl.innerText = c.title || "未命名案件";
+      if (titleEl) titleEl.innerText = c.title || "未选择案件";
       const pEl = document.getElementById('gcase-plaintiff');
       if (pEl) pEl.innerText = (c.plaintiff && c.plaintiff.name) ? c.plaintiff.name : "未指定";
       const dEl = document.getElementById('gcase-defendant');
@@ -8602,7 +8600,10 @@
         // 更新全局状态徽章
         const globalBadge = document.getElementById('gcase-conflict-btn-text');
         if (globalBadge) {
-          if (res.conflict_level === 'CRITICAL_BLOCKED') {
+          if (res.conflict_level === 'UNABLE_TO_CHECK' || res.verdict === 'UNABLE_TO_CHECK') {
+            globalBadge.innerText = '未完成排查';
+            globalBadge.style.color = '#D32F2F';
+          } else if (res.conflict_level === 'CRITICAL_BLOCKED') {
             globalBadge.innerText = '🚫 存在直接冲突(已熔断)';
           } else if (res.conflict_level === 'HIGH_WARNING') {
             globalBadge.innerText = '⚠️ 存合规风险(需豁免)';
@@ -8628,18 +8629,27 @@
       let statusBg = '#F1F8E9';
       let statusBorder = '#C8E6C9';
       let icon = '✅';
+      let unableLabel = '';
 
-      if (res.conflict_level === 'CRITICAL_BLOCKED') {
+      const conflictLvl = res.conflict_level || res.verdict;
+      if (conflictLvl === 'UNABLE_TO_CHECK') {
+        statusColor = '#D32F2F';
+        statusBg = '#FFEBEE';
+        statusBorder = '#FFCDD2';
+        icon = '⛔';
+        unableLabel = '未完成排查';
+        res.status_label = res.status_label || res.message || '未完成排查';
+      } else if (conflictLvl === 'CRITICAL_BLOCKED') {
         statusColor = '#D32F2F';
         statusBg = '#FFEBEE';
         statusBorder = '#FFCDD2';
         icon = '🚫';
-      } else if (res.conflict_level === 'HIGH_WARNING') {
+      } else if (conflictLvl === 'HIGH_WARNING') {
         statusColor = '#E65100';
         statusBg = '#FFF3E0';
         statusBorder = '#FFE0B2';
         icon = '⚠️';
-      } else if (res.conflict_level === 'CAUTION_REQUIRED') {
+      } else if (conflictLvl === 'CAUTION_REQUIRED') {
         statusColor = '#F57F17';
         statusBg = '#FFFDE7';
         statusBorder = '#FFF9C4';
@@ -8699,7 +8709,7 @@
             <div>
               <div style="font-size: 14px; font-weight: 700; color: ${statusColor}; display: flex; align-items: center; gap: 8px;">
                 <span>${icon}</span>
-                <span>${res.summary}</span>
+                <span>${unableLabel || res.summary || res.message || ''}</span>
               </div>
               <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
                 ${res.recommendation}
@@ -8985,14 +8995,39 @@
     // =========================================================================
     // 10. 案件独立空间管理与核心图谱中枢 (Matter Vault & Core Graphs)
     // =========================================================================
-    let activeMatterId = 'MATTER-2026-001';
+    let activeMatterId = null;
     let activeMatterData = null;
     let allVaultMatters = [];
+
+    async function clearDemoDataUI() {
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/vault/demo-data`, { method: 'DELETE' });
+        if (!resp.ok) {
+          showToast('清空演示数据失败');
+          return;
+        }
+        showToast('已清空演示数据');
+        activeMatterId = '';
+        await fetchAndRenderMattersList(false);
+        updateDemoDataBadge();
+      } catch (e) {
+        showToast('清空演示数据异常: ' + e);
+      }
+    }
+
+    function updateDemoDataBadge() {
+      const hasDemo = (allVaultMatters || []).some(m => (m.title || '').indexOf('【演示】') >= 0);
+      const badge = document.getElementById('gcase-demo-badge');
+      const btn = document.getElementById('gcase-clear-demo-btn');
+      if (badge) badge.style.display = hasDemo ? 'inline-block' : 'none';
+      if (btn) btn.style.display = hasDemo ? 'inline-block' : 'none';
+    }
 
     // 初始化案件空间
     async function initMatterVault() {
       try {
         await fetchAndRenderMattersList(false);
+        updateDemoDataBadge();
         if (allVaultMatters.length > 0) {
           await switchActiveMatter(allVaultMatters[0].matter_id, false);
         }
@@ -9021,12 +9056,44 @@
       }
     }
 
+    function updateDemoDataClearButton() {
+      const btn = document.getElementById('btn-clear-demo-data');
+      if (!btn) return;
+      const hasDemo = (allVaultMatters || []).some(m => (m.title || '').includes('【演示】'));
+      btn.style.display = hasDemo ? 'inline-flex' : 'none';
+    }
+
+    async function clearVaultDemoData() {
+      if (!confirm('确认清空全部【演示】种子数据？此操作不可撤销。')) return;
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/vault/demo-data`, { method: 'DELETE' });
+        const res = await resp.json();
+        if (!resp.ok) {
+          showToast(res.detail || '清空失败');
+          return;
+        }
+        showToast('演示数据已清空');
+        activeMatterId = null;
+        activeMatterData = null;
+        await fetchAndRenderMattersList(true);
+        if (allVaultMatters.length > 0) {
+          await switchActiveMatter(allVaultMatters[0].matter_id, false);
+        } else {
+          renderGlobalCaseBar();
+        }
+      } catch (e) {
+        showToast('清空演示数据失败: ' + e);
+      }
+    }
+
     async function fetchAndRenderMattersList(renderGrid = true) {
       try {
         const resp = await fetch(`${API_BASE}/api/v1/vault/matters`);
         if (!resp.ok) return;
         const res = await resp.json();
         allVaultMatters = res.matters || [];
+        updateDemoDataClearButton();
+        updateDemoDataBadge();
         if (renderGrid) {
           renderMattersGrid(allVaultMatters);
         }
@@ -9066,6 +9133,7 @@
               <div>
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <strong style="font-size: 13.5px; color: var(--primary-navy);">${m.title}</strong>
+                  ${(m.title || '').includes('【演示】') ? '<span class="badge" style="background:#FFEBEE; color:#D32F2F; font-size:11px; font-weight:700;">演示数据</span>' : ''}
                   <span class="badge" style="background: rgba(20, 35, 60, 0.08); color: var(--primary-navy); font-size: 11px;">${m.cause_of_action}</span>
                   ${isActive ? '<span class="badge" style="background: #E8F5E9; color: #2E7D32; font-weight:700;">● 当前激活空间</span>' : ''}
                 </div>
@@ -12218,7 +12286,7 @@
           </div>
           <div class="form-group" style="margin-bottom: 0; grid-column: span 2;">
             <label class="form-label">案件全称/标题</label>
-            <input type="text" id="modal-case-title" class="quick-input" value="张三诉李四民间借贷纠纷案">
+            <input type="text" id="modal-case-title" class="quick-input" value="">
           </div>
         </div>
         <div class="form-row" style="grid-template-columns: 2fr 1fr; margin-bottom: 14px;">
@@ -12719,9 +12787,14 @@
           <div style="display: flex; gap: 8px; align-items: center; flex: 1; max-width: 480px;">
             <input type="text" id="vault-search-input" class="quick-input" placeholder="搜索案件名称、案号或法定案由..." oninput="filterMattersList()">
           </div>
-          <button type="button" class="btn btn-sm" onclick="openNewMatterDrawer()" style="background: #14233C;">
-            ＋ 新建案件独立空间
-          </button>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-clear-demo-data" onclick="clearVaultDemoData()" style="display:none; color:#D32F2F; border-color:#FFCDD2;">
+              清空演示数据
+            </button>
+            <button type="button" class="btn btn-sm" onclick="openNewMatterDrawer()" style="background: #14233C;">
+              ＋ 新建案件独立空间
+            </button>
+          </div>
         </div>
 
         <!-- 案件列表网格 -->

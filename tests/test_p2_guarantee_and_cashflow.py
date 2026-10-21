@@ -1,4 +1,5 @@
-import os
+﻿import os
+os.environ.setdefault("LAWFLOW_SEED_DEMO", "1")
 # -*- coding: utf-8 -*-
 """
 LawFlow 智律工作台 - P2 阶段自动化实证测试套件

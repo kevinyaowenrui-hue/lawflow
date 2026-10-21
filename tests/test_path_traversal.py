@@ -15,8 +15,11 @@ os.environ.setdefault("LAWFLOW_API_TOKEN", "test-token")
 from gateway.main import app
 
 AUTH = {"X-LawFlow-Token": os.environ["LAWFLOW_API_TOKEN"]}
-BASE_DIR = Path(__file__).resolve().parents[1]
-GENERATED = BASE_DIR / "storage" / "generated"
+from gateway.core.paths import get_base_dir, get_generated_dir
+
+
+def _generated():
+    return get_generated_dir()
 
 
 @pytest.fixture
@@ -26,8 +29,9 @@ def authed():
 
 
 def test_appeal_export_docx_stays_in_generated(authed):
-    before_root = {p.name for p in BASE_DIR.iterdir() if p.name.startswith("PWNED")}
-    parent = BASE_DIR.parent
+    base = get_base_dir()
+    before_root = {p.name for p in base.iterdir() if p.name.startswith("PWNED")}
+    parent = base.parent
     before_parent = {p.name for p in parent.iterdir() if p.name.startswith("PWNED")} if parent.exists() else set()
     stamp = time.time()
 
@@ -40,14 +44,13 @@ def test_appeal_export_docx_stays_in_generated(authed):
     filename = data["filename"]
     assert ".." not in filename
     assert "/" not in filename and "\\" not in filename
-    fpath = GENERATED / filename
-    assert fpath.is_file(), f"期望生成于 storage/generated: {fpath}"
+    fpath = _generated() / filename
+    assert fpath.is_file(), f"期望生成于 generated: {fpath}"
 
-    after_root = {p.name for p in BASE_DIR.iterdir() if p.name.startswith("PWNED")}
+    after_root = {p.name for p in base.iterdir() if p.name.startswith("PWNED")}
     after_parent = {p.name for p in parent.iterdir() if p.name.startswith("PWNED")} if parent.exists() else set()
     assert after_root == before_root
     assert after_parent == before_parent
-    # 清理本测试产物
     try:
         if fpath.exists() and fpath.stat().st_mtime >= stamp - 1:
             fpath.unlink()

@@ -5,6 +5,8 @@ __pycache__/
 *.so
 .Python
 env/
+.venv/
+venv/
 build/
 develop-eggs/
 dist/
@@ -23,12 +25,25 @@ share/python-wheels/
 .installed.cfg
 *.egg
 .pytest_cache/
+.coverage
+htmlcov/
+
+# Environment & secrets
+.env
 
 # Storage & Temporary Files
 storage/generated/*
 !storage/generated/.gitkeep
 storage/uploads/*
 !storage/uploads/.gitkeep
+storage/*.db
+storage/*.db-journal
+storage/*.db-wal
+storage/*.db-shm
+storage/*.json
+!storage/*.example.json
+storage/test_*
+storage/logs/
 storage/*.log
 *.log
 

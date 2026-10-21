@@ -25,8 +25,7 @@ logger = logging.getLogger("lawflow.phase3")
 router = APIRouter(tags=["阶段三：私有类案检索与电子签约"])
 
 DOCUSEAL_BASE_URL = os.getenv("DOCUSEAL_URL", "http://127.0.0.1:8082").rstrip("/")
-STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "storage", "generated")
-os.makedirs(STORAGE_DIR, exist_ok=True)
+from gateway.core.paths import get_generated_dir
 
 
 # ==============================================================================
@@ -504,7 +503,7 @@ async def signing_webhook(request: Request):
 
     # 生成已归档的签署 PDF
     archived_pdf_name = f"已签署_{record['agreement_title']}_{record['client_name']}_{int(time.time())}.pdf"
-    archived_pdf_path = os.path.join(STORAGE_DIR, archived_pdf_name)
+    archived_pdf_path = os.path.join(str(get_generated_dir()), archived_pdf_name)
 
     doc = fitz.open()
     page = doc.new_page(width=595, height=842)

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 LawFlow 智律工作台 - Top 5 核心改造项全量端到端实证测试
 验证项：
@@ -10,6 +10,7 @@ LawFlow 智律工作台 - Top 5 核心改造项全量端到端实证测试
 """
 
 import os
+os.environ.setdefault("LAWFLOW_SEED_DEMO", "1")
 import sys
 import tempfile
 import asyncio
@@ -39,10 +40,22 @@ from gateway.utils.redline_builder import (
 from gateway.utils.file_converter_engine import convert_table_to_court_pdf
 from gateway.utils.review_table_engine import (
     execute_cell_extraction,
-    export_review_table_to_xlsx
+    export_review_table_to_xlsx,
+    init_review_tables_schema,
 )
+from gateway.utils.matter_vault_db import init_matter_vault_db
+from gateway.utils.conflict_checker import init_conflict_database
+from gateway.utils.agent_task_db import init_agent_task_db
+from gateway.utils.statute_db import init_statute_database
+from gateway.seed_demo import seed_all_demo_data
 from gateway.routers.phase3_rag_sign import api_rag_search, RAGSearchReq
 
+init_statute_database()
+init_matter_vault_db()
+init_conflict_database()
+init_review_tables_schema()
+init_agent_task_db()
+seed_all_demo_data()
 client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
 def test_priority1_citation_guard_and_calc():

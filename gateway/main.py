@@ -53,9 +53,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("lawflow.gateway")
 
-FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
-STORAGE_DIR = os.path.join(BASE_DIR, "storage")
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+from gateway.core.paths import get_base_dir, get_laws_db_path
+
+
+def _frontend_dir() -> str:
+    return str(get_base_dir() / "frontend")
 
 
 def _parse_csv_env(name: str, default: str) -> list:
@@ -67,7 +69,7 @@ def _parse_csv_env(name: str, default: str) -> list:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=== [LawFlow 智律工作台] 正在启动统一编排网关 ===")
-    logger.info(f"项目基准目录: {BASE_DIR}")
+    logger.info(f"项目基准目录: {get_base_dir()}")
     # 迁移旧版仓库内 LLM 配置（如有）
     try:
         ollama_client.migrate_legacy_settings_if_needed()
@@ -84,13 +86,10 @@ async def lifespan(app: FastAPI):
     init_conflict_database()
     logger.info("利益冲突穿透排查底档库 (conflict_case_registry) 校验就绪！")
     from gateway.utils.citation_guard import ensure_court_precedents_table
-    import sqlite3
-    db_path = os.path.join(BASE_DIR, "storage", "cn_laws_kb.db")
-    if os.path.exists(db_path):
-        conn = sqlite3.connect(db_path)
+    from gateway.core.db import connect
+    with connect(get_laws_db_path()) as conn:
         ensure_court_precedents_table(conn)
-        conn.close()
-        logger.info("司法审判案号（指导判例）底库校验就绪！")
+    logger.info("司法审判案号（指导判例）底库校验就绪！")
     init_matter_vault_db()
     logger.info("案件独立空间数据库 (storage/matter_vault.db) 校验就绪！")
     init_review_tables_schema()
@@ -160,8 +159,8 @@ app.include_router(copilot_router)
 app.include_router(converter_router)
 
 # 挂载静态资源
-if os.path.exists(FRONTEND_DIR):
-    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+if os.path.exists(_frontend_dir()):
+    app.mount("/static", StaticFiles(directory=_frontend_dir()), name="static")
 
 
 @app.get("/health", summary="全局网关健康检查探针")
@@ -174,7 +173,7 @@ async def health_check():
 
 @app.get("/", response_class=HTMLResponse, summary="工作台 Web UI 首页")
 async def serve_index():
-    index_file = os.path.join(FRONTEND_DIR, "index.html")
+    index_file = os.path.join(_frontend_dir(), "index.html")
     if os.path.exists(index_file):
         with open(index_file, "r", encoding="utf-8") as f:
             html = f.read()
@@ -190,7 +189,7 @@ async def serve_index():
 @app.get("/favicon.ico", include_in_schema=False)
 async def serve_favicon():
     from fastapi.responses import FileResponse
-    ico_file = os.path.join(BASE_DIR, "resources", "lawflow.ico")
+    ico_file = str(get_base_dir() / "resources" / "lawflow.ico")
     if os.path.exists(ico_file):
         return FileResponse(ico_file, media_type="image/x-icon")
     return HTMLResponse("")

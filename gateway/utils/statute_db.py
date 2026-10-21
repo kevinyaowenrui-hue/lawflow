@@ -8,26 +8,23 @@ LawFlow 智律工作台 - 权威法典与子母法关系图谱数据库引擎 (S
 5. 专用原子切片批量导入流水线（支持律所随时上传并切片入库新法规）
 """
 
-import os
-import re
 import json
-import sqlite3
 import logging
-from typing import Dict, List, Any, Optional, Tuple
+import re
+import sqlite3
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Optional
+
+from gateway.core.db import connect
+from gateway.core.paths import get_laws_db_path
 
 logger = logging.getLogger("lawflow.statute_db")
 
-STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "storage")
-DB_PATH = os.path.join(STORAGE_DIR, "cn_laws_kb.db")
-os.makedirs(STORAGE_DIR, exist_ok=True)
 
-
-def get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    # 启用外键支持
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+@contextmanager
+def get_db_connection() -> Iterator[sqlite3.Connection]:
+    with connect(get_laws_db_path(), row_factory=sqlite3.Row) as conn:
+        yield conn
 
 
 def init_statute_database(force_reseed: bool = False):
@@ -984,11 +981,26 @@ def search_statutes_hybrid(
         return []
 
     init_statute_database()
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
     results = []
     matched_ids = set()
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        return _search_statutes_hybrid_inner(
+            cursor, query_str, domain, hierarchy, include_linked, limit, results, matched_ids
+        )
+
+
+def _search_statutes_hybrid_inner(
+    cursor,
+    query_str: str,
+    domain: Optional[str],
+    hierarchy: Optional[int],
+    include_linked: bool,
+    limit: int,
+    results: List[Dict[str, Any]],
+    matched_ids: set,
+) -> List[Dict[str, Any]]:
 
     # --- 1. 第一路：精确条号解析与直达匹配 ---
     num_match = re.search(r"(\d+)", query_str)
@@ -1167,59 +1179,54 @@ def search_statutes_hybrid(
                 except Exception:
                     item["key_terms"] = []
 
-    conn.close()
     return results[:limit]
 
 
 def get_article_details_with_graph(article_id: str) -> Optional[Dict[str, Any]]:
     """获取单条法条详情及其完整的子母法关联网"""
     init_statute_database()
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT a.*, l.full_name AS law_full_name, l.short_name AS law_short_name,
-           l.hierarchy, l.domain, l.status, l.promulgated_by, l.effective_date
-    FROM articles a
-    JOIN laws l ON a.law_id = l.id
-    WHERE a.id = ?
-    """, (article_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return None
+        cursor.execute("""
+        SELECT a.*, l.full_name AS law_full_name, l.short_name AS law_short_name,
+               l.hierarchy, l.domain, l.status, l.promulgated_by, l.effective_date
+        FROM articles a
+        JOIN laws l ON a.law_id = l.id
+        WHERE a.id = ?
+        """, (article_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
 
-    art = dict(row)
-    if isinstance(art.get("key_terms"), str):
-        try:
-            art["key_terms"] = json.loads(art["key_terms"])
-        except Exception:
-            art["key_terms"] = []
+        art = dict(row)
+        if isinstance(art.get("key_terms"), str):
+            try:
+                art["key_terms"] = json.loads(art["key_terms"])
+            except Exception:
+                art["key_terms"] = []
 
-    # 查关联子法（司法解释）
-    cursor.execute("""
-    SELECT l.relation_type, l.notes,
-           a.id AS child_id, a.article_no_cn, a.content, law.short_name AS law_name, law.full_name AS law_full_name
-    FROM parent_child_links l
-    JOIN articles a ON l.child_article_id = a.id
-    JOIN laws law ON a.law_id = law.id
-    WHERE l.parent_article_id = ?
-    """, (article_id,))
-    art["children"] = [dict(r) for r in cursor.fetchall()]
+        cursor.execute("""
+        SELECT l.relation_type, l.notes,
+               a.id AS child_id, a.article_no_cn, a.content, law.short_name AS law_name, law.full_name AS law_full_name
+        FROM parent_child_links l
+        JOIN articles a ON l.child_article_id = a.id
+        JOIN laws law ON a.law_id = law.id
+        WHERE l.parent_article_id = ?
+        """, (article_id,))
+        art["children"] = [dict(r) for r in cursor.fetchall()]
 
-    # 查关联母法
-    cursor.execute("""
-    SELECT l.relation_type, l.notes,
-           a.id AS parent_id, a.article_no_cn, a.content, law.short_name AS law_name, law.full_name AS law_full_name
-    FROM parent_child_links l
-    JOIN articles a ON l.parent_article_id = a.id
-    JOIN laws law ON a.law_id = law.id
-    WHERE l.child_article_id = ?
-    """, (article_id,))
-    art["parents"] = [dict(r) for r in cursor.fetchall()]
+        cursor.execute("""
+        SELECT l.relation_type, l.notes,
+               a.id AS parent_id, a.article_no_cn, a.content, law.short_name AS law_name, law.full_name AS law_full_name
+        FROM parent_child_links l
+        JOIN articles a ON l.parent_article_id = a.id
+        JOIN laws law ON a.law_id = law.id
+        WHERE l.child_article_id = ?
+        """, (article_id,))
+        art["parents"] = [dict(r) for r in cursor.fetchall()]
 
-    conn.close()
-    return art
+        return art
 
 
 def import_custom_statute(
@@ -1244,63 +1251,62 @@ def import_custom_statute(
     if not chunks:
         raise ValueError("未能识别出任何有效的法条结构（需包含'第X条'格式）。")
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    # 1. 写入 laws 表
-    cursor.execute("""
-    INSERT OR REPLACE INTO laws (id, full_name, short_name, hierarchy, promulgated_by, effective_date, status, domain, article_count, summary)
-    VALUES (?, ?, ?, ?, ?, ?, 'VALID', ?, ?, ?)
-    """, (law_id, full_name, short_name, hierarchy, promulgated_by, effective_date, domain, len(chunks), summary))
-
-    # 2. 写入 articles 与 FTS5
-    num_pattern = re.compile(r"第([一二三四五六七八九十百千\d]+)条")
-    inserted_count = 0
-
-    cn_num_map = {
-        '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
-        '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
-        '百': 100, '千': 1000
-    }
-
-    def parse_chinese_num(s: str) -> Optional[int]:
-        if s.isdigit():
-            return int(s)
-        try:
-            import cn2an
-            return cn2an.cn2an(s, "normal")
-        except Exception:
-            return None
-
-    for idx, chunk in enumerate(chunks):
-        art_no_cn = chunk["article_no"]
-        m_num = num_pattern.search(art_no_cn)
-        art_no_int = None
-        if m_num:
-            art_no_int = parse_chinese_num(m_num.group(1))
-
-        art_id = f"{law_id}:art_{art_no_int if art_no_int else idx + 1}"
-        content = chunk["content"]
-        has_proviso = 1 if any(kw in content for kw in ["但是", "除外", "另有约定的", "前款规定不适用"]) else 0
-
+        # 1. 写入 laws 表
         cursor.execute("""
-        INSERT OR REPLACE INTO articles (id, law_id, part_name, chapter_name, section_name, article_no_cn, article_no_int, content, has_proviso, key_terms, claim_basis_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            art_id, law_id, chunk["part"], chunk["chapter"], chunk["section"],
-            art_no_cn, art_no_int, content, has_proviso, json.dumps([]), "自导入规范"
-        ))
+        INSERT OR REPLACE INTO laws (id, full_name, short_name, hierarchy, promulgated_by, effective_date, status, domain, article_count, summary)
+        VALUES (?, ?, ?, ?, ?, ?, 'VALID', ?, ?, ?)
+        """, (law_id, full_name, short_name, hierarchy, promulgated_by, effective_date, domain, len(chunks), summary))
 
-        # 写入 FTS5
-        cursor.execute("""
-        INSERT INTO articles_fts (article_id, law_name, part_chapter, article_no_cn, content, key_terms)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (art_id, full_name, f"{chunk['part']} {chunk['chapter']}", art_no_cn, content, "[]"))
+        # 2. 写入 articles 与 FTS5
+        num_pattern = re.compile(r"第([一二三四五六七八九十百千\d]+)条")
+        inserted_count = 0
 
-        inserted_count += 1
+        cn_num_map = {
+            '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+            '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+            '百': 100, '千': 1000
+        }
 
-    conn.commit()
-    conn.close()
+        def parse_chinese_num(s: str) -> Optional[int]:
+            if s.isdigit():
+                return int(s)
+            try:
+                import cn2an
+                return cn2an.cn2an(s, "normal")
+            except Exception:
+                return None
+
+        for idx, chunk in enumerate(chunks):
+            art_no_cn = chunk["article_no"]
+            m_num = num_pattern.search(art_no_cn)
+            art_no_int = None
+            if m_num:
+                art_no_int = parse_chinese_num(m_num.group(1))
+
+            art_id = f"{law_id}:art_{art_no_int if art_no_int else idx + 1}"
+            content = chunk["content"]
+            has_proviso = 1 if any(kw in content for kw in ["但是", "除外", "另有约定的", "前款规定不适用"]) else 0
+
+            cursor.execute("""
+            INSERT OR REPLACE INTO articles (id, law_id, part_name, chapter_name, section_name, article_no_cn, article_no_int, content, has_proviso, key_terms, claim_basis_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                art_id, law_id, chunk["part"], chunk["chapter"], chunk["section"],
+                art_no_cn, art_no_int, content, has_proviso, json.dumps([]), "自导入规范"
+            ))
+
+            # 写入 FTS5
+            cursor.execute("""
+            INSERT INTO articles_fts (article_id, law_name, part_chapter, article_no_cn, content, key_terms)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (art_id, full_name, f"{chunk['part']} {chunk['chapter']}", art_no_cn, content, "[]"))
+
+            inserted_count += 1
+
+        conn.commit()
 
     return {
         "status": "success",
@@ -1313,33 +1319,32 @@ def import_custom_statute(
 def get_statute_database_stats() -> Dict[str, Any]:
     """获取数据库全局运行指标与统计数据"""
     init_statute_database()
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM laws;")
-    total_laws = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM laws;")
+        total_laws = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM articles;")
-    total_articles = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM articles;")
+        total_articles = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM parent_child_links;")
-    total_links = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM parent_child_links;")
+        total_links = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM abrogated_laws;")
-    total_abrogated = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM abrogated_laws;")
+        total_abrogated = cursor.fetchone()[0]
 
-    cursor.execute("SELECT domain, COUNT(*) as cnt FROM laws GROUP BY domain;")
-    domain_breakdown = {r["domain"]: r["cnt"] for r in cursor.fetchall()}
+        cursor.execute("SELECT domain, COUNT(*) as cnt FROM laws GROUP BY domain;")
+        domain_breakdown = {r["domain"]: r["cnt"] for r in cursor.fetchall()}
 
-    cursor.execute("SELECT hierarchy, COUNT(*) as cnt FROM laws GROUP BY hierarchy;")
-    hierarchy_breakdown = {r["hierarchy"]: r["cnt"] for r in cursor.fetchall()}
+        cursor.execute("SELECT hierarchy, COUNT(*) as cnt FROM laws GROUP BY hierarchy;")
+        hierarchy_breakdown = {r["hierarchy"]: r["cnt"] for r in cursor.fetchall()}
 
-    conn.close()
 
     return {
         "status": "online",
         "engine": "SQLite FTS5 Full-Text Engine",
-        "database_file": DB_PATH,
+        "database_file": str(get_laws_db_path()),
         "total_laws": total_laws,
         "total_articles": total_articles,
         "total_parent_child_links": total_links,

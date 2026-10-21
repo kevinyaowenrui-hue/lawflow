@@ -79,10 +79,17 @@ async def api_check_conflict(req: ConflictCheckReq):
             related_entities=req.related_entities or [],
             case_subject=req.case_subject or ""
         )
+        # UNABLE_TO_CHECK 等业务结论直接返回（含 200），不得伪装为 CLEAR
         return res
     except Exception as e:
         logger.error(f"利益冲突排查失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"利益冲突排查计算异常: {str(e)}")
+        return {
+            "status": "error",
+            "conflict_level": "UNABLE_TO_CHECK",
+            "verdict": "UNABLE_TO_CHECK",
+            "has_conflict": None,
+            "message": "无法完成利益冲突排查，请稍后重试或人工排查",
+        }
 
 
 @router.get("/conflict/registry", summary="获取律所在办/历史顾问案件冲突底档清单")
@@ -115,7 +122,10 @@ async def api_register_conflict_case(req: ConflictRegisterReq):
         return res
     except Exception as e:
         logger.error(f"录入底档库失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"录入底档库异常: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="无法完成利益冲突底档登记，请稍后重试或人工排查",
+        )
 
 
 @router.post("/guard/audit-citations", summary="文本全量司法法条与裁判案号引用真伪与废止探测")

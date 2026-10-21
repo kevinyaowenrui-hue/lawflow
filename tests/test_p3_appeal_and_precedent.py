@@ -242,7 +242,8 @@ def test_api_appeal_export_docx_endpoint():
     assert data["file_size"] > 0
 
     # 校验磁盘上生成的实际 docx 文件有效性
-    storage_path = os.path.join("storage", "generated", data["filename"])
+    from gateway.core.paths import get_generated_dir
+    storage_path = str(get_generated_dir() / data["filename"])
     assert os.path.exists(storage_path)
 
     doc = docx.Document(storage_path)
@@ -266,5 +267,5 @@ def test_api_appeal_export_docx_endpoint():
     assert resp_memo.status_code == 200
     data_memo = resp_memo.json()
     assert data_memo["file_size"] > 0
-    memo_path = os.path.join("storage", "generated", data_memo["filename"])
+    memo_path = str(get_generated_dir() / data_memo["filename"])
     assert os.path.exists(memo_path)

@@ -124,25 +124,24 @@ async def start_litigation_workflow(
     }
 
     # 存入数据库并挂起在 Step 2（等待人工确认）
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    INSERT INTO matter_workflows (
-        workflow_id, matter_id, workflow_type, current_step, step_status, step_data_json, is_completed, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        workflow_id,
-        matter_id,
-        "litigation_drafting",
-        WorkflowStep.STEP2_CLAIMS_BREAKPOINT,
-        WorkflowStatus.WAITING_HUMAN,
-        json.dumps(step_data, ensure_ascii=False),
-        0,
-        now_str,
-        now_str
-    ))
-    conn.commit()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO matter_workflows (
+            workflow_id, matter_id, workflow_type, current_step, step_status, step_data_json, is_completed, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            workflow_id,
+            matter_id,
+            "litigation_drafting",
+            WorkflowStep.STEP2_CLAIMS_BREAKPOINT,
+            WorkflowStatus.WAITING_HUMAN,
+            json.dumps(step_data, ensure_ascii=False),
+            0,
+            now_str,
+            now_str
+        ))
+        conn.commit()
 
     return {
         "workflow_id": workflow_id,
@@ -157,13 +156,16 @@ async def start_litigation_workflow(
 
 async def advance_workflow_step(workflow_id: str, human_confirmed_data: Dict[str, Any]) -> Dict[str, Any]:
     """律师在前端核准断点后，提交数据并推动工作流前进到下一步"""
-    conn = get_db_connection()
+    with get_db_connection() as conn:
+        return await _advance_workflow_step_core(conn, workflow_id, human_confirmed_data)
+
+
+async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_data: Dict[str, Any]) -> Dict[str, Any]:
     cursor = conn.cursor()
 
     cursor.execute("SELECT * FROM matter_workflows WHERE workflow_id = ?", (workflow_id,))
     row = cursor.fetchone()
     if not row:
-        conn.close()
         raise ValueError(f"工作流不存在: {workflow_id}")
 
     current_step = row["current_step"]
@@ -275,8 +277,6 @@ async def advance_workflow_step(workflow_id: str, human_confirmed_data: Dict[str
         WHERE workflow_id = ?
         """, (next_step, step_status, json.dumps(step_data, ensure_ascii=False), now_str, workflow_id))
         conn.commit()
-        conn.close()
-
         return {
             "workflow_id": workflow_id,
             "current_step": next_step,
@@ -377,10 +377,10 @@ async def advance_workflow_step(workflow_id: str, human_confirmed_data: Dict[str
         final_clean_text = citation_audit.get("sanitized_text", final_pleading_text)
 
         # 渲染生成标准的 Word (.docx) 交付文件 (Priority 5)
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        storage_dir = os.path.join(base_dir, "storage", "generated")
-        templates_dir = os.path.join(base_dir, "templates")
-        os.makedirs(storage_dir, exist_ok=True)
+        from gateway.core.paths import get_base_dir, get_generated_dir
+        storage_dir = str(get_generated_dir())
+        templates_dir = str(get_base_dir() / "templates")
+
         
         docx_filename = f"民事起诉状_工作流_{workflow_id}.docx"
         docx_output_path = os.path.join(storage_dir, docx_filename)
@@ -448,8 +448,6 @@ async def advance_workflow_step(workflow_id: str, human_confirmed_data: Dict[str
             workflow_id
         ))
         conn.commit()
-        conn.close()
-
         return {
             "workflow_id": workflow_id,
             "current_step": WorkflowStep.STEP5_FINAL_COMPLETED,
@@ -460,7 +458,6 @@ async def advance_workflow_step(workflow_id: str, human_confirmed_data: Dict[str
         }
 
     else:
-        conn.close()
         return {
             "workflow_id": workflow_id,
             "current_step": current_step,
@@ -471,27 +468,25 @@ async def advance_workflow_step(workflow_id: str, human_confirmed_data: Dict[str
 
 def rollback_workflow_step(workflow_id: str, target_step: int = 2) -> Dict[str, Any]:
     """支持工作流回退到前序断点，允许律师修改诉讼请求或策略后重新执行"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM matter_workflows WHERE workflow_id = ?", (workflow_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        raise ValueError(f"工作流不存在: {workflow_id}")
+        cursor.execute("SELECT * FROM matter_workflows WHERE workflow_id = ?", (workflow_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(f"工作流不存在: {workflow_id}")
 
-    step_data = json.loads(row["step_data_json"])
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        step_data = json.loads(row["step_data_json"])
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    target = max(WorkflowStep.STEP2_CLAIMS_BREAKPOINT, min(target_step, WorkflowStep.STEP4_TACTICS_BREAKPOINT))
+        target = max(WorkflowStep.STEP2_CLAIMS_BREAKPOINT, min(target_step, WorkflowStep.STEP4_TACTICS_BREAKPOINT))
 
-    cursor.execute("""
-    UPDATE matter_workflows
-    SET current_step = ?, step_status = ?, is_completed = 0, updated_at = ?
-    WHERE workflow_id = ?
-    """, (target, WorkflowStatus.WAITING_HUMAN, now_str, workflow_id))
-    conn.commit()
-    conn.close()
+        cursor.execute("""
+        UPDATE matter_workflows
+        SET current_step = ?, step_status = ?, is_completed = 0, updated_at = ?
+        WHERE workflow_id = ?
+        """, (target, WorkflowStatus.WAITING_HUMAN, now_str, workflow_id))
+        conn.commit()
 
     return {
         "workflow_id": workflow_id,
@@ -505,22 +500,20 @@ def rollback_workflow_step(workflow_id: str, target_step: int = 2) -> Dict[str, 
 
 def get_workflow_by_id(workflow_id: str) -> Optional[Dict[str, Any]]:
     """读取指定工作流详情"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM matter_workflows WHERE workflow_id = ?", (workflow_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if not row:
-        return None
-
-    return {
-        "workflow_id": row["workflow_id"],
-        "matter_id": row["matter_id"],
-        "workflow_type": row["workflow_type"],
-        "current_step": row["current_step"],
-        "step_status": row["step_status"],
-        "step_data": json.loads(row["step_data_json"]),
-        "is_completed": bool(row["is_completed"]),
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"]
-    }
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM matter_workflows WHERE workflow_id = ?", (workflow_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "workflow_id": row["workflow_id"],
+            "matter_id": row["matter_id"],
+            "workflow_type": row["workflow_type"],
+            "current_step": row["current_step"],
+            "step_status": row["step_status"],
+            "step_data": json.loads(row["step_data_json"]),
+            "is_completed": bool(row["is_completed"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }

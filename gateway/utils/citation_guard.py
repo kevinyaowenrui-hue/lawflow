@@ -19,8 +19,24 @@ import logging
 
 logger = logging.getLogger("lawflow.citation_guard")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DB_PATH = os.path.join(BASE_DIR, "storage", "cn_laws_kb.db")
+from gateway.core.db import connect
+from gateway.core.paths import get_laws_db_path
+
+
+def _db_path_str() -> str:
+    return str(get_laws_db_path())
+
+
+# 兼容旧引用名：始终动态解析
+class _DBPathProxy:
+    def __str__(self) -> str:
+        return _db_path_str()
+
+    def __fspath__(self) -> str:
+        return _db_path_str()
+
+
+DB_PATH = _DBPathProxy()
 
 CN_NUM_MAP = {
     '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
@@ -223,83 +239,85 @@ def audit_case_numbers(text: str, conn: Optional[sqlite3.Connection] = None) -> 
     if not text:
         return []
 
-    should_close = False
-    if conn is None:
-        if not os.path.exists(DB_PATH):
-            return []
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        should_close = True
+    def _run(active_conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+        ensure_court_precedents_table(active_conn)
+        cursor = active_conn.cursor()
 
-    ensure_court_precedents_table(conn)
-    cursor = conn.cursor()
+        audited_cases: List[Dict[str, Any]] = []
+        seen = set()
+        current_year = datetime.now().year
 
-    audited_cases = []
-    seen = set()
-    current_year = datetime.now().year
+        for match in CASE_NUMBER_PATTERN.finditer(text):
+            raw_match = match.group(0).strip()
+            year = int(match.group("year"))
+            court = match.group("court").strip()
+            case_type = match.group("type").strip()
+            no = match.group("no").strip()
 
-    for match in CASE_NUMBER_PATTERN.finditer(text):
-        raw_match = match.group(0).strip()
-        year = int(match.group("year"))
-        court = match.group("court").strip()
-        case_type = match.group("type").strip()
-        no = match.group("no").strip()
+            std_case_number = f"（{year}）{court}{case_type}{no}号"
+            if std_case_number in seen:
+                continue
+            seen.add(std_case_number)
 
-        std_case_number = f"（{year}）{court}{case_type}{no}号"
-        if std_case_number in seen:
-            continue
-        seen.add(std_case_number)
+            cursor.execute(
+                "SELECT * FROM court_precedents WHERE case_number = ? OR case_number LIKE ? LIMIT 1;",
+                (std_case_number, f"%{year}%{court}%{case_type}%{no}号%"),
+            )
+            db_case = cursor.fetchone()
 
-        cursor.execute("SELECT * FROM court_precedents WHERE case_number = ? OR case_number LIKE ? LIMIT 1;", (std_case_number, f"%{year}%{court}%{case_type}%{no}号%"))
-        db_case = cursor.fetchone()
-
-        case_entry = {
-            "raw_case_number": raw_match,
-            "standard_case_number": std_case_number,
-            "year": year,
-            "court": court,
-            "case_type": case_type,
-            "serial_no": no,
-            "is_hallucination": False,
-            "risk_level": "SAFE",
-            "status": "VERIFIED_PRECEDENT",
-            "notes": "",
-            "case_title": None,
-            "holding_summary": None,
-            "matched_precedent": None
-        }
-
-        # 校验 1：年份异常越界判定（防未来年份幻觉）
-        if year > current_year or year < 1980:
-            case_entry["is_hallucination"] = True
-            case_entry["risk_level"] = "CRITICAL_BLOCKED"
-            case_entry["status"] = "CASE_NUMBER_HALLUCINATION_YEAR"
-            case_entry["notes"] = f"【虚构案号拦截】案号年份 {year} 超出现行司法实践范围 (1980-{current_year})，系大模型捏造！"
-        # 校验 2：在已收录权威案例库中验真
-        elif db_case:
-            case_entry["status"] = "VERIFIED_PRECEDENT"
-            case_entry["risk_level"] = "SAFE"
-            case_entry["case_title"] = db_case["title"]
-            case_entry["holding_summary"] = db_case["holding_summary"]
-            case_entry["matched_precedent"] = {
-                "title": db_case["title"],
-                "court_name": db_case["court_name"],
-                "holding_summary": db_case["holding_summary"],
-                "judgment_year": db_case["judgment_year"]
+            case_entry = {
+                "raw_case_number": raw_match,
+                "standard_case_number": std_case_number,
+                "year": year,
+                "court": court,
+                "case_type": case_type,
+                "serial_no": no,
+                "is_hallucination": False,
+                "risk_level": "SAFE",
+                "status": "VERIFIED_PRECEDENT",
+                "notes": "",
+                "case_title": None,
+                "holding_summary": None,
+                "matched_precedent": None,
             }
-            case_entry["notes"] = f"官方现行有效司法判例（{db_case['court_name']}·{db_case['title']}）"
-        # 校验 3：未在本地精选库收录，但案号结构完备合规
-        else:
-            case_entry["status"] = "VALID_STRUCTURE_UNVERIFIED_IN_LOCAL_DB"
-            case_entry["risk_level"] = "MODERATE_WARNING"
-            case_entry["notes"] = f"案号结构符合中国各级人民法院审判编订规范（{court}·{case_type}），建议在中国裁判文书网核验对应判决书全文。"
 
-        audited_cases.append(case_entry)
+            if year > current_year or year < 1980:
+                case_entry["is_hallucination"] = True
+                case_entry["risk_level"] = "CRITICAL_BLOCKED"
+                case_entry["status"] = "CASE_NUMBER_HALLUCINATION_YEAR"
+                case_entry["notes"] = (
+                    f"【虚构案号拦截】案号年份 {year} 超出现行司法实践范围 (1980-{current_year})，系大模型捏造！"
+                )
+            elif db_case:
+                case_entry["status"] = "VERIFIED_PRECEDENT"
+                case_entry["risk_level"] = "SAFE"
+                case_entry["case_title"] = db_case["title"]
+                case_entry["holding_summary"] = db_case["holding_summary"]
+                case_entry["matched_precedent"] = {
+                    "title": db_case["title"],
+                    "court_name": db_case["court_name"],
+                    "holding_summary": db_case["holding_summary"],
+                    "judgment_year": db_case["judgment_year"],
+                }
+                case_entry["notes"] = f"官方现行有效司法判例（{db_case['court_name']}·{db_case['title']}）"
+            else:
+                case_entry["status"] = "VALID_STRUCTURE_UNVERIFIED_IN_LOCAL_DB"
+                case_entry["risk_level"] = "MODERATE_WARNING"
+                case_entry["notes"] = (
+                    f"案号结构符合中国各级人民法院审判编订规范（{court}·{case_type}），"
+                    "建议在中国裁判文书网核验对应判决书全文。"
+                )
 
-    if should_close:
-        conn.close()
+            audited_cases.append(case_entry)
+        return audited_cases
 
-    return audited_cases
+    if conn is not None:
+        return _run(conn)
+
+    if not os.path.exists(_db_path_str()):
+        return []
+    with connect(get_laws_db_path(), row_factory=sqlite3.Row) as owned:
+        return _run(owned)
 
 
 def audit_citations_in_text(raw_text: str = "", auto_sanitize: bool = True, text: str = "", **kwargs) -> Dict[str, Any]:
@@ -312,15 +330,18 @@ def audit_citations_in_text(raw_text: str = "", auto_sanitize: bool = True, text
     """
     content_text = raw_text or text or kwargs.get("content", "") or ""
 
-    if not os.path.exists(DB_PATH):
+    if not os.path.exists(_db_path_str()):
         return {
             "status": "error",
             "message": "法典数据库未就绪",
             "is_safe": False
         }
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    with connect(get_laws_db_path(), row_factory=sqlite3.Row) as conn:
+        return _audit_citations_core(conn, content_text, auto_sanitize)
+
+
+def _audit_citations_core(conn, content_text, auto_sanitize):
     cursor = conn.cursor()
 
     # 1. 提取所有废止法名录
@@ -510,9 +531,6 @@ def audit_citations_in_text(raw_text: str = "", auto_sanitize: bool = True, text
 
     if case_hallucination_count > 0:
         hallucination_count += case_hallucination_count
-
-    conn.close()
-
     total = len(audited_citations)
     is_safe = (hallucination_count == 0 and abrogated_count == 0)
     has_abrogated = (abrogated_count > 0)
@@ -599,22 +617,24 @@ def verify_single_case_number(case_number: str) -> Dict[str, Any]:
 
 def verify_single_citation(law_name: str, article_num: int, original_citation: str = "") -> Dict[str, Any]:
     """对单一法条（例如《民法典》第585条）进行权威数据库穿透核验"""
-    if not os.path.exists(DB_PATH):
+    if not os.path.exists(_db_path_str()):
         return {"status": "error", "message": "法典数据库未就绪"}
 
     cleaned_law = law_name.strip("《》")
     norm_law_name = LAW_ALIAS_MAP.get(cleaned_law, cleaned_law)
     art_no_cn = int_to_cn_article(article_num)
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    with connect(get_laws_db_path(), row_factory=sqlite3.Row) as conn:
+        return _verify_single_citation_core(conn, norm_law_name, article_num, art_no_cn)
+
+
+def _verify_single_citation_core(conn, norm_law_name, article_num, art_no_cn):
     cursor = conn.cursor()
 
     # 1. 检查是否废止
     cursor.execute("SELECT name, full_name, abrogated_date, replaced_by, risk_tip FROM abrogated_laws WHERE name = ? OR full_name = ?;", (norm_law_name, norm_law_name))
     ab_row = cursor.fetchone()
     if ab_row:
-        conn.close()
         return {
             "law_name": norm_law_name,
             "article_num": article_num,
@@ -637,7 +657,6 @@ def verify_single_citation(law_name: str, article_num: int, original_citation: s
     art_row = cursor.fetchone()
 
     if art_row:
-        conn.close()
         return {
             "law_name": norm_law_name,
             "statute_full_name": art_row["full_name"],
@@ -659,8 +678,6 @@ def verify_single_citation(law_name: str, article_num: int, original_citation: s
     LIMIT 1;
     """, (norm_law_name, norm_law_name, f"%{norm_law_name}%"))
     law_row = cursor.fetchone()
-    conn.close()
-
     law_full_name = law_row["full_name"] if law_row else norm_law_name
 
     if official_max and article_num > official_max:

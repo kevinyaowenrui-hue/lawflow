@@ -25,14 +25,19 @@ from gateway.core.security import (
     validate_magic_bytes,
 )
 
+from gateway.core.paths import get_uploads_dir
 from gateway.utils.matter_vault_db import (
     list_all_matters,
     get_matter_by_id,
     create_new_matter,
     update_matter_record,
     add_document_to_matter,
-    save_matter_graphs_db
+    save_matter_graphs_db,
+    delete_demo_matters,
 )
+from gateway.utils.conflict_checker import delete_demo_conflict_cases
+from gateway.utils.agent_task_db import delete_demo_agent_tasks
+from gateway.utils.review_table_engine import delete_demo_review_tables
 from gateway.utils.graph_extractor import extract_case_graphs_from_text
 from gateway.utils.workflow_engine import (
     start_litigation_workflow,
@@ -150,6 +155,22 @@ class WorkflowRollbackReq(BaseModel):
 # 1. 案件独立空间 (Matter Vault) CRUD 路由
 # =============================================================================
 
+@router.delete("/demo-data", summary="清空全部【演示】种子数据")
+async def api_delete_demo_data():
+    """删除标题含【演示】的案件、利冲底档、任务与阅卷表。"""
+    counts = {
+        "review_tables": delete_demo_review_tables(),
+        "matters": delete_demo_matters(),
+        "conflict_cases": delete_demo_conflict_cases(),
+        "agent_tasks": delete_demo_agent_tasks(),
+    }
+    return {
+        "status": "success",
+        "message": "演示数据已清空",
+        "counts": counts,
+    }
+
+
 @router.get("/matters", summary="获取案件独立空间列表")
 async def api_list_matters(
     status: Optional[str] = Query(None, description="状态筛选: active / archived / draft"),
@@ -233,9 +254,7 @@ async def api_upload_mount_document(
     if not matter:
         raise HTTPException(status_code=404, detail="案件空间不存在")
 
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    uploads_dir = os.path.join(base_dir, "storage", "uploads")
-    os.makedirs(uploads_dir, exist_ok=True)
+    uploads_dir = str(get_uploads_dir())
 
     allowed = [".pdf", ".docx", ".png", ".jpg", ".jpeg", ".heic", ".csv", ".xlsx", ".txt"]
     ext = assert_allowed_extension(file.filename, allowed)

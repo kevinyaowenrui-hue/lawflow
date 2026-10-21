@@ -13,7 +13,8 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 # 确保项目根路径进入 sys.path
@@ -22,6 +23,13 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from gateway.core.ollama_client import ollama_client
+from gateway.core.security import (
+    API_TOKEN,
+    auth_failure_response,
+    extract_request_token,
+    is_auth_exempt,
+    token_matches,
+)
 from gateway.routers.phase1_litigation import router as phase1_router
 from gateway.routers.phase2_evidence import router as phase2_router
 from gateway.routers.phase3_rag_sign import router as phase3_router
@@ -49,11 +57,22 @@ FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 STORAGE_DIR = os.path.join(BASE_DIR, "storage")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 
+
+def _parse_csv_env(name: str, default: str) -> list:
+    raw = os.getenv(name, default)
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
 # 启动生命周期管理
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=== [LawFlow 智律工作台] 正在启动统一编排网关 ===")
     logger.info(f"项目基准目录: {BASE_DIR}")
+    # 迁移旧版仓库内 LLM 配置（如有）
+    try:
+        ollama_client.migrate_legacy_settings_if_needed()
+    except Exception as e:
+        logger.warning(f"LLM 配置迁移检查失败: {e}")
     # 检查大模型状态
     health = await ollama_client.check_health()
     logger.info(f"Ollama 引擎连接探测: {health.get('status')} | 目标模型: {health.get('target_model')} (就绪: {health.get('model_ready')})")
@@ -78,6 +97,12 @@ async def lifespan(app: FastAPI):
     logger.info("矩阵式批量阅卷表数据库 (matter_review_tables) 校验就绪！")
     init_agent_task_db()
     logger.info("08 智律 AI 语音中枢与任务看板数据表 (agent_tasks) 校验就绪！")
+    if not os.getenv("LAWFLOW_API_TOKEN"):
+        logger.warning(
+            "未设置环境变量 LAWFLOW_API_TOKEN，已在内存生成一次性 Token。"
+            "同源前端可通过首页 meta[name=lawflow-token] 自动携带；"
+            "外部调用请设置 LAWFLOW_API_TOKEN 并在请求头加入 X-LawFlow-Token。"
+        )
     yield
     logger.info("=== [LawFlow 智律工作台] 网关已安全下线 ===")
 
@@ -89,14 +114,37 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 允许跨域（方便本地与宿主机调用）
+# CORS：默认仅本机来源；凭证关闭
+_allowed_origins = _parse_csv_env(
+    "LAWFLOW_ALLOWED_ORIGINS",
+    "http://127.0.0.1:5221,http://localhost:5221",
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-LawFlow-Token"],
 )
+
+# TrustedHost：防 DNS rebinding（testserver 供 TestClient）
+_allowed_hosts = _parse_csv_env(
+    "LAWFLOW_ALLOWED_HOSTS",
+    "127.0.0.1,localhost,testserver",
+)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
+
+
+@app.middleware("http")
+async def api_token_middleware(request: Request, call_next):
+    path = request.url.path
+    if is_auth_exempt(path, request.method):
+        return await call_next(request)
+    if path.startswith("/api/"):
+        if not token_matches(extract_request_token(request)):
+            return auth_failure_response()
+    return await call_next(request)
+
 
 # 挂载各业务阶段路由
 app.include_router(phase1_router)
@@ -120,42 +168,28 @@ if os.path.exists(FRONTEND_DIR):
 @app.get("/api/health", summary="全局网关健康检查探针")
 @app.get("/api/v1/health", summary="全局网关健康检查探针")
 async def health_check():
-    ollama_info = await ollama_client.check_health()
-    port = int(os.getenv("GATEWAY_PORT", "5221"))
-    return {
-        "status": "healthy",
-        "system": "LawFlow Workspace (LawFlow 智律工作台)",
-        "version": "1.0.0",
-        "gateway_port": port,
-        "ollama": ollama_info,
-        "features": {
-            "phase1_litigation": True,
-            "phase2_evidence": True,
-            "phase3_rag_sign": True,
-            "phase4_deep_matrix": True,
-            "phase5_statutes_kb": True,
-            "phase6_compliance": True,
-            "matter_vault": True,
-            "workflow_state_machine": True,
-            "review_tables": True,
-            "version_comparator": True,
-            "source_grounding": True,
-            "phase8_ai_copilot": True,
-            "offline_file_converter": True
-        }
-    }
+    """健康检查仅返回最小信息，避免未鉴权面泄露内部状态。"""
+    return {"status": "healthy"}
 
 
 @app.get("/", response_class=HTMLResponse, summary="工作台 Web UI 首页")
 async def serve_index():
     index_file = os.path.join(FRONTEND_DIR, "index.html")
     if os.path.exists(index_file):
-        return FileResponse(index_file)
+        with open(index_file, "r", encoding="utf-8") as f:
+            html = f.read()
+        meta = f'<meta name="lawflow-token" content="{API_TOKEN}">'
+        if "</head>" in html:
+            html = html.replace("</head>", f"  {meta}\n</head>", 1)
+        else:
+            html = meta + html
+        return HTMLResponse(html)
     return HTMLResponse("<h2>LawFlow 智律工作台初始化中... 请稍后刷新。</h2>")
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def serve_favicon():
+    from fastapi.responses import FileResponse
     ico_file = os.path.join(BASE_DIR, "resources", "lawflow.ico")
     if os.path.exists(ico_file):
         return FileResponse(ico_file, media_type="image/x-icon")
@@ -164,13 +198,16 @@ async def serve_favicon():
 
 if __name__ == "__main__":
     import uvicorn
-    import threading
 
     host = os.getenv("GATEWAY_HOST", "127.0.0.1")
     primary_port = int(os.getenv("GATEWAY_PORT", "5221"))
-    legacy_port = 8000 if primary_port != 8000 else None
+    # A-14：默认不再绑定 8000；仅当显式设置 LAWFLOW_LEGACY_PORT 时启动兼容端口
+    legacy_port_env = os.getenv("LAWFLOW_LEGACY_PORT", "").strip()
+    legacy_port = int(legacy_port_env) if legacy_port_env.isdigit() else None
 
-    if legacy_port:
+    if legacy_port and legacy_port != primary_port:
+        import threading
+
         def run_legacy_server():
             try:
                 logger.info(f"同时启动兼容端口服务: http://{host}:{legacy_port}")
@@ -185,5 +222,3 @@ if __name__ == "__main__":
 
     logger.info(f"LawFlow 统一网关即将启动，监听主地址: http://{host}:{primary_port}")
     uvicorn.run(app, host=host, port=primary_port, log_level="info")
-
-

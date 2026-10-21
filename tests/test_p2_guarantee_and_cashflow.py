@@ -1,3 +1,4 @@
+import os
 # -*- coding: utf-8 -*-
 """
 LawFlow 智律工作台 - P2 阶段自动化实证测试套件
@@ -13,7 +14,7 @@ from gateway.utils.guarantee_and_cashflow_engine import (
     audit_and_reconcile_cashflow
 )
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
 
 def test_civil_code_art_561_mathematical_precision():

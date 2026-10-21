@@ -14,6 +14,14 @@ from typing import List, Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 
+from gateway.core.security import (
+    assert_allowed_extension,
+    max_upload_total_bytes,
+    read_upload_bounded,
+    safe_join,
+    storage_name,
+    validate_magic_bytes,
+)
 from gateway.utils.file_converter_engine import (
     get_converter_status,
     convert_file_unified,
@@ -22,6 +30,11 @@ from gateway.utils.file_converter_engine import (
     UPLOADS_DIR,
     STORAGE_DIR
 )
+
+_CONVERTER_EXTS = [
+    ".pdf", ".docx", ".png", ".jpg", ".jpeg", ".heic", ".heif",
+    ".csv", ".xlsx", ".txt", ".mp3", ".wav", ".m4a", ".tiff", ".tif", ".webp", ".bmp",
+]
 
 logger = logging.getLogger("lawflow.converter_router")
 router = APIRouter(prefix="/api/v1/converter", tags=["司法离线全格式转码中枢 (Filee 协同)"])
@@ -48,13 +61,14 @@ async def api_convert_file(
     - 优先调度 Filee CLI 离线引擎，缺省无感回退至内置原生司法引擎
     """
     start_time = time.time()
-    timestamp = int(start_time)
-    safe_filename = f"upload_{timestamp}_{file.filename}"
-    temp_path = os.path.join(UPLOADS_DIR, safe_filename)
+    ext = assert_allowed_extension(file.filename, _CONVERTER_EXTS)
+    raw = await read_upload_bounded(file)
+    validate_magic_bytes(raw, ext)
+    temp_path = safe_join(UPLOADS_DIR, storage_name(ext))
 
     try:
         with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            buffer.write(raw)
 
         result = convert_file_unified(
             file_path=temp_path,
@@ -67,6 +81,8 @@ async def api_convert_file(
         result["original_filename"] = file.filename
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"转码失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"离线转码失败: {str(e)}")
@@ -96,13 +112,21 @@ async def api_batch_merge_evidence(
     start_time = time.time()
     timestamp = int(start_time)
     saved_paths = []
+    batch_total = 0
+    batch_cap = max_upload_total_bytes()
+    img_exts = [".png", ".jpg", ".jpeg", ".heic", ".heif", ".tiff", ".tif", ".webp", ".bmp", ".pdf"]
 
     try:
         for idx, f in enumerate(files, 1):
-            tmp_name = f"batch_{timestamp}_{idx}_{f.filename}"
-            tmp_p = os.path.join(UPLOADS_DIR, tmp_name)
+            ext = assert_allowed_extension(f.filename, img_exts)
+            raw = await read_upload_bounded(f)
+            batch_total += len(raw)
+            if batch_total > batch_cap:
+                raise HTTPException(status_code=413, detail="单次上传总量超过上限")
+            validate_magic_bytes(raw, ext)
+            tmp_p = safe_join(UPLOADS_DIR, storage_name(ext))
             with open(tmp_p, "wb") as buf:
-                shutil.copyfileobj(f.file, buf)
+                buf.write(raw)
             saved_paths.append(tmp_p)
 
         merged_pdf_name = f"合卷举证册_{evidence_label}_{timestamp}.pdf"
@@ -117,6 +141,8 @@ async def api_batch_merge_evidence(
         result["input_files_count"] = len(files)
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"多图合卷失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"合卷制作失败: {str(e)}")

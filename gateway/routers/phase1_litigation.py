@@ -40,6 +40,7 @@ from gateway.utils.cn_legal_calc import (
     calculate_settlement_npv_and_recovery
 )
 from gateway.core.ollama_client import ollama_client
+from gateway.core.security import sanitize_filename, safe_join, validate_download_filename
 from gateway.utils.legal_prompts import FACTS_POLISH_SYSTEM_PROMPT
 from gateway.utils.appeal_and_precedent_engine import analyze_first_instance_judgment_and_precedents
 
@@ -683,11 +684,15 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
 # ==============================================================================
 @router.get("/api/documents/download/{filename}", summary="文书下载接口")
 async def download_doc(filename: str):
-    file_path = os.path.join(STORAGE_DIR, filename)
+    safe_name = validate_download_filename(filename)
+    try:
+        file_path = safe_join(STORAGE_DIR, safe_name)
+    except HTTPException:
+        raise
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="文件不存在")
-    media = "application/pdf" if filename.endswith(".pdf") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    return FileResponse(path=file_path, filename=filename, media_type=media)
+    media = "application/pdf" if safe_name.endswith(".pdf") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return FileResponse(path=file_path, filename=os.path.basename(safe_name), media_type=media)
 
 
 # ==============================================================================
@@ -771,8 +776,9 @@ async def api_appeal_export_docx(req: AppealExportDocxRequest):
                 if line.startswith("【") or line == "民 事 上 诉 状":
                     p.paragraph_format.space_before = Pt(8)
 
-        filename = f"{req.title}_{datetime.now().strftime('%Y%m%d%H%M%S')}.docx"
-        filepath = os.path.join(STORAGE_DIR, filename)
+        safe_title = sanitize_filename(req.title)
+        filename = f"{safe_title}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.docx"
+        filepath = safe_join(STORAGE_DIR, filename)
         doc.save(filepath)
 
         return {
@@ -781,6 +787,8 @@ async def api_appeal_export_docx(req: AppealExportDocxRequest):
             "download_url": f"/api/documents/download/{filename}",
             "file_size": os.path.getsize(filepath)
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"导出二审文书Docx失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

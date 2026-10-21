@@ -14,6 +14,7 @@ import os
 import re
 import json
 import time
+import uuid
 import logging
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
@@ -21,6 +22,7 @@ from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel, Field
 
 from gateway.core.ollama_client import ollama_client
+from gateway.core.security import sanitize_filename, safe_join
 from gateway.utils.cn_legal_calc import (
     calculate_lpr_interest,
     calculate_statute_of_limitations,
@@ -1062,8 +1064,9 @@ async def api_enforcement_export_docx(req: EnforcementExportDocxRequest):
                 if line.startswith("【") or "追 加 被 执 行 人" in line or "民 事 起 诉 状" in line:
                     p.paragraph_format.space_before = Pt(8)
 
-        filename = f"{req.title}_{datetime.now().strftime('%Y%m%d%H%M%S')}.docx"
-        filepath = os.path.join(STORAGE_DIR, filename)
+        safe_title = sanitize_filename(req.title)
+        filename = f"{safe_title}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.docx"
+        filepath = safe_join(STORAGE_DIR, filename)
         doc.save(filepath)
 
         return {
@@ -1072,6 +1075,8 @@ async def api_enforcement_export_docx(req: EnforcementExportDocxRequest):
             "download_url": f"/api/documents/download/{filename}",
             "file_size": os.path.getsize(filepath)
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"导出执行文书Docx失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

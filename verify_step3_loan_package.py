@@ -3,26 +3,25 @@ import sys
 import json
 import httpx
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = os.getenv("GATEWAY_URL", "http://127.0.0.1:5221")
+API_TOKEN = os.getenv("LAWFLOW_API_TOKEN", "")
 
 def run_step3_verification():
     print("======================================================================")
     print("     LawFlow 智律工作台【第三步：阶段一验证汇报专用测试脚本】")
     print("======================================================================")
-    client = httpx.Client(base_url=BASE_URL, timeout=120.0)
+    headers = {}
+    if API_TOKEN:
+        headers["X-LawFlow-Token"] = API_TOKEN
+    client = httpx.Client(base_url=BASE_URL, timeout=120.0, headers=headers)
 
-    # 1. 验证 /health 与 Ollama (gemma4:12b)
-    print("\n[1/3] 执行网关健康检查与宿主机 Ollama (gemma4:12b) 连通性测试...")
+    # 1. 验证 /health（最小信息探针）
+    print("\n[1/3] 执行网关健康检查...")
     res = client.get("/health")
     assert res.status_code == 200, f"Health check failed: {res.text}"
     health_data = res.json()
-    ollama_info = health_data.get("ollama", {})
-    print(f"  * 网关状态: {health_data.get('status')} ({health_data.get('system')})")
-    print(f"  * 监听端口: {health_data.get('gateway_port')}")
-    print(f"  * Ollama 连通地址: {ollama_info.get('connected_url')}")
-    print(f"  * 目标大模型: {ollama_info.get('target_model')}")
-    print(f"  * 大模型就绪状态 (model_ready): {ollama_info.get('model_ready')}")
-    print(f"  * 可用模型列表: {ollama_info.get('available_models')}")
+    print(f"  * 网关状态: {health_data.get('status')}")
+    print(f"  * GATEWAY_URL: {BASE_URL}")
 
     # 2. 发起民间借贷起诉状端到端生成测试
     print("\n[2/3] 发起【民间借贷纠纷】立案公文包端到端全自动生成流水线...")

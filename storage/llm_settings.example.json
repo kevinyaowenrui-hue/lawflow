@@ -1,0 +1,10 @@
+{
+  "provider": "auto",
+  "cloud_preset": "deepseek",
+  "base_url": "https://api.deepseek.com/v1",
+  "model": "deepseek-chat",
+  "ollama_model": "gemma4:12b",
+  "ollama_base_url": "http://127.0.0.1:11434",
+  "pii_shield_enabled": true,
+  "api_key_set": false
+}

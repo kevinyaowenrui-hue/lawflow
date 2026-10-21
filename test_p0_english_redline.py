@@ -26,7 +26,7 @@ from gateway.utils.redline_builder import (
 )
 from gateway.utils.legal_prompts import is_predominantly_english
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
 
 def test_fuzzy_matching_and_non_destructive_redline():
@@ -129,7 +129,7 @@ Section 24.3 Cross-Default. In the event Buyer or any of its Affiliates defaults
 
 
 def test_export_redline_with_source_docx():
-    print("\n--- [P0.3 校验] export-redline 接口原生支持客户原文档原位注入 ---")
+    print("\n--- [P0.3 校验] export-redline 经 upload-source + source_file_id 原位注入 ---")
     
     with tempfile.TemporaryDirectory() as tmpdir:
         client_docx = os.path.join(tmpdir, "foreign_client_draft.docx")
@@ -138,12 +138,20 @@ def test_export_redline_with_source_docx():
         d.add_paragraph("Section 24.3 Cross-Default. In the event Buyer or any of its Affiliates defaults under any other agreement, Seller shall have the right to immediately terminate this Agreement without notice.")
         d.save(client_docx)
 
-        # 调取导出接口
+        # S-04：不再接受服务器路径，须先上传原件取得 source_file_id
+        with open(client_docx, "rb") as f_up:
+            up_resp = client.post(
+                "/api/v1/phase2/contract-review/upload-source",
+                files={"file": ("foreign_client_draft.docx", f_up, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            )
+        assert up_resp.status_code == 200, up_resp.text
+        source_file_id = up_resp.json()["source_file_id"]
+
         export_resp = client.post("/api/v1/phase2/contract-review/export-redline", json={
             "contract_title": "Master Purchase Agreement",
             "contract_text": "Section 24.3 Cross-Default...",
             "perspective": "Seller-Protective",
-            "source_docx_path": client_docx,
+            "source_file_id": source_file_id,
             "clause_reviews": [
                 {
                     "clause_title": "Cross-Default",
@@ -153,7 +161,7 @@ def test_export_redline_with_source_docx():
             ]
         })
 
-        assert export_resp.status_code == 200
+        assert export_resp.status_code == 200, export_resp.text
         exp_data = export_resp.json()
         assert exp_data["status"] == "success"
         assert exp_data["in_place_mode"] is True

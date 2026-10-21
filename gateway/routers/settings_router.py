@@ -11,7 +11,12 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from gateway.core.ollama_client import ollama_client, PROVIDER_PRESETS
+from gateway.core.ollama_client import (
+    ollama_client,
+    PROVIDER_PRESETS,
+    validate_cloud_base_url,
+    validate_ollama_base_url,
+)
 
 logger = logging.getLogger("lawflow.settings")
 router = APIRouter(prefix="/api/v1/settings", tags=["系统与模型引擎配置"])
@@ -33,6 +38,14 @@ class PIIScanReq(BaseModel):
     custom_entities: Optional[list] = Field(default=None, description="自定义实体清单")
 
 
+def _resolve_base_url(req: LLMConfigReq) -> str:
+    if req.base_url and req.base_url.strip():
+        return req.base_url.strip().rstrip("/")
+    if req.cloud_preset and req.cloud_preset in PROVIDER_PRESETS:
+        return PROVIDER_PRESETS[req.cloud_preset]["base_url"].rstrip("/")
+    return ""
+
+
 @router.get("/llm", summary="获取当前大模型引擎配置与健康状态")
 async def get_llm_settings():
     sanitized = ollama_client.get_sanitized_settings()
@@ -47,18 +60,52 @@ async def get_llm_settings():
 
 @router.post("/test-llm", summary="即时测试大模型连接可用性与网络延迟")
 async def test_llm_connection(req: LLMConfigReq):
+    base_url = _resolve_base_url(req)
+    ollama_url = (req.ollama_base_url or "http://127.0.0.1:11434").strip().rstrip("/")
+    provided_key = (req.api_key or "").strip()
+
+    # 校验 URL
+    if req.provider in ("cloud", "auto") and base_url and not base_url.startswith("http://127.") and "localhost" not in base_url:
+        # 云端地址走 https 白名单；本机 ollama 风格地址交由 ollama 校验
+        if PROVIDER_PRESETS.get(req.cloud_preset or "", {}).get("type") == "cloud" or (
+            req.provider == "cloud" or (provided_key or base_url)
+        ):
+            if base_url.startswith("https://") or base_url.startswith("http://"):
+                # 对明显云端 / 任意非本机地址做校验
+                host_is_local = False
+                try:
+                    from urllib.parse import urlparse
+                    h = (urlparse(base_url).hostname or "").lower()
+                    host_is_local = h in ("127.0.0.1", "localhost", "::1")
+                except Exception:
+                    host_is_local = False
+                if not host_is_local:
+                    validate_cloud_base_url(base_url)
+
+    if req.provider in ("ollama", "auto") or req.ollama_base_url:
+        validate_ollama_base_url(ollama_url)
+
+    saved_base = (ollama_client.settings.get("base_url") or "").rstrip("/")
+    if not provided_key:
+        # 不再无条件回落 Key：仅当 base_url 与已保存完全相同时允许使用已存 Key
+        if base_url and saved_base and base_url != saved_base:
+            raise HTTPException(
+                status_code=400,
+                detail="测试新的服务地址必须重新填写 API Key",
+            )
+        api_key = ollama_client.settings.get("api_key", "")
+    else:
+        api_key = provided_key
+
     test_cfg = {
         "provider": req.provider,
         "cloud_preset": req.cloud_preset,
-        "api_key": req.api_key.strip() if req.api_key else ollama_client.settings.get("api_key", ""),
-        "base_url": req.base_url.strip() if req.base_url else "",
+        "api_key": api_key,
+        "base_url": base_url,
         "model": req.model.strip() if req.model else "",
-        "ollama_base_url": req.ollama_base_url.strip() if req.ollama_base_url else "http://127.0.0.1:11434"
+        "ollama_base_url": ollama_url,
     }
 
-    # 若未提供 base_url 则根据 preset 填充
-    if not test_cfg["base_url"] and req.cloud_preset in PROVIDER_PRESETS:
-        test_cfg["base_url"] = PROVIDER_PRESETS[req.cloud_preset]["base_url"]
     if not test_cfg["model"] and req.cloud_preset in PROVIDER_PRESETS:
         test_cfg["model"] = PROVIDER_PRESETS[req.cloud_preset]["default_model"]
 
@@ -68,11 +115,27 @@ async def test_llm_connection(req: LLMConfigReq):
 
 @router.post("/llm", summary="保存大模型配置并即时热生效")
 async def save_llm_settings(req: LLMConfigReq):
+    ollama_url = (req.ollama_base_url or "http://127.0.0.1:11434").strip().rstrip("/")
+    validate_ollama_base_url(ollama_url)
+
+    base_url = ""
+    if req.base_url and req.base_url.strip():
+        base_url = req.base_url.strip().rstrip("/")
+    elif req.cloud_preset in PROVIDER_PRESETS:
+        base_url = PROVIDER_PRESETS[req.cloud_preset]["base_url"].rstrip("/")
+
+    # 云端 base_url 校验（非本机）
+    if base_url:
+        from urllib.parse import urlparse
+        h = (urlparse(base_url).hostname or "").lower()
+        if h not in ("127.0.0.1", "localhost", "::1"):
+            validate_cloud_base_url(base_url)
+
     new_cfg: Dict[str, Any] = {
         "provider": req.provider,
         "cloud_preset": req.cloud_preset,
         "ollama_model": req.ollama_model.strip() if req.ollama_model else "gemma4:12b",
-        "ollama_base_url": req.ollama_base_url.strip() if req.ollama_base_url else "http://127.0.0.1:11434"
+        "ollama_base_url": ollama_url,
     }
 
     if req.pii_shield_enabled is not None:
@@ -82,19 +145,15 @@ async def save_llm_settings(req: LLMConfigReq):
     if req.api_key and not req.api_key.startswith("****"):
         new_cfg["api_key"] = req.api_key.strip()
 
-    if req.base_url:
-        new_cfg["base_url"] = req.base_url.strip().rstrip("/")
-    elif req.cloud_preset in PROVIDER_PRESETS:
-        new_cfg["base_url"] = PROVIDER_PRESETS[req.cloud_preset]["base_url"]
+    if base_url:
+        new_cfg["base_url"] = base_url
 
     if req.model:
         new_cfg["model"] = req.model.strip()
     elif req.cloud_preset in PROVIDER_PRESETS:
         new_cfg["model"] = PROVIDER_PRESETS[req.cloud_preset]["default_model"]
 
-    # 持久化保存
     sanitized = ollama_client.save_settings(new_cfg)
-    # 重置探测缓存
     ollama_client._active_ollama_url = None
     health = await ollama_client.check_health()
 

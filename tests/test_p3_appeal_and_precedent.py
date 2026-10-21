@@ -21,7 +21,7 @@ from gateway.utils.appeal_and_precedent_engine import (
 )
 from gateway.utils.citation_guard import audit_case_numbers
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
 
 def test_first_instance_three_fatal_flaw_probes():

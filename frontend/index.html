@@ -4312,6 +4312,9 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
               <span>刷新指标</span>
             </button>
+            <button class="btn btn-secondary btn-sm" onclick="reseedStatutesCorpus()" title="强制重置并重新灌装权威法典语料">
+              <span>重载语料</span>
+            </button>
           </div>
         </div>
 
@@ -4945,6 +4948,32 @@
 
   <script>
     const API_BASE = "";
+    // S-01：从服务端注入的 meta 读取同源 API Token；统一包装 fetch 与下载链接
+    const LAWFLOW_TOKEN = (document.querySelector('meta[name="lawflow-token"]') || {}).content || "";
+    const _nativeFetch = window.fetch.bind(window);
+
+    function withDownloadToken(url) {
+      if (!url || typeof url !== 'string') return url;
+      if (url.indexOf('/api/documents/download/') === -1) return url;
+      if (!LAWFLOW_TOKEN) return url;
+      if (/[?&]token=/.test(url)) return url;
+      return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(LAWFLOW_TOKEN);
+    }
+
+    window.fetch = function lawflowFetch(input, init) {
+      const opts = init ? Object.assign({}, init) : {};
+      const headers = new Headers(opts.headers || (typeof input !== 'string' && input && input.headers) || {});
+      let url = typeof input === 'string' ? input : (input && input.url) ? input.url : '';
+      const isApi = (typeof url === 'string') && (url.indexOf('/api/') !== -1 || (API_BASE === '' && url.charAt(0) === '/' && url.indexOf('/api/') === 0) || (API_BASE && url.indexOf(API_BASE + '/api/') === 0) || (url.indexOf('/api/') >= 0));
+      // 同源 /api/ 请求自动附加鉴权头
+      if (LAWFLOW_TOKEN && typeof url === 'string' && url.indexOf('/api/') !== -1) {
+        if (!headers.has('X-LawFlow-Token')) {
+          headers.set('X-LawFlow-Token', LAWFLOW_TOKEN);
+        }
+      }
+      opts.headers = headers;
+      return _nativeFetch(input, opts);
+    };
 
     // =========================================================================
     // 0. 全局导航切换与时间初始化
@@ -5760,7 +5789,7 @@
         const d = await resp.json();
         resBox.innerHTML = `
           已成功合卷！总页数：${d.total_pages} 页 | 文件：${d.merged_pdf_filename}
-          <a href="${d.download_url}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载合卷 PDF</a>
+          <a href="${withDownloadToken(d.download_url)}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载合卷 PDF</a>
         `;
         document.getElementById('redact-pdf-name').value = d.merged_pdf_filename;
         showToast("证据合卷与贝茨编码完成");
@@ -5788,7 +5817,7 @@
         const d = await resp.json();
         resBox.innerHTML = `
           已完成脱敏涂黑！遮蔽条数：${d.redactions_count} 处 (${d.redacted_items.join('、')})
-          <a href="${d.download_url}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载脱敏 PDF</a>
+          <a href="${withDownloadToken(d.download_url)}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载脱敏 PDF</a>
         `;
         showToast("敏感信息合规脱敏涂黑成功");
       } catch (e) {
@@ -6099,7 +6128,7 @@
 
         if (d.status === 'success' && d.download_url) {
           const a = document.createElement('a');
-          a.href = d.download_url;
+          a.href = withDownloadToken(d.download_url);
           a.download = d.filename;
           document.body.appendChild(a);
           a.click();
@@ -6388,7 +6417,7 @@
         const res = await resp.json();
         if (res.download_url) {
           const a = document.createElement('a');
-          a.href = res.download_url;
+          a.href = withDownloadToken(res.download_url);
           a.download = res.filename || "contract_version_diff.docx";
           document.body.appendChild(a);
           a.click();
@@ -6634,7 +6663,7 @@
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
         
-        const downloadUrl = `${API_BASE}${data.download_url}`;
+        const downloadUrl = withDownloadToken(`${API_BASE}${data.download_url}`);
         const a = document.createElement('a');
         a.href = downloadUrl;
         a.download = data.filename;
@@ -7254,7 +7283,7 @@
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
         
-        const downloadUrl = `${API_BASE}${data.download_url}`;
+        const downloadUrl = withDownloadToken(`${API_BASE}${data.download_url}`);
         const a = document.createElement('a');
         a.href = downloadUrl;
         a.download = data.filename;
@@ -7615,6 +7644,28 @@
         }
       } catch (e) {
         console.warn("加载法规概览异常:", e);
+      }
+    }
+
+    async function reseedStatutesCorpus() {
+      if (!confirm('确认强制重置并重新灌装权威法典语料？此操作不可撤销。')) {
+        return;
+      }
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/statutes/reseed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirm: 'RESEED' })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          showToast('重载语料失败: ' + (data.detail || resp.status));
+          return;
+        }
+        showToast('法典语料已重新灌装');
+        await reloadStatutesCorpus();
+      } catch (e) {
+        showToast('重载语料异常: ' + e);
       }
     }
 
@@ -10518,15 +10569,23 @@
       }
     }
 
-    function exportReviewTableCsvUI() {
+    async function exportReviewTableCsvUI() {
       showToast("正在导出阅卷表 CSV...");
-      const link = document.createElement('a');
-      link.href = `${API_BASE}/api/v1/vault/review-tables/${activeReviewTableId}/export/csv`;
-      link.download = `review_table_${activeReviewTableId}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showToast("CSV 已触发下载");
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/vault/review-tables/${activeReviewTableId}/export/csv`);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const blob = await resp.blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `review_table_${activeReviewTableId}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        showToast("CSV 已触发下载");
+      } catch (e) {
+        showToast("CSV 导出失败: " + e);
+      }
     }
 
     function openAddReviewColumnModal() {
@@ -12034,7 +12093,7 @@
             desc.innerHTML = `已生成成品文件：<strong>${res.output_filename}</strong>${pageInfo} · 大小: ${sizeKb} KB。可立即下载或直接联动诉讼流水线！`;
           }
           if (dlBtn && res.download_url) {
-            dlBtn.href = res.download_url;
+            dlBtn.href = withDownloadToken(res.download_url);
             dlBtn.download = res.output_filename;
           }
         }

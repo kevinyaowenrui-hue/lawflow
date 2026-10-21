@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from gateway.main import app
 from gateway.utils.matter_vault_db import init_matter_vault_db
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
 def run_all_tests():
     print("=" * 70)
@@ -36,9 +36,11 @@ def run_all_tests():
     resp = client.get("/health")
     assert resp.status_code == 200, f"Health check failed: {resp.text}"
     health_data = resp.json()
-    assert health_data.get("features", {}).get("matter_vault") is True, "matter_vault flag is not True"
-    assert health_data.get("features", {}).get("workflow_state_machine") is True, "workflow_state_machine flag is not True"
-    print("  ✓ /health 校验通过: matter_vault=True, workflow_state_machine=True")
+    assert health_data.get("status") == "healthy", "health status is not healthy"
+    # 功能开关改由业务接口探测（健康检查仅返回最小信息）
+    matters = client.get("/api/v1/vault/matters")
+    assert matters.status_code == 200, f"matter_vault 不可用: {matters.text}"
+    print("  ✓ /health 与 matter_vault 校验通过")
 
     # 1. 案件独立空间 (Matter Vault) CRUD & 文档挂载测试
     print("\n[Step 1] 验证案件独立空间 (Matter Vault) CRUD 与材料挂载...")

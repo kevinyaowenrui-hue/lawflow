@@ -18,7 +18,7 @@ from gateway.main import app
 from gateway.utils.cn_legal_calc import calculate_settlement_npv_and_recovery
 from gateway.utils.matter_vault_db import get_matter_by_id
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
 
 def test_settlement_npv_installments_pure():

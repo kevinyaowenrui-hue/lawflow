@@ -26,7 +26,7 @@ def run_batch3_tests():
     print(">>> 启动 LawFlow 第三批功能端到端实证自动化测试 <<<")
     print("=" * 70)
 
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
     # --------------------------------------------------------------------------
     # 0. 健康检查校验
@@ -35,11 +35,9 @@ def run_batch3_tests():
     resp = client.get("/health")
     assert resp.status_code == 200, f"健康检查失败: {resp.text}"
     health_data = resp.json()
-    features = health_data.get("features", {})
-    assert features.get("review_tables") is True, "review_tables 未在网关生命周期中就绪"
-    assert features.get("version_comparator") is True, "version_comparator 未在网关生命周期中就绪"
-    assert features.get("source_grounding") is True, "source_grounding 未在网关生命周期中就绪"
-    print(f" -> 健康检查通过: {health_data['system']} (Port: {health_data['gateway_port']})")
+    assert health_data.get("status") == "healthy", "健康检查未返回 healthy"
+    # 健康检查仅返回最小信息；第三批能力改由业务接口探测
+    print(f" -> 健康检查通过: status={health_data.get('status')}")
 
     # --------------------------------------------------------------------------
     # 1. 批量阅卷表 (Review Tables) 基础能力与数据网格

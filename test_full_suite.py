@@ -5,6 +5,7 @@ import httpx
 import pymupdf as fitz
 
 BASE_URL = os.getenv("GATEWAY_URL", "http://127.0.0.1:5221")
+API_TOKEN = os.getenv("LAWFLOW_API_TOKEN", "")
 
 def log_test(name, success, detail=""):
     mark = "PASS" if success else "FAIL"
@@ -13,18 +14,19 @@ def log_test(name, success, detail=""):
 
 def run_tests():
     print("=== 开始 LawFlow 智律工作台全系统端到端实证验证 (含核心深度要件事实推演) ===")
-    client = httpx.Client(base_url=BASE_URL, timeout=120.0)
+    headers = {}
+    if API_TOKEN:
+        headers["X-LawFlow-Token"] = API_TOKEN
+    client = httpx.Client(base_url=BASE_URL, timeout=120.0, headers=headers)
 
-    # 1. Health check
+    # 1. Health check（最小信息）
     res = client.get("/health")
     assert res.status_code == 200, f"Health check failed: {res.text}"
     health_data = res.json()
-    ollama_info = health_data.get("ollama", {})
-    ollama_ok = ollama_info.get("status") in ["healthy", "fallback", "ready"] or ollama_info.get("model_ready") is True
     log_test(
         "网关探针健康检查 GET /health",
-        health_data.get("status") == "healthy" and ollama_ok,
-        f"引擎状态: {ollama_info.get('status')} | 模型: {ollama_info.get('target_model')} (Ready: {ollama_info.get('model_ready')})"
+        health_data.get("status") == "healthy",
+        f"status={health_data.get('status')}"
     )
 
     # ==========================================

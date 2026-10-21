@@ -28,6 +28,17 @@ except Exception:
     pass
 
 from gateway.core.ollama_client import ollama_client
+from gateway.core.security import (
+    assert_allowed_extension,
+    extension_of,
+    max_upload_total_bytes,
+    read_upload_bounded,
+    safe_join,
+    sanitize_filename,
+    storage_name,
+    validate_magic_bytes,
+    validate_plain_filename,
+)
 from gateway.utils.ocr_engine import extract_evidence_text, structure_evidence_text
 from gateway.utils.legal_prompts import (
     TRIAL_OUTLINE_FIVE_MODULES_PROMPT,
@@ -103,7 +114,8 @@ class ExportRedlineReq(BaseModel):
     overall_risk_level: Optional[str] = Field(default="中")
     review_summary: Optional[str] = Field(default="")
     playbook_compliance_score: Optional[int] = Field(default=85)
-    source_docx_path: Optional[str] = Field(default=None, description="客户原始 .docx 文件路径，若提供则原位注入修订")
+    source_docx_path: Optional[str] = Field(default=None, description="已废弃：不再接受服务器路径")
+    source_file_id: Optional[str] = Field(default=None, description="先经 upload-source 返回的文件 ID")
 
 class AutoEvidenceCatalogReq(BaseModel):
     cause_of_action: str = Field(..., example="民间借贷纠纷")
@@ -123,6 +135,9 @@ class RedactSensitiveReq(BaseModel):
 # ==============================================================================
 # 1. 证据合卷与贝茨编码流水线 (POST /api/v1/phase2/process-evidence)
 # ==============================================================================
+_EVIDENCE_UPLOAD_EXTS = [".pdf", ".png", ".jpg", ".jpeg", ".heic", ".webp", ".bmp", ".heif", ".tiff", ".tif"]
+
+
 @router.post("/api/v1/phase2/process-evidence", summary="证据材料 A4 PDF 自动合卷与贝茨编码流水线")
 async def process_evidence_bates_stamping(
     files: List[UploadFile] = File(...),
@@ -137,12 +152,19 @@ async def process_evidence_bates_stamping(
     timestamp = int(time.time())
     merged_doc = fitz.open()
     total_pages = 0
+    batch_total = 0
+    batch_cap = max_upload_total_bytes()
 
     for idx, f in enumerate(files, 1):
-        ext = os.path.splitext(f.filename)[1].lower()
-        temp_path = os.path.join(UPLOADS_DIR, f"temp_{timestamp}_{idx}_{f.filename}")
+        ext = assert_allowed_extension(f.filename, _EVIDENCE_UPLOAD_EXTS)
+        raw = await read_upload_bounded(f)
+        batch_total += len(raw)
+        if batch_total > batch_cap:
+            raise HTTPException(status_code=413, detail="单次上传总量超过上限")
+        validate_magic_bytes(raw, ext)
+        temp_path = safe_join(UPLOADS_DIR, storage_name(ext))
         with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(f.file, buffer)
+            buffer.write(raw)
 
         if ext == ".pdf":
             # PDF 文件合并并打码
@@ -226,11 +248,18 @@ async def redact_sensitive_information(req: RedactSensitiveReq):
     """
     一键对 PDF 中的 18 位身份证号码与银行卡号进行物理脱敏涂黑 (PyMuPDF Redaction)
     """
-    # 查找文件
-    input_path = os.path.join(STORAGE_DIR, req.pdf_filename)
-    if not os.path.exists(input_path):
-        input_path = os.path.join(UPLOADS_DIR, req.pdf_filename)
-    if not os.path.exists(input_path):
+    # 仅接受纯文件名，在 STORAGE_DIR / UPLOADS_DIR 内 safe_join 查找
+    plain_name = validate_plain_filename(req.pdf_filename)
+    input_path = None
+    for base in (STORAGE_DIR, UPLOADS_DIR):
+        try:
+            candidate = safe_join(base, plain_name)
+        except HTTPException:
+            continue
+        if os.path.exists(candidate):
+            input_path = candidate
+            break
+    if not input_path:
         raise HTTPException(status_code=404, detail="指定的 PDF 文件不存在")
 
     doc = fitz.open(input_path)
@@ -597,13 +626,37 @@ Please output the risk assessment, playbook deviation, and redline modifications
         }
 
 
+@router.post("/api/v1/phase2/contract-review/upload-source", summary="上传合同原件 .docx（返回 source_file_id，供 export-redline 使用）")
+async def upload_contract_source_docx(file: UploadFile = File(...)):
+    ext = assert_allowed_extension(file.filename, [".docx"])
+    raw = await read_upload_bounded(file)
+    validate_magic_bytes(raw, ext)
+    stored = storage_name(".docx")
+    dest = safe_join(UPLOADS_DIR, stored)
+    with open(dest, "wb") as buf:
+        buf.write(raw)
+    source_file_id = os.path.splitext(stored)[0]
+    return {
+        "status": "success",
+        "source_file_id": source_file_id,
+        "original_filename": file.filename,
+        "stored_name": stored,
+    }
+
+
 @router.post("/api/v1/phase2/contract-review/export-redline", summary="导出带 Word 原生修订模式 (Track Changes) 的 .docx 合同审阅底稿")
 async def export_redline_contract_docx(req: ExportRedlineReq):
     """
     一键生成带有 Microsoft Word 原生修订模式（<w:ins> / <w:del> 标签）、三栏修订卡片与
     Playbook 偏离度清单的完整审阅底稿 .docx，支持在 Word 中直接点击“接受所有修订”。
-    若提供 source_docx_path，则直接在客户原文档中原位注入修订，100%保留样式与表格排版。
+    若提供 source_file_id，则在已上传原文档中原位注入修订。
     """
+    if req.source_docx_path:
+        raise HTTPException(
+            status_code=400,
+            detail="不再接受服务器路径，请先上传原文档",
+        )
+
     clause_reviews = req.clause_reviews
     overall_risk = req.overall_risk_level or "中"
     review_summary = req.review_summary or ""
@@ -629,13 +682,27 @@ async def export_redline_contract_docx(req: ExportRedlineReq):
         compliance_score = review_resp["review"].get("playbook_compliance_score", 85)
 
     timestamp = int(time.time())
-    safe_title = re.sub(r'[\/:*?"<>|]', '_', req.contract_title)[:30]
+    safe_title = sanitize_filename(req.contract_title, default="合同")[:30]
     filename = f"合同红线修订稿_{safe_title}_{timestamp}.docx"
-    output_path = os.path.join(STORAGE_DIR, filename)
+    output_path = safe_join(STORAGE_DIR, filename)
 
-    if req.source_docx_path and os.path.exists(req.source_docx_path):
+    if req.source_file_id:
+        fid = validate_plain_filename(req.source_file_id)
+        # 允许带或不带 .docx 后缀的 id
+        candidates = [f"{fid}.docx", fid] if not fid.lower().endswith(".docx") else [fid]
+        source_path = None
+        for name in candidates:
+            try:
+                cand = safe_join(UPLOADS_DIR, name)
+            except HTTPException:
+                continue
+            if os.path.exists(cand):
+                source_path = cand
+                break
+        if not source_path:
+            raise HTTPException(status_code=404, detail="source_file_id 对应文件不存在，请先上传原文档")
         redline_res = apply_in_place_docx_redline(
-            source_docx_path=req.source_docx_path,
+            source_docx_path=source_path,
             clause_reviews=clause_reviews,
             output_path=output_path
         )

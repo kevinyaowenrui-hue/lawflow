@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import asyncio
+import uuid
 from datetime import datetime
 
 # 适配 Windows 控制台输出编码
@@ -42,7 +43,7 @@ from gateway.utils.review_table_engine import (
 )
 from gateway.routers.phase3_rag_sign import api_rag_search, RAGSearchReq
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
 def test_priority1_citation_guard_and_calc():
     print("\n--- [P1 校验] 权威法典上限映射与起诉状精算修复 ---")
@@ -110,6 +111,7 @@ def test_priority2_ocr_and_direct_upload():
         # 3. 测试通过 API 接口直接上传案卷原始文件
         # 先创建一个临时案件
         m_resp = client.post("/api/v1/vault/matters", json={
+            "matter_id": f"MATTER-T5-{uuid.uuid4().hex[:12]}",
             "title": "测试多格式上传案件",
             "cause_of_action": "民间借贷纠纷",
             "client_role": "原告"
@@ -148,10 +150,12 @@ def test_priority3_context_and_grounding():
     # 2. 验证原文穿透核验接口不指鹿为马
     # 查找不存在的材料时必须返回 found: False
     m_resp = client.post("/api/v1/vault/matters", json={
+        "matter_id": f"MATTER-T5-{uuid.uuid4().hex[:12]}",
         "title": "测试穿透定位案件",
         "cause_of_action": "买卖合同纠纷",
         "client_role": "原告"
     })
+    assert m_resp.status_code == 200, m_resp.text
     matter_id = m_resp.json()["matter"]["matter_id"]
     
     g_resp = client.get(f"/api/v1/vault/matters/{matter_id}/grounding/excerpt?doc_title=绝不存在的材料名&page_no=1")

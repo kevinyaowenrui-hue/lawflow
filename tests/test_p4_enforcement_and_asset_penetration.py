@@ -19,7 +19,7 @@ from gateway.utils.enforcement_and_asset_engine import (
 )
 from gateway.utils.citation_guard import audit_case_numbers
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-LawFlow-Token": os.environ.get("LAWFLOW_API_TOKEN", "test-token")})
 
 
 def test_four_piercing_probes_precision():

@@ -12,14 +12,35 @@ import json
 import re
 import time
 import logging
+import stat
+from pathlib import Path
 from typing import Dict, Any, List, Optional
+from urllib.parse import urlparse
 import httpx
 from gateway.utils.pii_sanitizer import pii_sanitizer
 
 logger = logging.getLogger("lawflow.llm")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SETTINGS_FILE = os.path.join(BASE_DIR, "storage", "llm_settings.json")
+LEGACY_SETTINGS_FILE = os.path.join(BASE_DIR, "storage", "llm_settings.json")
+
+
+def _default_lawflow_dir() -> str:
+    return os.path.join(os.path.expanduser("~"), ".lawflow")
+
+
+def get_settings_file() -> str:
+    return os.getenv("LAWFLOW_SETTINGS_FILE") or os.path.join(_default_lawflow_dir(), "llm_settings.json")
+
+
+def get_secrets_file() -> str:
+    # 密钥固定落在用户目录 ~/.lawflow/secrets.json（测试可通过 HOME/USERPROFILE 重定向）
+    return os.path.join(_default_lawflow_dir(), "secrets.json")
+
+
+# 兼容旧常量名（测试与其它模块可能引用）
+SETTINGS_FILE = get_settings_file()
+SECRETS_FILE = get_secrets_file()
 
 # 预设云端与本地大模型提供商清单
 PROVIDER_PRESETS = {
@@ -68,6 +89,45 @@ PROVIDER_PRESETS = {
 }
 
 
+def cloud_host_allowlist() -> set:
+    hosts = set()
+    for preset in PROVIDER_PRESETS.values():
+        if preset.get("type") == "cloud":
+            host = urlparse(preset.get("base_url", "")).hostname
+            if host:
+                hosts.add(host.lower())
+    extra = os.getenv("LAWFLOW_LLM_HOST_ALLOWLIST", "")
+    for h in extra.split(","):
+        h = h.strip().lower()
+        if h:
+            hosts.add(h)
+    return hosts
+
+
+def validate_cloud_base_url(base_url: str) -> None:
+    """云端 base_url 必须 https，且主机名在预设或白名单内。"""
+    from fastapi import HTTPException
+
+    parsed = urlparse((base_url or "").strip())
+    if parsed.scheme != "https":
+        raise HTTPException(status_code=422, detail="云端 base_url 必须使用 https")
+    host = (parsed.hostname or "").lower()
+    if not host or host not in cloud_host_allowlist():
+        raise HTTPException(status_code=422, detail=f"base_url 主机名不在允许列表: {host}")
+
+
+def validate_ollama_base_url(ollama_base_url: str) -> None:
+    """ollama_base_url 默认仅允许本机环回，除非 LAWFLOW_ALLOW_REMOTE_OLLAMA=1。"""
+    from fastapi import HTTPException
+
+    if os.getenv("LAWFLOW_ALLOW_REMOTE_OLLAMA", "").strip() == "1":
+        return
+    parsed = urlparse((ollama_base_url or "").strip())
+    host = (parsed.hostname or "").lower()
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        raise HTTPException(status_code=422, detail="ollama_base_url 仅允许 127.0.0.1 / localhost / ::1")
+
+
 class UniversalLLMClient:
     """
     通用大模型网关客户端：双模自适应（本地 Ollama / 云端 OpenAI 兼容 API）+ 规则兜底
@@ -80,27 +140,105 @@ class UniversalLLMClient:
     def pii_shield_enabled(self) -> bool:
         return self.settings.get("pii_shield_enabled", True)
 
+    def _load_secret_key(self) -> str:
+        env_key = os.getenv("LLM_API_KEY", "").strip()
+        if env_key:
+            return env_key
+        secrets_path = get_secrets_file()
+        if os.path.exists(secrets_path):
+            try:
+                with open(secrets_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return (data.get("api_key") or "").strip()
+            except Exception as e:
+                logger.warning(f"读取 secrets.json 失败: {e}")
+        return ""
+
+    def _write_secret_key(self, api_key: str) -> None:
+        secrets_path = get_secrets_file()
+        os.makedirs(os.path.dirname(secrets_path), exist_ok=True)
+        payload = {"api_key": api_key}
+        with open(secrets_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        try:
+            os.chmod(secrets_path, stat.S_IRUSR | stat.S_IWUSR)
+        except Exception as e:
+            logger.warning(f"无法将 secrets.json 权限设为 0600（Windows 下尽力而为）: {e}")
+
+    def _persist_non_secret_settings(self) -> None:
+        settings_path = get_settings_file()
+        os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+        public = {k: v for k, v in self.settings.items() if k != "api_key"}
+        public["api_key_set"] = bool((self.settings.get("api_key") or "").strip())
+        with open(settings_path, "w", encoding="utf-8") as f:
+            json.dump(public, f, ensure_ascii=False, indent=2)
+
+    def migrate_legacy_settings_if_needed(self) -> None:
+        """启动时：若仓库内仍有旧 storage/llm_settings.json，迁移到 ~/.lawflow 并提示删除旧文件。"""
+        if not os.path.exists(LEGACY_SETTINGS_FILE):
+            return
+        try:
+            with open(LEGACY_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                legacy = json.load(f)
+        except Exception as e:
+            logger.warning(f"读取旧配置失败，跳过迁移: {e}")
+            return
+
+        settings_path = get_settings_file()
+        already = os.path.exists(settings_path)
+        legacy_key = (legacy.get("api_key") or "").strip()
+        non_secret = {k: v for k, v in legacy.items() if k != "api_key"}
+        if legacy_key and not self._load_secret_key():
+            self._write_secret_key(legacy_key)
+            self.settings["api_key"] = legacy_key
+        if not already:
+            self.settings.update(non_secret)
+            if legacy_key:
+                self.settings["api_key"] = legacy_key
+            self._persist_non_secret_settings()
+        logger.warning(
+            "检测到仓库目录内旧配置 storage/llm_settings.json 已迁移至用户目录；"
+            "旧配置文件位于仓库目录，请删除（本程序不会自动删除）。"
+        )
+
     def _load_settings(self) -> Dict[str, Any]:
-        """优先从 storage/llm_settings.json 读取动态配置，其次读取环境变量 .env"""
+        """优先读 ~/.lawflow/llm_settings.json + secrets / 环境变量 LLM_API_KEY。"""
         config = {
             "provider": os.getenv("LLM_PROVIDER", "auto"),  # "auto" | "cloud" | "ollama" | "rule_engine"
             "cloud_preset": os.getenv("LLM_CLOUD_PRESET", "deepseek"),
-            "api_key": os.getenv("LLM_API_KEY", ""),
+            "api_key": "",
             "base_url": os.getenv("LLM_BASE_URL", "").rstrip("/"),
             "model": os.getenv("LLM_CLOUD_MODEL", "deepseek-chat"),
             "ollama_model": os.getenv("LLM_MODEL", "gemma4:12b"),
             "ollama_base_url": os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/"),
             "fallback_ollama_url": os.getenv("HOST_OLLAMA_URL", "http://host.docker.internal:11434").rstrip("/"),
-            "pii_shield_enabled": True
+            "pii_shield_enabled": True,
+            "api_key_set": False,
         }
 
-        if os.path.exists(SETTINGS_FILE):
+        settings_path = get_settings_file()
+        if os.path.exists(settings_path):
             try:
-                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                with open(settings_path, "r", encoding="utf-8") as f:
                     file_cfg = json.load(f)
+                    file_cfg.pop("api_key", None)  # 配置文件不得含明文 Key
                     config.update(file_cfg)
             except Exception as e:
                 logger.warning(f"读取 settings.json 失败，使用环境变量配置: {e}")
+
+        try:
+            key = os.getenv("LLM_API_KEY", "").strip()
+            if not key:
+                secrets_path = get_secrets_file()
+                if os.path.exists(secrets_path):
+                    with open(secrets_path, "r", encoding="utf-8") as f:
+                        key = (json.load(f).get("api_key") or "").strip()
+            config["api_key"] = key
+        except Exception as e:
+            logger.warning(f"加载 API Key 失败: {e}")
+            config["api_key"] = ""
+
+        config["api_key_set"] = bool(config["api_key"])
 
         # 如果没有配置 base_url 且指定了 preset，自动套用 preset
         if not config.get("base_url"):
@@ -113,19 +251,22 @@ class UniversalLLMClient:
         return config
 
     def save_settings(self, new_settings: Dict[str, Any]) -> Dict[str, Any]:
-        """保存并持久化设置"""
+        """保存非敏感配置到 ~/.lawflow/llm_settings.json；Key 写入 secrets.json。"""
+        incoming_key = new_settings.pop("api_key", None)
         self.settings.update(new_settings)
-        os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+        if incoming_key is not None and str(incoming_key).strip():
+            key = str(incoming_key).strip()
+            self.settings["api_key"] = key
+            self._write_secret_key(key)
         try:
-            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.settings, f, ensure_ascii=False, indent=2)
-            logger.info("LLM 配置已成功持久化至 storage/llm_settings.json")
+            self._persist_non_secret_settings()
+            logger.info(f"LLM 配置已持久化至 {get_settings_file()}（密钥分存 secrets.json）")
         except Exception as e:
             logger.error(f"保存 LLM 配置失败: {e}")
         return self.get_sanitized_settings()
 
     def get_sanitized_settings(self) -> Dict[str, Any]:
-        """获取脱敏配置信息供前端展示"""
+        """获取脱敏配置信息供前端展示（永不返回明文 Key）。"""
         raw_key = self.settings.get("api_key", "")
         masked_key = ""
         if raw_key:
@@ -137,7 +278,8 @@ class UniversalLLMClient:
         return {
             "provider": self.settings.get("provider", "auto"),
             "cloud_preset": self.settings.get("cloud_preset", "deepseek"),
-            "has_api_key": bool(raw_key.strip()),
+            "has_api_key": bool(str(raw_key).strip()),
+            "api_key_set": bool(str(raw_key).strip()),
             "api_key_masked": masked_key,
             "base_url": self.settings.get("base_url", ""),
             "model": self.settings.get("model", "deepseek-chat"),

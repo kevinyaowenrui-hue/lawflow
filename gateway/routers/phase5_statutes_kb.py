@@ -11,7 +11,7 @@ LawFlow 智律工作台 - 阶段五：权威法典与子母法图谱检索中枢
 
 import logging
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from gateway.utils.statute_db import (
@@ -238,8 +238,14 @@ async def create_link(req: LinkCreationRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class ReseedReq(BaseModel):
+    confirm: Optional[str] = Field(default=None, description='必须为字面量 "RESEED"')
+
+
 @router.post("/reseed", summary="强制重置并重新灌装权威核心法典全集")
-async def reseed_database():
+async def reseed_database(req: ReseedReq = Body(default_factory=ReseedReq)):
+    if req.confirm != "RESEED":
+        raise HTTPException(status_code=400, detail='必须提交 {"confirm":"RESEED"} 才能重载语料')
     try:
         init_statute_database(force_reseed=True)
         stats = get_statute_database_stats()

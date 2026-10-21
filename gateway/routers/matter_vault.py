@@ -17,6 +17,13 @@ from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, Field
 
 from gateway.utils.ocr_engine import extract_evidence_text
+from gateway.core.security import (
+    assert_allowed_extension,
+    read_upload_bounded,
+    safe_join,
+    storage_name,
+    validate_magic_bytes,
+)
 
 from gateway.utils.matter_vault_db import (
     list_all_matters,
@@ -230,12 +237,15 @@ async def api_upload_mount_document(
     uploads_dir = os.path.join(base_dir, "storage", "uploads")
     os.makedirs(uploads_dir, exist_ok=True)
 
-    timestamp = int(time.time())
-    safe_filename = f"{timestamp}_{file.filename}"
-    saved_path = os.path.join(uploads_dir, safe_filename)
+    allowed = [".pdf", ".docx", ".png", ".jpg", ".jpeg", ".heic", ".csv", ".xlsx", ".txt"]
+    ext = assert_allowed_extension(file.filename, allowed)
+    raw = await read_upload_bounded(file)
+    validate_magic_bytes(raw, ext)
+    stored = storage_name(ext)
+    saved_path = safe_join(uploads_dir, stored)
 
     with open(saved_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(raw)
 
     file_size = os.path.getsize(saved_path)
     # 调用统一 OCR 与文档文本提取引擎
@@ -251,6 +261,7 @@ async def api_upload_mount_document(
         "content_text": extracted_text,
         "metadata": {
             "original_filename": file.filename,
+            "stored_name": stored,
             "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "extracted_chars": len(extracted_text)
         }

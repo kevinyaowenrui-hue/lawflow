@@ -14,8 +14,20 @@ import shutil
 import subprocess
 import logging
 import time
+import uuid
 from typing import List, Dict, Any, Optional
 from PIL import Image, ImageOps
+
+
+class AudioConversionUnavailable(Exception):
+    """未安装 pydub/ffmpeg 时抛出，路由映射为 HTTP 501。"""
+
+
+def _transcode_output_name(base_name: str, ext: str) -> str:
+    """输出文件名：可读前缀 + uuid，避免同一秒覆盖。"""
+    safe_base = (base_name or "file").strip() or "file"
+    e = ext.lstrip(".").lower()
+    return f"{safe_base}_转码_{uuid.uuid4().hex[:8]}.{e}"
 
 # 注册 HEIC/HEIF 解码支持
 try:
@@ -79,17 +91,51 @@ def find_filee_executable() -> Optional[str]:
     return None
 
 
+def _pydub_available() -> bool:
+    try:
+        import pydub  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def _pandas_available() -> bool:
+    try:
+        import pandas  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 def get_converter_status() -> Dict[str, Any]:
-    """获取当前转码系统的引擎状态与支持格式"""
+    """获取当前转码系统的引擎状态与实际可用格式（按依赖探测动态生成）"""
     filee_exe = find_filee_executable()
     has_filee = filee_exe is not None
+    has_pydub = _pydub_available()
+    has_pandas = _pandas_available()
 
-    native_inputs = [
-        "HEIC", "HEIF", "JPG", "JPEG", "PNG", "WEBP", "BMP", "TIFF", "GIF",
-        "PDF", "DOCX", "CSV", "XLSX", "TXT", "MD",
-        "M4A", "MP3", "WAV", "AAC", "AMR"
+    native_inputs = ["JPG", "JPEG", "PNG", "WEBP", "BMP", "TIFF", "GIF", "PDF", "DOCX", "TXT", "MD"]
+    if HEIF_SUPPORTED:
+        native_inputs = ["HEIC", "HEIF"] + native_inputs
+    if has_pandas:
+        native_inputs.extend(["CSV", "XLSX"])
+    if has_pydub:
+        native_inputs.extend(["M4A", "MP3", "WAV", "AAC", "AMR"])
+
+    native_outputs = ["PDF", "JPG", "PNG", "WEBP", "TXT"]
+    if has_pydub:
+        native_outputs.extend(["WAV", "MP3"])
+
+    presets = [
+        {"id": "heic_to_pdf", "label": "手机照片(HEIC/TIFF) -> 法院立案PDF", "target": "pdf"},
+        {"id": "multi_to_bates_pdf", "label": "多证据图批量合卷 (标准A4+加盖贝茨码)", "target": "pdf"},
+        {"id": "txt_to_pdf", "label": "纯文本(TXT/MD) -> 法院A4 PDF", "target": "pdf"},
+        {"id": "pdf_to_images", "label": "证据PDF各页一键拆解为高清图片", "target": "png"},
     ]
-    native_outputs = ["PDF", "JPG", "PNG", "WEBP", "TXT", "WAV", "MP3"]
+    if has_pandas:
+        presets.append({"id": "table_to_court_pdf", "label": "银行流水(CSV/XLSX) -> 证据对照表格PDF", "target": "pdf"})
+    if has_pydub:
+        presets.append({"id": "audio_to_court_mp3", "label": "谈话录音(M4A/AMR) -> 司法标准MP3", "target": "mp3"})
 
     return {
         "filee_installed": has_filee,
@@ -97,17 +143,12 @@ def get_converter_status() -> Dict[str, Any]:
         "engine_mode": "filee_accelerated" if has_filee else "native_legal",
         "engine_label": "Filee 离线全格式引擎 (244+ 格式)" if has_filee else "LawFlow 司法内置快速转码引擎",
         "heif_supported": HEIF_SUPPORTED,
+        "pydub_available": has_pydub,
         "tools_filee_dir": _tools_filee_dir(),
         "supported_inputs": native_inputs + (["180+ 工业/CAD/HWP/音视频 (Filee已解锁)"] if has_filee else []),
         "supported_outputs": native_outputs,
-        "quick_presets": [
-            {"id": "heic_to_pdf", "label": "手机照片(HEIC/TIFF) -> 法院立案PDF", "target": "pdf"},
-            {"id": "multi_to_bates_pdf", "label": "多证据图批量合卷 (标准A4+加盖贝茨码)", "target": "pdf"},
-            {"id": "audio_to_court_mp3", "label": "谈话录音(M4A/AMR) -> 司法标准MP3", "target": "mp3"},
-            {"id": "table_to_court_pdf", "label": "银行流水(CSV/XLSX) -> 证据对照表格PDF", "target": "pdf"},
-            {"id": "pdf_to_images", "label": "证据PDF各页一键拆解为高清图片", "target": "png"}
-        ],
-        "setup_guide": "若需转换涉外HWP、工程CAD或生僻音视频，可将 Filee.exe 绿色版解压放入 tools/filee 目录即可无缝增强。"
+        "quick_presets": presets,
+        "setup_guide": "若需转换涉外HWP、工程CAD或生僻音视频，可将 Filee.exe 绿色版解压放入 tools/filee 目录即可无缝增强。音频转换另需 pydub 与 ffmpeg（见 requirements-optional.txt）。"
     }
 
 
@@ -134,7 +175,7 @@ def convert_images_to_court_pdf(
                 w, h = img.size
 
                 # 临时保存为标准 RGB PNG，供 PyMuPDF 嵌入
-                temp_png = os.path.join(str(get_uploads_dir()), f"temp_trans_{int(time.time())}_{idx}.png")
+                temp_png = os.path.join(str(get_uploads_dir()), f"temp_trans_{uuid.uuid4().hex[:8]}_{idx}.png")
                 # 若为 RGBA 或包含透明通道，合成白色底色
                 if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
                     bg = Image.new("RGB", img.size, (255, 255, 255))
@@ -201,13 +242,13 @@ def convert_pdf_to_images(pdf_path: str, output_prefix: str, fmt: str = "png") -
     """将 PDF 每页渲染为高清晰度法庭质证图片"""
     doc = fitz.open(pdf_path)
     generated_files = []
-    timestamp = int(time.time())
+    batch_tag = uuid.uuid4().hex[:8]
 
     for pno in range(len(doc)):
         page = doc[pno]
         # 150 DPI 高清渲染（适合法律文书文字阅读，防卡死）
         pix = page.get_pixmap(dpi=150)
-        out_name = f"{output_prefix}_page_{pno + 1}_{timestamp}.{fmt}"
+        out_name = f"{output_prefix}_page_{pno + 1}_{batch_tag}.{fmt}"
         out_path = os.path.join(str(get_generated_dir()), out_name)
         pix.save(out_path)
         generated_files.append({
@@ -224,6 +265,33 @@ def convert_pdf_to_images(pdf_path: str, output_prefix: str, fmt: str = "png") -
         "files": generated_files,
         "target_format": fmt,
         "engine": "native_legal"
+    }
+
+
+def convert_txt_to_court_pdf(txt_path: str, output_filename: str) -> Dict[str, Any]:
+    """将 TXT/MD 纯文本按行分页写入法院 A4 PDF（复用批次7分页逻辑思想）。"""
+    try:
+        with open(txt_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        with open(txt_path, "r", encoding="gbk", errors="replace") as f:
+            content = f.read()
+
+    paragraphs = content.splitlines() or [content or "（空文本）"]
+    # 复用 phase1 分页渲染
+    from gateway.routers.phase1_litigation import _pymupdf_paginated_render
+
+    out_path = os.path.join(str(get_generated_dir()), output_filename)
+    ok = _pymupdf_paginated_render(paragraphs, out_path)
+    if not ok:
+        raise RuntimeError("TXT 转 PDF 失败")
+    return {
+        "status": "success",
+        "output_filename": output_filename,
+        "download_url": f"/api/documents/download/{output_filename}",
+        "file_size": os.path.getsize(out_path),
+        "target_format": "pdf",
+        "engine": "native_legal",
     }
 
 
@@ -342,19 +410,26 @@ def convert_file_unified(
     target_format = target_format.lower().strip().replace(".", "")
     src_ext = os.path.splitext(file_path)[1].lower().replace(".", "")
     base_name = os.path.splitext(os.path.basename(file_path))[0]
-    timestamp = int(time.time())
-    out_filename = f"{base_name}_转码_{timestamp}.{target_format}"
+    out_filename = _transcode_output_name(base_name, target_format)
 
     # 1. 尝试优先使用 Filee CLI
     filee_exe = find_filee_executable()
     if filee_exe:
         filee_out = execute_filee_cli_conversion(file_path, target_format, str(get_generated_dir()))
         if filee_out and os.path.exists(filee_out):
-            out_base = os.path.basename(filee_out)
+            # 重命名为带 uuid 的规范文件名，避免覆盖
+            dest_name = _transcode_output_name(base_name, target_format)
+            dest_path = os.path.join(str(get_generated_dir()), dest_name)
+            if os.path.abspath(filee_out) != os.path.abspath(dest_path):
+                try:
+                    shutil.move(filee_out, dest_path)
+                    filee_out = dest_path
+                except Exception:
+                    dest_name = os.path.basename(filee_out)
             return {
                 "status": "success",
-                "output_filename": out_base,
-                "download_url": f"/api/documents/download/{out_base}",
+                "output_filename": dest_name,
+                "download_url": f"/api/documents/download/{dest_name}",
                 "file_size": os.path.getsize(filee_out),
                 "target_format": target_format,
                 "engine": "filee"
@@ -401,6 +476,10 @@ def convert_file_unified(
     elif src_ext in ["csv", "xlsx", "xls"] and target_format == "pdf":
         return convert_table_to_court_pdf(file_path, out_filename)
 
+    # 场景 D2: TXT/MD → PDF
+    elif src_ext in ["txt", "md"] and target_format == "pdf":
+        return convert_txt_to_court_pdf(file_path, out_filename)
+
     # 场景 E: Word (.docx) 转 PDF / TXT
     elif src_ext == "docx" and target_format == "pdf":
         # 尝试提取段落与表格，使用 PyMuPDF 排版为标准法院文书 PDF
@@ -440,10 +519,14 @@ def convert_file_unified(
 
     # 场景 F: 音频处理
     elif src_ext in ["m4a", "amr", "wav", "mp3", "aac", "flac"] and target_format in ["mp3", "wav"]:
-        # 尝试使用 pydub
         out_path = os.path.join(str(get_generated_dir()), out_filename)
         try:
             from pydub import AudioSegment
+        except ImportError as e:
+            raise AudioConversionUnavailable(
+                "音频转换需要安装 pydub 与 ffmpeg（见 requirements-optional.txt）"
+            ) from e
+        try:
             audio = AudioSegment.from_file(file_path)
             audio.export(out_path, format=target_format)
             return {
@@ -455,9 +538,10 @@ def convert_file_unified(
                 "target_format": target_format,
                 "engine": "native_legal"
             }
+        except AudioConversionUnavailable:
+            raise
         except Exception as e:
-            logger.warning(f"pydub 音频转码回退: {e}")
-            # 若源文件直接是目标音频，直接拷贝
+            logger.warning(f"pydub 音频转码失败: {e}")
             if src_ext == target_format:
                 shutil.copyfile(file_path, out_path)
                 return {
@@ -468,7 +552,9 @@ def convert_file_unified(
                     "target_format": target_format,
                     "engine": "native_legal"
                 }
-            raise RuntimeError(f"音频转码缺少底层编解码器: {e}。建议安装 Filee 扩展包获得全局音视频转码支持。")
+            raise AudioConversionUnavailable(
+                "音频转换需要安装 pydub 与 ffmpeg（见 requirements-optional.txt）"
+            ) from e
 
     else:
         raise ValueError(f"暂不支持从 .{src_ext} 直接转换到 .{target_format}。建议将 Filee.exe 放入 tools/filee 解锁 244 种工业格式。")

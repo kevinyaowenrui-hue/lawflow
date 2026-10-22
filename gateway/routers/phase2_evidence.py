@@ -14,6 +14,7 @@ import re
 import time
 import shutil
 import logging
+import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Body
@@ -134,7 +135,37 @@ class RedactSensitiveReq(BaseModel):
 # ==============================================================================
 # 1. 证据合卷与贝茨编码流水线 (POST /api/v1/phase2/process-evidence)
 # ==============================================================================
-_EVIDENCE_UPLOAD_EXTS = [".pdf", ".png", ".jpg", ".jpeg", ".heic", ".webp", ".bmp", ".heif", ".tiff", ".tif"]
+_EVIDENCE_MERGE_EXTS = [
+    ".pdf", ".png", ".jpg", ".jpeg", ".heic", ".webp", ".bmp", ".heif", ".tiff", ".tif",
+    ".docx", ".doc",
+]
+_EVIDENCE_IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic", ".heif", ".tiff", ".tif"]
+
+
+def _stamp_bates_on_page(page, evidence_label: str, page_no: int) -> None:
+    bates_text = f"{evidence_label} - 第 {page_no} 页"
+    page.insert_text(
+        fitz.Point(380, 32),
+        bates_text,
+        fontname="china-s",
+        fontsize=11,
+        color=(0.82, 0.12, 0.12),
+    )
+
+
+def _append_pdf_with_bates(merged_doc, pdf_path: str, evidence_label: str, start_page: int) -> int:
+    """将 pdf_path 各页并入 merged_doc 并盖贝茨码；返回新增页数。"""
+    sub_pdf = fitz.open(pdf_path)
+    added = 0
+    try:
+        for pno in range(len(sub_pdf)):
+            merged_doc.insert_pdf(sub_pdf, from_page=pno, to_page=pno)
+            added += 1
+            curr_page = merged_doc[start_page + added - 1]
+            _stamp_bates_on_page(curr_page, evidence_label, start_page + added)
+    finally:
+        sub_pdf.close()
+    return added
 
 
 @router.post("/api/v1/phase2/process-evidence", summary="证据材料 A4 PDF 自动合卷与贝茨编码流水线")
@@ -143,100 +174,146 @@ async def process_evidence_bates_stamping(
     evidence_label: str = Form("证据1", description="贝茨编码前缀，如'证据1'或'原告证据'")
 ):
     """
-    接收多张微信截图、扫描件、PDF凭证：
-    1. 统一按比例缩放适配标准 A4 页面；
-    2. 在每页右上角加盖法院标准贝茨编码（如：证据1 - 第 1 页）；
-    3. 合并导出单一《证据卷宗.pdf》。
+    接收多张微信截图、扫描件、PDF/Word 凭证：
+    1. docx/doc 先转临时 PDF 再并入；不支持的格式记入 skipped_files；
+    2. 统一按比例缩放适配标准 A4 页面；
+    3. 在每页右上角加盖法院标准贝茨编码；
+    4. 合并导出单一《证据卷宗.pdf》。
     """
-    timestamp = int(time.time())
+    from gateway.routers.phase1_litigation import convert_docx_to_pdf
+
     merged_doc = fitz.open()
     total_pages = 0
     batch_total = 0
     batch_cap = max_upload_total_bytes()
+    merged_files: List[str] = []
+    skipped_files: List[Dict[str, str]] = []
+    temp_cleanup: List[str] = []
 
-    for idx, f in enumerate(files, 1):
-        ext = assert_allowed_extension(f.filename, _EVIDENCE_UPLOAD_EXTS)
-        raw = await read_upload_bounded(f)
-        batch_total += len(raw)
-        if batch_total > batch_cap:
-            raise HTTPException(status_code=413, detail="单次上传总量超过上限")
-        validate_magic_bytes(raw, ext)
-        temp_path = safe_join(str(get_uploads_dir()), storage_name(ext))
-        with open(temp_path, "wb") as buffer:
-            buffer.write(raw)
+    try:
+        for idx, f in enumerate(files, 1):
+            original_name = f.filename or f"upload_{idx}"
+            ext = extension_of(original_name)
+            raw = await read_upload_bounded(f)
+            batch_total += len(raw)
+            if batch_total > batch_cap:
+                raise HTTPException(status_code=413, detail="单次上传总量超过上限")
 
-        if ext == ".pdf":
-            # PDF 文件合并并打码
-            sub_pdf = fitz.open(temp_path)
-            for pno in range(len(sub_pdf)):
-                page = sub_pdf[pno]
-                # 统一为 A4 页面
-                merged_doc.insert_pdf(sub_pdf, from_page=pno, to_page=pno)
-                total_pages += 1
-                curr_page = merged_doc[total_pages - 1]
-                # 右上角盖贝茨编码
-                bates_text = f"{evidence_label} - 第 {total_pages} 页"
-                curr_page.insert_text(fitz.Point(400, 35), bates_text, fontname="china-s", fontsize=11, color=(0.8, 0.1, 0.1))
-            sub_pdf.close()
+            if ext not in _EVIDENCE_MERGE_EXTS:
+                skipped_files.append({
+                    "filename": original_name,
+                    "reason": f"不支持的文件格式: {ext or '(无扩展名)'}",
+                })
+                continue
 
-        elif ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic", ".heif", ".tiff", ".tif"]:
-            # 图片统一嵌入标准 A4 页面并支持手机照片(HEIC)与EXIF防倒转
-            with Image.open(temp_path) as raw_img:
-                img = ImageOps.exif_transpose(raw_img)
-                w, h = img.size
-                conv_path = temp_path
-                # 若为 HEIC/TIFF 或带透明通道，临时导出标准 RGB PNG 供 PyMuPDF 插入
-                if ext in [".heic", ".heif", ".tiff", ".tif"] or img.mode in ("RGBA", "LA", "P"):
-                    conv_path = os.path.join(str(get_uploads_dir()), f"temp_conv_{timestamp}_{idx}.png")
-                    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
-                        bg = Image.new("RGB", img.size, (255, 255, 255))
-                        bg.paste(img, mask=img.convert("RGBA").split()[3])
-                        bg.save(conv_path, "PNG")
-                    else:
-                        img.convert("RGB").save(conv_path, "PNG")
+            # 魔数不符仍返回 415（安全校验，不静默跳过）
+            validate_magic_bytes(raw, ext)
 
-            # A4 页面尺寸
-            a4_w, a4_h = 595, 842
-            page = merged_doc.new_page(width=a4_w, height=a4_h)
+            temp_path = safe_join(str(get_uploads_dir()), storage_name(ext))
+            with open(temp_path, "wb") as buffer:
+                buffer.write(raw)
+            temp_cleanup.append(temp_path)
 
-            # 按比例缩放图片居中显示，留出上下边距与顶部贝茨码空间
-            margin = 40
-            avail_w = a4_w - 2 * margin
-            avail_h = a4_h - 2 * margin - 35
+            try:
+                if ext == ".pdf":
+                    added = _append_pdf_with_bates(merged_doc, temp_path, evidence_label, total_pages)
+                    total_pages += added
+                    merged_files.append(original_name)
 
-            scale = min(avail_w / w, avail_h / h, 1.0)
-            target_w = w * scale
-            target_h = h * scale
-            x0 = margin + (avail_w - target_w) / 2
-            y0 = margin + 35 + (avail_h - target_h) / 2
+                elif ext in _EVIDENCE_IMAGE_EXTS:
+                    with Image.open(temp_path) as raw_img:
+                        img = ImageOps.exif_transpose(raw_img)
+                        w, h = img.size
+                        conv_path = temp_path
+                        if ext in [".heic", ".heif", ".tiff", ".tif"] or img.mode in ("RGBA", "LA", "P"):
+                            conv_path = os.path.join(
+                                str(get_uploads_dir()),
+                                f"temp_conv_{uuid.uuid4().hex[:8]}_{idx}.png",
+                            )
+                            temp_cleanup.append(conv_path)
+                            if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                                bg = Image.new("RGB", img.size, (255, 255, 255))
+                                bg.paste(img, mask=img.convert("RGBA").split()[3])
+                                bg.save(conv_path, "PNG")
+                            else:
+                                img.convert("RGB").save(conv_path, "PNG")
 
-            rect = fitz.Rect(x0, y0, x0 + target_w, y0 + target_h)
-            page.insert_image(rect, filename=conv_path)
+                    a4_w, a4_h = 595, 842
+                    page = merged_doc.new_page(width=a4_w, height=a4_h)
+                    margin = 40
+                    avail_w = a4_w - 2 * margin
+                    avail_h = a4_h - 2 * margin - 35
+                    scale = min(avail_w / w, avail_h / h, 1.0)
+                    target_w = w * scale
+                    target_h = h * scale
+                    x0 = margin + (avail_w - target_w) / 2
+                    y0 = margin + 35 + (avail_h - target_h) / 2
+                    rect = fitz.Rect(x0, y0, x0 + target_w, y0 + target_h)
+                    page.insert_image(rect, filename=conv_path)
+                    total_pages += 1
+                    _stamp_bates_on_page(page, evidence_label, total_pages)
+                    merged_files.append(original_name)
 
-            if conv_path != temp_path and os.path.exists(conv_path):
+                elif ext in (".docx", ".doc"):
+                    tmp_pdf = os.path.join(
+                        str(get_uploads_dir()),
+                        f"temp_docx_{uuid.uuid4().hex[:8]}.pdf",
+                    )
+                    temp_cleanup.append(tmp_pdf)
+                    ok = await convert_docx_to_pdf(
+                        temp_path,
+                        tmp_pdf,
+                        title=os.path.splitext(original_name)[0],
+                    )
+                    if not ok or not os.path.isfile(tmp_pdf):
+                        skipped_files.append({
+                            "filename": original_name,
+                            "reason": "Word 转 PDF 失败",
+                        })
+                        continue
+                    added = _append_pdf_with_bates(merged_doc, tmp_pdf, evidence_label, total_pages)
+                    total_pages += added
+                    merged_files.append(original_name)
+                else:
+                    skipped_files.append({
+                        "filename": original_name,
+                        "reason": f"不支持的文件格式: {ext}",
+                    })
+            except Exception as e:
+                logger.warning("合卷处理文件 %s 失败: %s", original_name, e)
+                skipped_files.append({
+                    "filename": original_name,
+                    "reason": f"处理失败: {e}",
+                })
+
+        if total_pages == 0:
+            merged_doc.close()
+            raise HTTPException(status_code=400, detail="没有可并入的证据文件")
+
+        label_safe = sanitize_filename(evidence_label) or "证据"
+        merged_filename = f"合卷证据包_{label_safe}_{uuid.uuid4().hex[:8]}.pdf"
+        output_path = os.path.join(str(get_generated_dir()), merged_filename)
+        merged_doc.save(output_path)
+        merged_doc.close()
+
+        status = "partial" if skipped_files else "success"
+        return {
+            "status": status,
+            "evidence_label": evidence_label,
+            "total_pages": total_pages,
+            "merged_pdf_filename": merged_filename,
+            "download_url": f"/api/documents/download/{merged_filename}",
+            "processed_files_count": len(merged_files),
+            "merged_files": merged_files,
+            "skipped_files": skipped_files,
+        }
+    finally:
+        for p in temp_cleanup:
+            if p and os.path.exists(p):
                 try:
-                    os.remove(conv_path)
+                    os.remove(p)
                 except Exception:
                     pass
-
-            total_pages += 1
-            # 盖上贝茨编码
-            bates_text = f"{evidence_label} - 第 {total_pages} 页"
-            page.insert_text(fitz.Point(380, 32), bates_text, fontname="china-s", fontsize=11, color=(0.82, 0.12, 0.12))
-
-    merged_filename = f"合卷证据包_{evidence_label}_{timestamp}.pdf"
-    output_path = os.path.join(str(get_generated_dir()), merged_filename)
-    merged_doc.save(output_path)
-    merged_doc.close()
-
-    return {
-        "status": "success",
-        "evidence_label": evidence_label,
-        "total_pages": total_pages,
-        "merged_pdf_filename": merged_filename,
-        "download_url": f"/api/documents/download/{merged_filename}",
-        "processed_files_count": len(files)
-    }
 
 
 # ==============================================================================

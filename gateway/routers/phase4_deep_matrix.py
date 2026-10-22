@@ -62,11 +62,95 @@ class DeepAnalyzeReq(BaseModel):
     custom_case_title: Optional[str] = None
     custom_cause_of_action: Optional[str] = None
     custom_claim_amount: Optional[float] = None
+    # I-30：用户显式选择的案由与标的（优先于 custom_* 与关键词识别）
+    cause_of_action: Optional[str] = Field(default=None, description="用户选择的案由；提供时不再由关键词覆盖")
+    claim_amount: Optional[float] = Field(default=None, description="用户提供的诉讼标的额（元）")
     custom_plaintiff: Optional[str] = None
     custom_defendant: Optional[str] = None
     custom_raw_text: Optional[str] = None
     custom_evidence_notes: Optional[str] = None
     custom_statutes: Optional[List[str]] = None
+
+
+# 案由关键词计分表（得分最高且严格领先第二名时采用）
+_CAUSE_KEYWORD_SCORES: Dict[str, List[str]] = {
+    "买卖合同纠纷": ["货款", "买卖", "交付", "质量", "货物", "购销", "出卖", "买受"],
+    "民间借贷纠纷": ["借款", "借条", "出借", "借贷", "借据", "还款"],
+    "劳动争议": ["劳动", "工资", "解除劳动合同", "辞退", "加班费", "经济补偿"],
+}
+
+
+def _score_cause_of_action(facts: str) -> List[tuple]:
+    """返回 [(案由, 得分), ...] 按得分降序。"""
+    scored = []
+    for cause, kws in _CAUSE_KEYWORD_SCORES.items():
+        score = sum(1 for kw in kws if kw in facts)
+        scored.append((cause, score))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored
+
+
+def _extract_claim_amount_from_text(facts: str) -> Optional[float]:
+    """从案情文本提取金额（元/万元）；提取不到返回 None（不得默认为 0）。"""
+    if not facts:
+        return None
+    # 优先匹配「X 万元」
+    m = re.search(r"(\d+(?:\.\d+)?)\s*万\s*元", facts)
+    if m:
+        return float(m.group(1)) * 10000.0
+    m = re.search(r"人民币\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*元", facts)
+    if m:
+        return float(m.group(1).replace(",", ""))
+    m = re.search(r"(\d+(?:,\d{3})*(?:\.\d+)?)\s*元", facts)
+    if m:
+        return float(m.group(1).replace(",", ""))
+    return None
+
+
+def _resolve_cause_and_amount(req: "DeepAnalyzeReq", facts: str) -> Dict[str, Any]:
+    """解析案由与标的；无法确定案由时 status=NEED_INPUT。"""
+    explicit_cause = (req.cause_of_action or req.custom_cause_of_action or "").strip()
+    explicit_amount = req.claim_amount if req.claim_amount is not None else req.custom_claim_amount
+
+    amount: Optional[float]
+    amount_hint = None
+    if explicit_amount is not None:
+        amount = float(explicit_amount)
+    else:
+        amount = _extract_claim_amount_from_text(facts)
+        if amount is None:
+            amount_hint = "未能从案情中提取标的额，请补充 claim_amount 后重新推演"
+
+    if explicit_cause:
+        return {
+            "status": "ok",
+            "cause": explicit_cause,
+            "amount": amount,
+            "amount_hint": amount_hint,
+            "candidates": [],
+        }
+
+    scored = _score_cause_of_action(facts)
+    top_cause, top_score = scored[0]
+    second_score = scored[1][1] if len(scored) > 1 else 0
+    if top_score > 0 and top_score > second_score:
+        return {
+            "status": "ok",
+            "cause": top_cause,
+            "amount": amount,
+            "amount_hint": amount_hint,
+            "candidates": [{"cause": c, "score": s} for c, s in scored if s > 0],
+        }
+
+    candidates = [c for c, s in scored]
+    return {
+        "status": "NEED_INPUT",
+        "cause": None,
+        "amount": amount,
+        "amount_hint": amount_hint,
+        "candidates": candidates,
+        "message": "请选择案由后重新推演",
+    }
 
 
 class AdversarialAttackReq(BaseModel):
@@ -101,14 +185,36 @@ async def get_raw_dossier_presets():
 # 2. 真实卷宗动态推演专用引擎 (POST /api/v1/deep-matrix/analyze-custom)
 # ==============================================================================
 async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
-    cause = (req.custom_cause_of_action or "民间借贷纠纷").strip()
-    title = (req.custom_case_title or f"关于{cause}之要件事实推演卷宗").strip()
-    amount = float(req.custom_claim_amount or 0.0)
     p_name = (req.custom_plaintiff or "原告/权利人").strip()
     d_name = (req.custom_defendant or "被告/义务人").strip()
     facts = (req.custom_raw_text or "").strip()
     evidence_notes = (req.custom_evidence_notes or "").strip()
     is_red_team = (req.perspective == "adversarial_red_team")
+
+    resolved = _resolve_cause_and_amount(req, facts)
+    if resolved["status"] == "NEED_INPUT":
+        return {
+            "status": "NEED_INPUT",
+            "message": resolved.get("message") or "请选择案由后重新推演",
+            "hint": resolved.get("message") or "请选择案由后重新推演",
+            "candidates": resolved.get("candidates") or [],
+            "claim_amount": resolved.get("amount"),
+            "amount_hint": resolved.get("amount_hint"),
+            "perspective": req.perspective,
+        }
+
+    cause = resolved["cause"]
+    amount = resolved.get("amount")
+    amount_hint = resolved.get("amount_hint")
+    title = (req.custom_case_title or f"关于{cause}之要件事实推演卷宗").strip()
+    # 推演矩阵内展示金额：未提供时用 null，不用 0 元结论
+    amount_display = float(amount) if amount is not None else None
+    amount_for_text = float(amount) if amount is not None else 0.0
+    amount_label = (
+        f"{amount_for_text:,.2f}"
+        if amount_display is not None
+        else "（标的额待补充）"
+    )
 
     # 1. 尝试从 statute_db 混合检索对应法条依据
     recalled_statutes = []
@@ -169,7 +275,10 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
                 "pages": 1,
                 "recorded_date": "交付履行日",
                 "hash_sha256": hashlib.sha256((facts[:50] + "doc2").encode("utf-8")).hexdigest(),
-                "content_lines": [{"line": 1, "text": f"涉及金额人民币 {amount:,.2f} 元之履行交易明细", "anchor": "L1"}],
+                "content_lines": [{"line": 1, "text": (
+                    f"涉及金额人民币 {amount_for_text:,.2f} 元之履行交易明细"
+                    if amount_display is not None else "涉及款项/货物交付履行交易明细"
+                ), "anchor": "L1"}],
                 "raw_text": f"证明实际履约交付事实，确认款项/货物到达指定交付控制权。"
             },
             {
@@ -207,9 +316,13 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
                 "risk_flag": "danger"
             })
     else:
+        amt_timeline = (
+            f"实际履行金额 ¥{amount_for_text:,.2f}"
+            if amount_display is not None else "实际履行（标的额待补充）"
+        )
         timeline_events = [
             {"date": "2023-03-01", "source": "DOC-01 基础合同", "summary": f"{p_name}与{d_name}确立{cause}法律关系", "type": "成立", "risk_flag": "info"},
-            {"date": "2023-03-05", "source": "DOC-02 交付凭证", "summary": f"款项划转/货物移交，实际履行金额 ¥{amount:,.2f}", "type": "交付", "risk_flag": "success"},
+            {"date": "2023-03-05", "source": "DOC-02 交付凭证", "summary": f"款项划转/货物移交，{amt_timeline}", "type": "交付", "risk_flag": "success"},
             {"date": "2023-09-01", "source": "DOC-03 催告记录", "summary": f"约定期限届满，{p_name}书面催告履行，{d_name}拖延未付", "type": "违约", "risk_flag": "danger"}
         ]
 
@@ -264,7 +377,7 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
                 "element_id": "E2",
                 "element_name": "借款本金实际交付要件",
                 "claim_basis": "《民法典》第六百七十九条【自然人借款合同自提供借款时成立】",
-                "asserted_fact": f"{p_name}依约向{d_name}交付借款本金人民币 {amount:,.2f} 元。",
+                "asserted_fact": f"{p_name}依约向{d_name}交付借款本金人民币 {amount_label} 元。",
                 "grounded_citations": [{"doc_id": "DOC-02", "doc_name": raw_documents[1]["doc_name"] if len(raw_documents)>1 else "银行回单", "anchor": "DOC-02:L1", "snippet": raw_documents[1]["raw_text"][:60] if len(raw_documents)>1 else "转账回单", "integrity": "银行电子验签"}],
                 "opponent_defense": "抗辩称收款账户非本人名下，或摘要显示其他往来款，否认借款交付。",
                 "burden_of_proof": "出借人负有交付借款之完全举证责任。",
@@ -291,7 +404,7 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
                 "element_id": "E1",
                 "element_name": "买卖合同法律关系成立与标的约定要件",
                 "claim_basis": recalled_statutes[0] if recalled_statutes else "《民法典》第五百九十五条【买卖合同定义】",
-                "asserted_fact": f"{p_name}与{d_name}订立买卖合同，约定货物规格、单价及总价款人民币 {amount:,.2f} 元。",
+                "asserted_fact": f"{p_name}与{d_name}订立买卖合同，约定货物规格、单价及总价款人民币 {amount_label} 元。",
                 "grounded_citations": [{"doc_id": "DOC-01", "doc_name": raw_documents[0]["doc_name"], "anchor": "DOC-01:L1", "snippet": raw_documents[0]["raw_text"][:60], "integrity": "存证验真"}],
                 "opponent_defense": "抗辩称合同未正式盖章，或经办人无权代理。",
                 "burden_of_proof": "主张合同成立方承担举证责任。",
@@ -315,7 +428,7 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
                 "element_id": "E3",
                 "element_name": "付款条件成就与拖欠货款违约要件",
                 "claim_basis": "《民法典》第六百二十八条【买受人支付价款的期限】、第五百七十七条",
-                "asserted_fact": f"对账及付款期限届满后，{d_name}尚欠货款人民币 {amount:,.2f} 元及相应逾期利息未付。",
+                "asserted_fact": f"对账及付款期限届满后，{d_name}尚欠货款人民币 {amount_label} 元及相应逾期利息未付。",
                 "grounded_citations": [{"doc_id": "DOC-03", "doc_name": raw_documents[2]["doc_name"] if len(raw_documents)>2 else "催讨记录", "anchor": "DOC-03:P1#L1", "snippet": raw_documents[2]["raw_text"][:60] if len(raw_documents)>2 else "对账函", "integrity": "存证函"}],
                 "opponent_defense": "抗辩付款先决条件未成就（如未开具增值税专票）。",
                 "burden_of_proof": "主张先履行抗辩权的举证责任在买受人。",
@@ -355,7 +468,7 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
                 "element_id": "E3",
                 "element_name": f"对方违约失权与损害结果要件",
                 "claim_basis": "《民法典》第五百七十七条、第五百八十四条",
-                "asserted_fact": f"{d_name}发生实质性违约，造成经济损失标的人民币 {amount:,.2f} 元。",
+                "asserted_fact": f"{d_name}发生实质性违约，造成经济损失标的人民币 {amount_label} 元。",
                 "grounded_citations": [{"doc_id": "DOC-03", "doc_name": raw_documents[2]["doc_name"] if len(raw_documents)>2 else "违约损失清单", "anchor": "DOC-03:P1#L1", "snippet": raw_documents[2]["raw_text"][:60] if len(raw_documents)>2 else "催告函", "integrity": "损失计算清单"}],
                 "opponent_defense": "主张不可抗力免责，或抗辩违约金过高要求依民法典第585条调减。",
                 "burden_of_proof": "受损方对损失数额及因果关系承担举证责任。",
@@ -381,18 +494,20 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
         "redline_risk_status": f"已侦测出 {len(detected_conflicts)} 项潜在质证破绽并生成补强取证 SOP"
     }
 
-    return {
+    parties = {
+        "plaintiff": p_name,
+        "defendant": d_name,
+        "third_party": "无",
+    }
+
+    result: Dict[str, Any] = {
         "status": "success",
         "perspective": req.perspective,
         "is_red_team_view": is_red_team,
         "case_title": title,
         "cause_of_action": cause,
-        "claim_amount": amount,
-        "parties": {
-            "plaintiff": p_name,
-            "defendant": d_name,
-            "third_party": "以案情实际涉及为准"
-        },
+        "claim_amount": amount_display,
+        "parties": parties,
         "raw_documents": raw_documents,
         "matrix_elements": matrix_elements,
         "timeline_events": timeline_events,
@@ -408,6 +523,9 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
         },
         "verifiability_ledger": verifiability_ledger
     }
+    if amount_hint:
+        result["amount_hint"] = amount_hint
+    return result
 
 
 @router.post("/api/v1/deep-matrix/analyze-custom", summary="针对律师真实卷宗案情的一键七维要件事实与时间轴推演")

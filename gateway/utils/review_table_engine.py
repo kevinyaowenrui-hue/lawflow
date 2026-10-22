@@ -20,10 +20,73 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, Field
+
 from gateway.core.ollama_client import ollama_client
 from gateway.utils.matter_vault_db import get_db_connection, get_matter_by_id
 
 logger = logging.getLogger("lawflow.review_tables")
+
+
+class ColumnNotFoundError(LookupError):
+    """按列 id 查找失败时抛出，路由层映射为 404。"""
+
+
+class ReviewColumnDef(BaseModel):
+    """列定义校验：name 必填；id 可选（缺省时自动生成）。"""
+    name: str = Field(..., min_length=1, description="列名称/要素名称")
+    instruction: str = Field(default="", description="提取 Prompt 指令")
+    type: str = Field(default="text", description="字段类型: text / date / currency")
+    id: Optional[str] = Field(default=None, description="列唯一 id")
+
+
+def _new_col_id(existing: Optional[set] = None) -> str:
+    used = existing or set()
+    for _ in range(32):
+        cid = f"col_{uuid.uuid4().hex[:8]}"
+        if cid not in used:
+            return cid
+    return f"col_{uuid.uuid4().hex}"
+
+
+def ensure_column_ids(columns: List[Dict[str, Any]]) -> tuple:
+    """
+    为缺 id 的列补全唯一 id；返回 (规范化列列表, 是否发生变更)。
+    """
+    used: set = set()
+    changed = False
+    normalized: List[Dict[str, Any]] = []
+    for raw in columns or []:
+        try:
+            validated = ReviewColumnDef(
+                name=str(raw.get("name") or "").strip() or "未命名列",
+                instruction=str(raw.get("instruction") or ""),
+                type=str(raw.get("type") or "text"),
+                id=raw.get("id"),
+            )
+        except Exception:
+            validated = ReviewColumnDef(name="未命名列", instruction="", type="text")
+            changed = True
+        cid = (validated.id or "").strip()
+        if not cid or cid in used:
+            cid = _new_col_id(used)
+            changed = True
+        used.add(cid)
+        col = {
+            "id": cid,
+            "name": validated.name,
+            "instruction": validated.instruction,
+            "type": validated.type,
+        }
+        # 保留原有额外字段
+        for k, v in (raw or {}).items():
+            if k not in col:
+                col[k] = v
+        if raw.get("id") != cid:
+            changed = True
+        normalized.append(col)
+    return normalized, changed
+
 
 DEFAULT_REVIEW_COLUMNS = [
     {
@@ -228,6 +291,21 @@ def get_review_table(table_id: str) -> Optional[Dict[str, Any]]:
     rows_list = json.loads(row["rows_json"])
     cells_dict = json.loads(row["cells_json"])
 
+    columns, cols_changed = ensure_column_ids(columns)
+    if cols_changed:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE matter_review_tables
+                SET columns_json = ?, updated_at = ?
+                WHERE table_id = ?
+                """,
+                (json.dumps(columns, ensure_ascii=False), now_str, table_id),
+            )
+            conn.commit()
+
     for r in rows_list:
         rid = r.get("row_id") or r.get("id") or ""
         r["id"] = rid
@@ -253,7 +331,8 @@ def create_review_table(matter_id: str, title: str, description: str = "", colum
     table_id = f"TABLE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    cols = columns or DEFAULT_REVIEW_COLUMNS
+    raw_cols = columns if columns is not None else [dict(c) for c in DEFAULT_REVIEW_COLUMNS]
+    cols, _ = ensure_column_ids(raw_cols)
 
     # 自动从该案件的挂载材料中构建行
     matter = get_matter_by_id(matter_id)
@@ -326,6 +405,9 @@ def delete_column_from_table(table_id: str, col_id: str) -> Dict[str, Any]:
     table = get_review_table(table_id)
     if not table:
         raise ValueError("阅卷表不存在")
+
+    if not any(c.get("id") == col_id for c in table["columns"]):
+        raise ColumnNotFoundError("列不存在")
 
     table["columns"] = [c for c in table["columns"] if c["id"] != col_id]
     for r_id in table["cells"]:
@@ -504,8 +586,10 @@ async def run_single_cell_refresh(table_id: str, row_id: str, col_id: str) -> Di
         raise ValueError("阅卷表不存在")
 
     row = next((r for r in table["rows"] if r["row_id"] == row_id), None)
-    col = next((c for c in table["columns"] if c["id"] == col_id), None)
-    if not row or not col:
+    col = next((c for c in table["columns"] if c.get("id") == col_id), None)
+    if not col:
+        raise ColumnNotFoundError("列不存在")
+    if not row:
         raise ValueError("未匹配到指定单元格行列")
 
     cell_res = await execute_cell_extraction(
@@ -544,9 +628,9 @@ async def run_column_refresh(table_id: str, col_id: str) -> Dict[str, Any]:
     if not table:
         raise ValueError("阅卷表不存在")
 
-    col = next((c for c in table["columns"] if c["id"] == col_id), None)
+    col = next((c for c in table["columns"] if c.get("id") == col_id), None)
     if not col:
-        raise ValueError("未找到指定列")
+        raise ColumnNotFoundError("列不存在")
 
     for row in table["rows"]:
         rid = row["row_id"]
@@ -585,7 +669,9 @@ async def run_all_table_extraction(table_id: str) -> Dict[str, Any]:
         if rid not in table["cells"]:
             table["cells"][rid] = {}
         for col in table["columns"]:
-            cid = col["id"]
+            cid = col.get("id")
+            if not cid:
+                raise ColumnNotFoundError("列不存在")
             # 仅未分析或执行全量抽取
             res = await execute_cell_extraction(
                 doc_title=row["doc_title"],

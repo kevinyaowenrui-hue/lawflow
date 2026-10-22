@@ -8,6 +8,7 @@ LawFlow 智律工作台 - 司法级全格式离线转码 API 路由 (converter_r
 
 import os
 import time
+import uuid
 import shutil
 import logging
 from typing import List, Optional
@@ -19,6 +20,7 @@ from gateway.core.security import (
     max_upload_total_bytes,
     read_upload_bounded,
     safe_join,
+    sanitize_filename,
     storage_name,
     validate_magic_bytes,
 )
@@ -28,6 +30,7 @@ from gateway.utils.file_converter_engine import (
     convert_file_unified,
     convert_images_to_court_pdf,
     convert_pdf_to_images,
+    AudioConversionUnavailable,
 )
 
 _CONVERTER_EXTS = [
@@ -82,6 +85,8 @@ async def api_convert_file(
 
     except HTTPException:
         raise
+    except AudioConversionUnavailable as e:
+        raise HTTPException(status_code=501, detail=str(e))
     except Exception as e:
         logger.error(f"转码失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"离线转码失败: {str(e)}")
@@ -109,7 +114,6 @@ async def api_batch_merge_evidence(
     4. 导出为符合各级人民法院立案与质证标准的单一合卷 PDF。
     """
     start_time = time.time()
-    timestamp = int(start_time)
     saved_paths = []
     batch_total = 0
     batch_cap = max_upload_total_bytes()
@@ -128,7 +132,8 @@ async def api_batch_merge_evidence(
                 buf.write(raw)
             saved_paths.append(tmp_p)
 
-        merged_pdf_name = f"合卷举证册_{evidence_label}_{timestamp}.pdf"
+        label_safe = sanitize_filename(evidence_label) or "原告证据"
+        merged_pdf_name = f"合卷举证册_{label_safe}_{uuid.uuid4().hex[:8]}.pdf"
         result = convert_images_to_court_pdf(
             input_paths=saved_paths,
             output_filename=merged_pdf_name,

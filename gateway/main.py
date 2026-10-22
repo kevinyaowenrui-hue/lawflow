@@ -136,6 +136,18 @@ async def lifespan(app: FastAPI):
         check_lpr_data_freshness()
     except Exception as e:
         logger.warning(f"LPR 数据新鲜度检查失败: {e}")
+    try:
+        # 测试环境可设 LAWFLOW_SKIP_SERVICE_PROBE_WARMUP=1，避免每例 TestClient 启动等待探测
+        if os.getenv("LAWFLOW_SKIP_SERVICE_PROBE_WARMUP", "").strip() not in ("1", "true", "True", "yes", "YES"):
+            from gateway.core.service_probe import warm_up_probes
+            probe_res = warm_up_probes()
+            logger.info(
+                "外部服务探测缓存已预热: Stirling-PDF=%s Ollama=%s",
+                probe_res.get("stirling"),
+                probe_res.get("ollama"),
+            )
+    except Exception as e:
+        logger.warning(f"外部服务探测预热失败: {e}")
     yield
     logger.info("=== [LawFlow 智律工作台] 网关已安全下线 ===")
 

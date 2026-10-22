@@ -5766,7 +5766,7 @@
       const origHtml = btn.innerHTML;
       btn.innerHTML = `<span class="spinner"></span> 正在援引实体法条与排版 Word/PDF...`;
       btn.disabled = true;
-      document.getElementById('pkg-status-tip').innerText = "大模型生成中...";
+      document.getElementById('pkg-status-tip').innerText = "正在生成（长任务进行中，请稍候）…";
 
       const payload = {
         cause_of_action: document.getElementById('pkg-cause').value,
@@ -5797,7 +5797,15 @@
         const d = await resp.json();
         btn.innerHTML = origHtml;
         btn.disabled = false;
-        document.getElementById('pkg-status-tip').innerText = "文书包生成完毕";
+        const es = d.engine_status || {};
+        let tip = "文书包生成完毕";
+        if (es.llm === "rule_fallback" || es.pdf === "local_pymupdf") {
+          const parts = [];
+          if (es.llm === "rule_fallback") parts.push("已切换规则模式");
+          if (es.pdf === "local_pymupdf") parts.push("本地 PDF 引擎");
+          tip = parts.length ? `文书包生成完毕（${parts.join(" / ")}）` : tip;
+        }
+        document.getElementById('pkg-status-tip').innerText = tip;
 
         // 法条依据
         const statutes = d.statute_citations || [];
@@ -5880,13 +5888,30 @@
           method: 'POST',
           body: formData
         });
-        const d = await resp.json();
-        resBox.innerHTML = `
-          已成功合卷！总页数：${escapeHtml(d.total_pages)} 页 | 文件：${escapeHtml(d.merged_pdf_filename)}
+        const d = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          const errMsg = (d && (d.detail || d.message)) ? (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)) : `HTTP ${resp.status}`;
+          resBox.innerHTML = `合卷失败: ${escapeHtml(errMsg)}`;
+          showToast("证据合卷失败");
+          return;
+        }
+        const statusNote = d.status === "partial" ? "（部分成功）" : "";
+        let skipBlock = "";
+        if (Array.isArray(d.skipped_files) && d.skipped_files.length > 0) {
+          const lines = d.skipped_files.map(s => {
+            const name = (s && s.filename) ? s.filename : String(s);
+            const reason = (s && s.reason) ? `（${s.reason}）` : "";
+            return `<li>${escapeHtml(name)}${escapeHtml(reason)}</li>`;
+          }).join("");
+          skipBlock = `<div style="margin-top:10px;padding:10px;border:1px solid #C58532;background:#FFF8E7;color:#7A4E00;"><strong>以下文件未并入：</strong><ul style="margin:6px 0 0 18px;">${lines}</ul></div>`;
+        }
+        resBox.innerHTML = ` // safe-html: skipBlock 列表项已 escapeHtml
+          已成功合卷${escapeHtml(statusNote)}！总页数：${escapeHtml(d.total_pages)} 页 | 文件：${escapeHtml(d.merged_pdf_filename)}
           <a href="${escapeHtml(withDownloadToken(d.download_url))}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载合卷 PDF</a>
+          ${skipBlock} // safe-html: static or pre-escaped HTML fragment
         `;
-        document.getElementById('redact-pdf-name').value = d.merged_pdf_filename;
-        showToast("证据合卷与贝茨编码完成");
+        document.getElementById('redact-pdf-name').value = d.merged_pdf_filename || "";
+        showToast(d.status === "partial" ? "证据合卷完成（有文件未并入）" : "证据合卷与贝茨编码完成");
       } catch (e) {
         resBox.innerHTML = `合卷失败: ${escapeHtml(e)}`;
       }

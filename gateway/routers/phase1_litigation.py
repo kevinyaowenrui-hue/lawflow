@@ -213,35 +213,53 @@ def _pymupdf_paginated_render(paragraphs: List[str], pdf_path: str) -> bool:
 # ==============================================================================
 # 文书转换辅助函数：将 Word 转换为 PDF
 # ==============================================================================
+# 最近一次 convert_docx_to_pdf 使用的引擎（供一键成套返回 engine_status）
+_LAST_PDF_ENGINE: str = "local_pymupdf"
+
+
+def get_last_pdf_engine() -> str:
+    return _LAST_PDF_ENGINE
+
+
 async def convert_docx_to_pdf(docx_path: str, pdf_path: str, title: str = "司法公文", text_summary: str = "") -> bool:
     """
-    优先 LibreOffice (soffice)；其次 Stirling-PDF；最后 PyMuPDF 按行分页兜底。
-    全部失败时返回 False，不得生成缺页/空壳 PDF。
+    优先 LibreOffice (soffice)；其次 Stirling-PDF（仅配置的一个地址，且需探测缓存可用）；
+    最后 PyMuPDF 按行分页兜底。全部失败时返回 False，不得生成缺页/空壳 PDF。
     """
+    global _LAST_PDF_ENGINE
     from gateway.utils.disclaimer import stamp_disclaimer_on_pdf
+    from gateway.core.service_probe import is_stirling_available, stirling_pdf_url
 
     # 1. LibreOffice
     if _convert_docx_via_soffice(docx_path, pdf_path):
         logger.info(f"LibreOffice 成功将 {docx_path} 转换为 {pdf_path}")
         stamp_disclaimer_on_pdf(pdf_path)
+        _LAST_PDF_ENGINE = "libreoffice"
         return True
 
-    # 2. Stirling-PDF
-    urls_to_try = [STIRLING_PDF_URL, "http://127.0.0.1:8081", "http://stirling-pdf:8080"]
-    for url in urls_to_try:
+    # 2. Stirling-PDF：仅尝试配置的 STIRLING_PDF_URL；探测不可用则跳过，避免 10s×多地址超时
+    if is_stirling_available():
+        url = (STIRLING_PDF_URL or stirling_pdf_url()).rstrip("/")
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=5.0) as client:
                 with open(docx_path, "rb") as f:
-                    files = {"fileInput": (os.path.basename(docx_path), f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+                    files = {
+                        "fileInput": (
+                            os.path.basename(docx_path),
+                            f,
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        )
+                    }
                     resp = await client.post(f"{url}/api/v1/convert/file/pdf", files=files)
                     if resp.status_code == 200 and len(resp.content) > 100:
                         with open(pdf_path, "wb") as pdf_file:
                             pdf_file.write(resp.content)
                         logger.info(f"Stirling-PDF 成功将 {docx_path} 转换为 {pdf_path}")
                         stamp_disclaimer_on_pdf(pdf_path)
+                        _LAST_PDF_ENGINE = "stirling"
                         return True
-        except Exception:
-            continue
+        except Exception as e:
+            logger.warning("Stirling-PDF 转换失败，回退本地引擎: %s", e)
 
     # 3. PyMuPDF 按行分页兜底
     try:
@@ -250,11 +268,14 @@ async def convert_docx_to_pdf(docx_path: str, pdf_path: str, title: str = "司�
         if ok:
             logger.info(f"PyMuPDF 分页渲染成功: {pdf_path}")
             stamp_disclaimer_on_pdf(pdf_path)
+            _LAST_PDF_ENGINE = "local_pymupdf"
             return True
         logger.error("PyMuPDF 分页渲染失败：未生成有效 PDF")
+        _LAST_PDF_ENGINE = "local_pymupdf"
         return False
     except Exception as e:
         logger.error(f"PDF 转换异常: {e}")
+        _LAST_PDF_ENGINE = "local_pymupdf"
         if os.path.isfile(pdf_path):
             try:
                 os.remove(pdf_path)
@@ -1130,6 +1151,12 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
                 "docx_url": f"/api/documents/download/{labor_docx_name}",
             })
 
+    llm_mode = getattr(ollama_client, "last_llm_mode", "rule_fallback")
+    pdf_engine = get_last_pdf_engine() if pdf_ok else "local_pymupdf"
+    engine_status = {
+        "pdf": pdf_engine,
+        "llm": llm_mode if llm_mode in ("ollama", "cloud", "rule_fallback") else "rule_fallback",
+    }
     return {
         "status": "success",
         "package_id": package_id,
@@ -1143,7 +1170,8 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         "generated_documents": generated_docs,
         "main_docx_path": main_docx_path,
         "main_pdf_path": main_pdf_path if pdf_ok else None,
-        "llm_mode": getattr(ollama_client, "last_llm_mode", "rule_fallback"),
+        "llm_mode": llm_mode,
+        "engine_status": engine_status,
     }
 
 

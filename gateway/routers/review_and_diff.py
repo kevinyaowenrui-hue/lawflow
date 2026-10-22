@@ -26,7 +26,8 @@ from gateway.utils.review_table_engine import (
     run_column_refresh,
     run_all_table_extraction,
     export_review_table_to_csv,
-    export_review_table_to_xlsx
+    export_review_table_to_xlsx,
+    ColumnNotFoundError,
 )
 from gateway.utils.version_comparator import (
     compare_contract_versions,
@@ -136,6 +137,8 @@ async def api_delete_review_table_column(table_id: str, col_id: str):
             "message": "提取列删除成功",
             "table": updated
         }
+    except ColumnNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e) or "列不存在")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -168,6 +171,8 @@ async def api_refresh_single_cell(table_id: str, row_id: str, col_id: str):
             "message": "单元格局部重算完成",
             **res
         }
+    except ColumnNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e) or "列不存在")
     except Exception as e:
         logger.error(f"单元格局部重刷失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -182,6 +187,8 @@ async def api_refresh_column(table_id: str, col_id: str):
             "message": "该列所有文档要素重刷完成",
             "table": updated
         }
+    except ColumnNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e) or "列不存在")
     except Exception as e:
         logger.error(f"列级重跑失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -196,6 +203,8 @@ async def api_run_all_review_table(table_id: str):
             "message": "全表要素批量并发抽取完毕",
             "table": updated
         }
+    except ColumnNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e) or "列不存在")
     except Exception as e:
         logger.error(f"全表批量抽取失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -506,7 +515,7 @@ async def api_export_version_diff(req: VersionCompareReq):
             "status": "success",
             "message": "Word 原生修订模式文档已生成",
             "filename": filename,
-            "download_url": f"/static/generated/{filename}",
+            "download_url": f"/api/documents/download/{filename}",
             "stats": comparison["stats"]
         }
     except Exception as e:

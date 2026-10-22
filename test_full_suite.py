@@ -680,7 +680,8 @@ def run_tests():
     # =========================================================================
     print("\n--- [第三优先级] 律所级利益冲突穿透排查中枢与零幻觉引注防幻觉熔断网关 ---")
 
-    # 8.1 利益冲突穿透排查：拟起诉常年法律顾问单位（直接顶格红线冲突熔断）
+    # 8.1 利益冲突穿透排查：拟起诉常年法律顾问单位
+    # （旧断言曾错误地将可豁免冲突定为 CRITICAL_BLOCKED/顶格禁止；批次10按律师 L-I20 改为 WAIVABLE_WITH_CONSENT）
     r_conflict_direct = client.post("/api/v1/conflict/check", json={
         "client_name": "北京知客云服科技有限公司",
         "opposing_party": "北京宏达商贸有限公司",
@@ -689,22 +690,26 @@ def run_tests():
     assert r_conflict_direct.status_code == 200, r_conflict_direct.text
     c_direct = r_conflict_direct.json()
     log_test(
-        "第三优先级: 利益冲突穿透排查 - 拟起诉本所常年顾问单位 (顶格执业红线熔断)",
-        c_direct.get("conflict_level") == "CRITICAL_BLOCKED" and c_direct.get("has_conflict") is True and any("律师法" in rule and "39条" in rule for rule in c_direct.get("triggered_rules", [])),
-        f"冲突定级: {c_direct.get('conflict_level')} | 命中红线条目: {c_direct.get('triggered_rules')} | 结论: {c_direct.get('summary')}"
+        "第三优先级: 利益冲突穿透排查 - 拟起诉本所常年顾问单位 (须告知并经同意)",
+        c_direct.get("conflict_level") == "WAIVABLE_WITH_CONSENT"
+        and c_direct.get("requires_consent") is True
+        and c_direct.get("has_conflict") is True
+        and any("律师法" in rule and "第三十九条" in rule for rule in c_direct.get("triggered_rules", [])),
+        f"冲突定级: {c_direct.get('conflict_level')} | requires_consent={c_direct.get('requires_consent')} | 命中: {c_direct.get('triggered_rules')} | 结论: {c_direct.get('summary')}"
     )
 
-    # 8.2 利益冲突穿透排查：同案双方代理排查（张三诉李四民间借贷纠纷）
+    # 8.2 利益冲突穿透排查：同案双方均为我所客户 → 不得代理
+    # （旧断言接受 CRITICAL_BLOCKED/HIGH_WARNING；批次10改为 PROHIBITED，并用双方均为底档客户的组合）
     r_conflict_both = client.post("/api/v1/conflict/check", json={
-        "client_name": "张三",
-        "opposing_party": "李四",
-        "case_subject": "借贷纠纷"
+        "client_name": "李四",
+        "opposing_party": "智科云服信息技术（北京）有限公司",
+        "case_subject": "合同纠纷"
     })
     assert r_conflict_both.status_code == 200, r_conflict_both.text
     c_both = r_conflict_both.json()
     log_test(
-        "第三优先级: 利益冲突穿透排查 - 同案双方在办冲突拦截",
-        c_both.get("has_conflict") is True and c_both.get("conflict_level") in ["CRITICAL_BLOCKED", "HIGH_WARNING"],
+        "第三优先级: 利益冲突穿透排查 - 同案双方在办冲突拦截 (不得代理)",
+        c_both.get("has_conflict") is True and c_both.get("conflict_level") == "PROHIBITED",
         f"冲突定级: {c_both.get('conflict_level')} | 拦截原因: {c_both.get('summary')}"
     )
 

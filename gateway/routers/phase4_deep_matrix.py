@@ -453,7 +453,7 @@ async def analyze_deep_matrix(req: DeepAnalyzeReq):
                         "doc_name": "《个人借款借据扫描件原件》",
                         "anchor": "DOC-01:L1-L7",
                         "snippet": "今借到张三现金人民币伍拾万元整...借期自2023年3月10日起至2023年9月10日止...借款人：李四（签名手印）",
-                        "integrity": "SHA-256验真通过"
+                        "integrity": "SHA-256本地库比对通过"
                     },
                     {
                         "doc_id": "DOC-03",

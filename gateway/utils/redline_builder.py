@@ -67,7 +67,7 @@ PLAYBOOK_PRESETS = {
         "name": "涉外与跨国商事采购红线库 (International Master Agreement Playbook)",
         "description": "适用于跨国采购主协议 (MPA/MSA)、涉外供应链、英文商业合同",
         "rules": [
-            "Cross-Default（交叉违约）条款必须彻底删除或严格限定为本合同项下已经法院终审裁判确定的实质性债务违约",
+            "Cross-Default（交叉违约）条款必须整条删除或严格限定为本合同项下已经法院终审裁判确定的实质性债务违约",
             "Liquidated Damages（违约金）总额必须设定封顶上限（原则上不超过相关采购订单金额的10%），且明确排除间接损失（Consequential/Indirect Damages）",
             "Indemnification（赔偿与责任限制）必须设定责任上限（Cap at Aggregate Contract Value）并排除无过错连带责任",
             "Governing Law & Dispute Resolution（管辖与法律适用）约定公允中立国际仲裁机构（如HKIAC/SIAC/CIETAC）并适用公允法域",
@@ -559,7 +559,7 @@ def apply_in_place_docx_redline(
     """
     非诉律师实务级：直接在客户发来的原始 .docx 合同中原位注入 <w:ins> 和 <w:del> 修订模式，
     100% 完整保留客户合同原件的排版、页眉页脚、封面、样式与表格结构。
-    采用模糊匹配与非破坏性局部切片切入，彻底杜绝误删段落其余条款或因连字符空格流产。
+    采用模糊匹配与非破坏性局部切片切入，充分杜绝误删段落其余条款或因连字符空格流产。
     """
     doc = docx.Document(source_docx_path)
     enable_track_revisions_in_doc(doc)

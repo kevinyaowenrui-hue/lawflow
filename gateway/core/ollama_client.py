@@ -796,7 +796,7 @@ class UniversalLLMClient:
                             "negotiation_tip": "Demand immediate deletion of cross-default, or strictly limit it to final non-appealable judgments for material indebtedness directly under this Agreement.",
                             "suggested_clause": "[Intentionally Deleted - Cross-default provisions are hereby deleted in their entirety].",
                             "playbook_deviation": "CRITICAL_BREACH",
-                            "matched_playbook_rule": "Cross-Default（交叉违约）条款必须彻底删除或严格限定为本合同项下已经法院终审裁判确定的实质性债务违约",
+                            "matched_playbook_rule": "Cross-Default（交叉违约）条款必须整条删除或严格限定为本合同项下已经法院终审裁判确定的实质性债务违约",
                             "deviation_reason": "Original clause creates unbounded contagion default across all affiliates and external contracts."
                         },
                         {

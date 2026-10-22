@@ -1116,7 +1116,7 @@ def calculate_statute_of_limitations(
     else:
         initial_expire = add_months_exact(d_start, rule["months"])
 
-    # 20年绝对保护期
+    # 20年最长保护期
     max_20y_expire = add_years_exact(d_start, 20)
 
     timeline_log = [{
@@ -1144,7 +1144,7 @@ def calculate_statute_of_limitations(
             if ev_d <= current_expire:
                 # 中断并重新计算3年
                 new_expire = add_years_exact(ev_d, int(rule["years"]))
-                # 不得超过20年绝对限制
+                # 不得超过20年最长保护期
                 if new_expire > max_20y_expire:
                     new_expire = max_20y_expire
 
@@ -1582,7 +1582,7 @@ def verify_statutory_validity(citation_text: str, incident_date: Optional[str] =
             else:
                 time_validity_note = (
                     f"争议法律事实发生于 {incident_date}（晚于《民法典》施行日2021年1月1日）。"
-                    "绝对禁止直接引用已废止的旧法作为裁判或诉求依据，否则将产生致命败诉或补正质证破绽！"
+                    "严格禁止直接引用已废止的旧法作为裁判或诉求依据，否则将产生致命败诉或补正质证破绽！"
                 )
         else:
             time_validity_note = (
@@ -1731,7 +1731,7 @@ def calculate_settlement_npv_and_recovery(
     economic_haircut_rate = max(0.0, 100.0 - effective_recovery_rate)
     illusion_gap = max(0.0, nominal_recovery_rate - effective_recovery_rate)
 
-    # 4. 生成红圈所合伙人实战战术决策与谈判备忘录
+    # 4. 生成合伙人实战战术决策与谈判备忘录
     tactical_memo = _generate_partner_settlement_memo(
         claim_nominal=claim_nominal,
         nominal_settlement=total_nominal_settlement,
@@ -1782,7 +1782,7 @@ def _generate_partner_settlement_memo(
     asset_info: Dict[str, Any],
     discount_rate: float
 ) -> str:
-    """生成具备红圈所合伙人法言法语与博弈思维的和解备忘录"""
+    """生成具备合伙人法言法语与博弈思维的和解备忘录"""
     memo_lines = []
     memo_lines.append("【合伙人核心财务审定与执业警告】")
     memo_lines.append(f"1. 纸面虚胖陷阱：债务人提议和解方案名义金额合计 ¥{nominal_settlement:,.2f} 元，名义清偿率高达 {nominal_rate:.1f}%。")
@@ -1822,7 +1822,7 @@ def _generate_partner_settlement_memo(
         )
         memo_lines.append("")
 
-    memo_lines.append("【红圈所合伙人实战谈判反制策略清单】")
+    memo_lines.append("【合伙人实战谈判反制策略清单】")
     memo_lines.append("1. 【穿透增信底线】：坚决拒绝纯资产挂账抵顶！必须要求债务人控股股东、实际控制人及其配偶签署《个人无限连带责任保证书》，锁定高管个人财产线索。")
     memo_lines.append("2. 【惩罚性加速到期条款】：在和解协议中必须加入严密的违约条款：")
     memo_lines.append("   『若债务人迟延履行任何一期款项或迟延办理抵债资产网签过户超过 7 日，我方所作出的任何金额让利承诺立即自动失效，全部剩余债权（包含原全部本金、按LPR 4倍计算之利息及诉讼费）立即视为全部到期，我方有权就未受偿全额立即申请人民法院强制执行原生效法律文书！』")

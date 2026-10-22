@@ -101,14 +101,14 @@ def auth_failure_response() -> JSONResponse:
 def safe_join(base_dir: str, *parts: str) -> str:
     """将路径拼接到 base_dir 内；穿越则 400。"""
     base = os.path.realpath(base_dir)
-    # 拒绝绝对路径部件直接覆盖 base
+    # 拒绝以盘符/根起始的路径部件直接覆盖 base
     cleaned_parts = []
     for p in parts:
         if p is None:
             continue
         s = str(p)
         if os.path.isabs(s) or (len(s) >= 2 and s[1] == ":"):
-            raise HTTPException(status_code=400, detail="非法路径：不允许绝对路径")
+            raise HTTPException(status_code=400, detail="非法路径：不允许以根或盘符起始的路径")
         if ".." in s.replace("\\", "/").split("/"):
             raise HTTPException(status_code=400, detail="非法路径：不允许 ..")
         cleaned_parts.append(s)
@@ -207,7 +207,7 @@ def validate_plain_filename(name: str) -> str:
         raise HTTPException(status_code=400, detail="文件名不能为空")
     s = str(name).strip()
     if "/" in s or "\\" in s or ".." in s or os.path.isabs(s) or (len(s) >= 2 and s[1] == ":"):
-        raise HTTPException(status_code=400, detail="非法文件名：不允许路径分隔符或绝对路径")
+        raise HTTPException(status_code=400, detail="非法文件名：不允许路径分隔符或以根起始的路径")
     return s
 
 

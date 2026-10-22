@@ -150,6 +150,65 @@ async def api_token_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# 分析/计算/文书等 JSON 业务响应统一注入免责声明（健康检查等除外）
+_DISCLAIMER_SKIP_PREFIXES = (
+    "/health",
+    "/api/health",
+    "/api/v1/health",
+    "/api/documents/download/",
+    "/static",
+)
+
+
+@app.middleware("http")
+async def disclaimer_middleware(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if any(path.startswith(p) for p in _DISCLAIMER_SKIP_PREFIXES):
+        return response
+    if not path.startswith("/api/"):
+        return response
+    content_type = (response.headers.get("content-type") or "").lower()
+    if "application/json" not in content_type:
+        return response
+
+    body = b""
+    async for chunk in response.body_iterator:
+        body += chunk if isinstance(chunk, (bytes, bytearray)) else chunk.encode("utf-8")
+
+    import json as _json
+    from starlette.responses import Response as StarletteResponse
+    from gateway.utils.disclaimer import DISCLAIMER, add_disclaimer
+
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    try:
+        data = _json.loads(body.decode("utf-8"))
+    except Exception:
+        return StarletteResponse(
+            content=body,
+            status_code=response.status_code,
+            headers=headers,
+            media_type=content_type,
+        )
+
+    if isinstance(data, dict):
+        data["disclaimer"] = DISCLAIMER
+        add_disclaimer(data)
+        return JSONResponse(
+            content=data,
+            status_code=response.status_code,
+            headers=headers,
+            media_type="application/json",
+        )
+
+    return StarletteResponse(
+        content=body,
+        status_code=response.status_code,
+        headers=headers,
+        media_type=content_type,
+    )
+
+
 # 挂载各业务阶段路由
 app.include_router(phase1_router)
 app.include_router(phase2_router)

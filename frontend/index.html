@@ -252,6 +252,30 @@
       background-color: var(--accent-amber);
     }
 
+    /* 全局免责声明页脚 */
+    .global-disclaimer-bar {
+      position: fixed;
+      left: 220px;
+      right: 0;
+      bottom: 0;
+      z-index: 900;
+      background: #F8F7F3;
+      border-top: 1px solid var(--border-hairline);
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.4;
+      padding: 6px 16px;
+      text-align: center;
+    }
+    .lf-disclaimer-line {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--border-hairline);
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
     /* 侧边栏底部引擎状态指示器 */
     .sidebar-footer {
       padding: 14px 16px;
@@ -500,6 +524,7 @@
       flex-direction: column;
       min-width: 0;
       width: 100%;
+      padding-bottom: 36px;
     }
 
     /* 顶部工作区标头 */
@@ -2698,9 +2723,9 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
           <span id="gcase-conflict-btn-text">🛡️ 利冲穿透排查</span>
         </button>
-        <button type="button" class="btn-dispatch" style="border-color: #1976D2; color: #1976D2; background: #E3F2FD;" onclick="openCitationGuardReportModal()" title="大模型文书零幻觉引注熔断排查器与自动净化工作台">
+        <button type="button" class="btn-dispatch" style="border-color: #1976D2; color: #1976D2; background: #E3F2FD;" onclick="openCitationGuardReportModal()" title="大模型文书本地库比对引注熔断排查器与自动净化工作台">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-          <span>⚡ 零幻觉引注熔断</span>
+          <span>⚡ 本地库比对引注熔断</span>
         </button>
         <button type="button" class="btn-dispatch amber-action" onclick="applyCaseContextToLitigation(false)" title="将当前案件当事人、标的、利息公文与选定法条一键注入 02 起诉状表单">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
@@ -3381,7 +3406,7 @@
             </button>
           </div>
 
-          <!-- 法条依据标签与零幻觉引注体检 -->
+          <!-- 法条依据标签与本地库比对引注体检 -->
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
             <div style="font-size: 12px; color: var(--accent-amber); font-weight: 600;" id="pkg-citations-area">
               实体法适用依据：等待生成...
@@ -3690,7 +3715,7 @@
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
         <div class="segmented-control" style="font-size: 12px;">
           <button type="button" class="segmented-btn active" id="btn-subtab-appeal" onclick="switchRagSignSubTab('appeal')">
-            ⚖️ 二审/再审生死局：类案裁判分歧对抗大屏 (P3升级·最高院同案不同判穿透)
+            ⚖️ 二审/再审关键阶段：类案裁判分歧对抗大屏 (P3升级·最高院同案不同判穿透)
           </button>
           <button type="button" class="segmented-btn" id="btn-subtab-legacy" onclick="switchRagSignSubTab('legacy')">
             📑 常规双库检索与远程电子签约
@@ -3702,7 +3727,7 @@
         <span id="appeal-demo-badge" style="display:none; margin-left:8px; font-size:11px; color:#B45309; background:#FEF3C7; padding:2px 8px; border-radius:4px;">演示数据·非真实案例</span>
       </div>
 
-      <!-- 子面板 A: P3 二审/再审生死局·一审裁决漏洞剖析与最高院类案分歧穿透大屏 -->
+      <!-- 子面板 A: P3 二审/再审关键阶段·一审裁决漏洞剖析与最高院类案分歧穿透大屏 -->
       <div id="pane-rag-appeal" style="display: block;">
         
         <!-- 全景核心指标看板 -->
@@ -3731,7 +3756,7 @@
           <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
             <div style="font-size: 11px; color: var(--text-muted);">最高院裁判尺度统一合规率</div>
             <div style="font-size: 16px; font-weight: 700; color: #1E40AF; margin-top: 3px; font-family: var(--font-mono);">
-              100% 官方案号验真通过
+              100% 官方案号本地库比对通过
             </div>
             <div style="font-size: 10.5px; color: #1E40AF; margin-top: 2px;">法发〔2020〕24号类案检索规范</div>
           </div>
@@ -4982,12 +5007,37 @@
 
   <!-- 轻量悬浮 Toast 消息提示 -->
   <div class="toast-container" id="toast-container"></div>
+  <div class="global-disclaimer-bar" id="global-disclaimer-bar">本输出由软件自动生成，仅供执业律师参考，不构成法律意见，须经律师审核后使用。</div>
 
   <script>
     const API_BASE = "";
     // S-01：从服务端注入的 meta 读取同源 API Token；统一包装 fetch 与下载链接
     const LAWFLOW_TOKEN = (document.querySelector('meta[name="lawflow-token"]') || {}).content || "";
+    const LAWFLOW_DISCLAIMER = "本输出由软件自动生成，仅供执业律师参考，不构成法律意见，须经律师审核后使用。";
     const _nativeFetch = window.fetch.bind(window);
+
+    function lfDisclaimerHtml() {
+      return `<div class="lf-disclaimer-line">${LAWFLOW_DISCLAIMER}</div>`;
+    }
+
+    /** 在结果容器底部追加免责声明小字（幂等） */
+    function appendResultDisclaimer(el) {
+      if (!el) return;
+      if (el.querySelector && el.querySelector('.lf-disclaimer-line')) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'lf-disclaimer-line';
+      wrap.textContent = LAWFLOW_DISCLAIMER;
+      el.appendChild(wrap);
+    }
+
+    function initResultCardDisclaimers() {
+      document.querySelectorAll('.docket-receipt-paper, .surface-card').forEach(appendResultDisclaimer);
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initResultCardDisclaimers);
+    } else {
+      initResultCardDisclaimers();
+    }
 
     function withDownloadToken(url) {
       if (!url || typeof url !== 'string') return url;
@@ -5753,7 +5803,7 @@
         document.getElementById('pkg-citations-area').innerHTML =
           `实体法适用依据：<span style="color: var(--primary-navy); font-weight:700;">${statutes.join('、') || '《中华人民共和国民法典》相关实体法条'}</span>`;
         
-        // 零幻觉引注熔断体检报告联动
+        // 本地库比对引注熔断体检报告联动
         if (d.citation_audit) {
           window._lastCitationAudit = d.citation_audit;
           const badgeWrap = document.getElementById('pkg-citation-guard-badge-wrap');
@@ -6391,7 +6441,7 @@
                 <del class="diff-del">${escapeHtml(c.base_text || '')}</del>
               </div>
               <div style="font-size: 11.5px; color: #B91C1C; background: #FEF2F2; padding: 4px 8px; border-radius: 4px;">
-                🚨 法律风险提示：该条款遭删除将导致债权担保或违约追偿权利彻底丧失，严禁直接妥协！
+                🚨 法律风险提示：该条款遭删除将导致债权担保或违约追偿权利充分丧失，严禁直接妥协！
               </div>
             ` : ''}
 
@@ -8612,7 +8662,7 @@
     }
 
     // =========================================================================
-    // 阶段六：律所级利益冲突穿透排查与零幻觉引注熔断 (Phase 6 Compliance & Guard)
+    // 阶段六：律所级利益冲突穿透排查与本地库比对引注熔断 (Phase 6 Compliance & Guard)
     // =========================================================================
     let _currentConflictResult = null;
     let _lastCitationAudit = null;
@@ -8710,14 +8760,14 @@
           if (res.conflict_level === 'UNABLE_TO_CHECK' || res.verdict === 'UNABLE_TO_CHECK') {
             globalBadge.innerText = '未完成排查';
             globalBadge.style.color = '#D32F2F';
-          } else if (res.conflict_level === 'CRITICAL_BLOCKED') {
-            globalBadge.innerText = '🚫 存在直接冲突(已熔断)';
-          } else if (res.conflict_level === 'HIGH_WARNING') {
-            globalBadge.innerText = '⚠️ 存合规风险(需豁免)';
-          } else if (res.conflict_level === 'CAUTION_REQUIRED') {
-            globalBadge.innerText = '🔍 历史客户关联';
+          } else if (res.conflict_level === 'PROHIBITED' || res.conflict_level === 'CRITICAL_BLOCKED') {
+            globalBadge.innerText = '🚫 不得代理';
+          } else if (res.conflict_level === 'WAIVABLE_WITH_CONSENT' || res.conflict_level === 'HIGH_WARNING') {
+            globalBadge.innerText = '⚠️ 须告知并经同意';
+          } else if (res.conflict_level === 'CAUTION' || res.conflict_level === 'CAUTION_REQUIRED') {
+            globalBadge.innerText = '🔍 需人工判断';
           } else {
-            globalBadge.innerText = '🛡️ 利冲已验讫(无冲突)';
+            globalBadge.innerText = '🛡️ 未发现冲突';
           }
         }
       } catch (err) {
@@ -8746,17 +8796,17 @@
         icon = '⛔';
         unableLabel = '未完成排查';
         res.status_label = res.status_label || res.message || '未完成排查';
-      } else if (conflictLvl === 'CRITICAL_BLOCKED') {
+      } else if (conflictLvl === 'PROHIBITED' || conflictLvl === 'CRITICAL_BLOCKED') {
         statusColor = '#D32F2F';
         statusBg = '#FFEBEE';
         statusBorder = '#FFCDD2';
         icon = '🚫';
-      } else if (conflictLvl === 'HIGH_WARNING') {
+      } else if (conflictLvl === 'WAIVABLE_WITH_CONSENT' || conflictLvl === 'HIGH_WARNING') {
         statusColor = '#E65100';
         statusBg = '#FFF3E0';
         statusBorder = '#FFE0B2';
         icon = '⚠️';
-      } else if (conflictLvl === 'CAUTION_REQUIRED') {
+      } else if (conflictLvl === 'CAUTION' || conflictLvl === 'CAUTION_REQUIRED') {
         statusColor = '#F57F17';
         statusBg = '#FFFDE7';
         statusBorder = '#FFF9C4';
@@ -8905,7 +8955,7 @@
       }
     }
 
-    // 零幻觉引注熔断模态框控制
+    // 本地库比对引注熔断模态框控制
     function openCitationGuardReportModal(customAudit) {
       const audit = customAudit || window._lastCitationAudit;
       const modal = document.getElementById('modal-citation-guard');
@@ -11338,7 +11388,7 @@
       };
 
       copilotRecognition.onerror = (event) => {
-        // 'no-speech' 与 'aborted' 是正常的静音事件，绝对不断开通话！
+        // 'no-speech' 与 'aborted' 是正常的静音事件，严格不断开通话！
         if (event.error === 'no-speech' || event.error === 'aborted') {
           if (isCopilotCallActive && !isCopilotSpeaking) {
             setTimeout(ensureRecognitionRunning, 80);
@@ -11400,7 +11450,7 @@
       clearTimeout(ttsEchoSafetyTimeout);
       copilotLastTranscript = "";
 
-      // 彻底挂断并中止任何发音
+      // 充分挂断并中止任何发音
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
@@ -12813,14 +12863,14 @@
   </div>
 
   <!-- ========================================================================
-       零幻觉司法引注反查体检报告与防幻觉熔断模态框 (Citation Guard Modal)
+       本地库比对司法引注反查体检报告与防幻觉熔断模态框 (Citation Guard Modal)
        ======================================================================== -->
   <div class="modal-overlay" id="modal-citation-guard" onclick="handleCitationGuardModalBackdropClick(event)">
     <div class="modal-dialog" style="max-width: 920px;" onclick="event.stopPropagation()">
       <div class="modal-header">
         <div class="modal-title-group">
           <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
-            <span>零幻觉司法引注反查体检报告</span>
+            <span>本地库比对司法引注反查体检报告</span>
             <span class="badge" id="cg-modal-badge" style="background: #2E7D32; color: #fff;">100% 权威现行有效</span>
           </div>
           <div class="modal-subtitle">穿透反查 SQLite 权威法典库 · 实时熔断《合同法》《物权法》等已废止旧法 · 拦截大模型捏造越界条号</div>

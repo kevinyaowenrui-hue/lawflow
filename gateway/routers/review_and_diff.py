@@ -252,7 +252,7 @@ def generate_source_grounding_visual_crop(
 ) -> Dict[str, Any]:
     """
     使用 PyMuPDF 对案卷原件 (PDF/扫描图/合成存证页) 进行高分辨率切片与琥珀金高亮加框。
-    返回 base64 编码的 PNG 切片图片及绝对边界框坐标，让律师无需离开界面即可直视案卷纸质证据！
+    返回 base64 编码的 PNG 切片图片及严格边界框坐标，让律师无需离开界面即可直视案卷纸质证据！
     """
     file_path = target_doc.get("file_path") or ""
     doc = None
@@ -444,7 +444,7 @@ async def api_get_source_grounding_excerpt(
     if start_pos < 0 and highlight:
         start_pos = full_text.find(highlight)
 
-    # 生成高分辨率原件视觉切片及绝对边界框
+    # 生成高分辨率原件视觉切片及严格边界框
     visual_info = generate_source_grounding_visual_crop(
         target_doc=target_doc,
         full_text=full_text,

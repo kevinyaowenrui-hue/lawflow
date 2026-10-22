@@ -41,7 +41,7 @@ from gateway.core.security import (
 )
 from gateway.utils.ocr_engine import extract_evidence_text, structure_evidence_text
 from gateway.utils.legal_prompts import (
-    TRIAL_OUTLINE_FIVE_MODULES_PROMPT,
+    build_trial_outline_system_prompt,
     CONTRACT_REVIEW_PERSPECTIVE_PROMPT,
     CONTRACT_REVIEW_ENGLISH_PROMPT,
     is_predominantly_english,
@@ -266,7 +266,7 @@ async def redact_sensitive_information(req: RedactSensitiveReq):
     redactions_count = 0
     redacted_items = []
 
-    # 18位二代身份证正则表达式（采用前后负向数字断言，彻底解决中文字符紧邻导致 \b 单词边界匹配失效问题）
+    # 18位二代身份证正则表达式（采用前后负向数字断言，充分解决中文字符紧邻导致 \b 单词边界匹配失效问题）
     id_pattern = re.compile(r"(?<!\d)(?:[1-9]\d{5}(?:18|19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx]|[1-9]\d{7}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3})(?!\d)")
     # 16-19位银行卡号正则表达式（采用前后负向数字断言）
     bank_pattern = re.compile(r"(?<!\d)[1-9]\d{15,18}(?!\d)")
@@ -420,15 +420,17 @@ async def generate_five_modules_trial_outline(req: TrialOutlineFiveModulesReq):
 
 请按照规范的五模块结构（一、案件核心概览；二、争议焦点拆解；三、事实查明矩阵；四、法律适用检索；五、法庭发问提纲与反制预案），生成全面深度的出庭提纲。"""
 
+    # 无已核验判例时注入「无」，不得诱导模型自行列举案号
+    trial_system_prompt = build_trial_outline_system_prompt("无")
     try:
         outline_markdown = await ollama_client.generate(
             prompt=prompt,
-            system_prompt=TRIAL_OUTLINE_FIVE_MODULES_PROMPT,
+            system_prompt=trial_system_prompt,
             temperature=0.3
         )
     except Exception as e:
         logger.warning(f"庭审提纲生成异常，启动规则兜底: {e}")
-        outline_markdown = ollama_client._generate_rule_fallback(prompt, TRIAL_OUTLINE_FIVE_MODULES_PROMPT)
+        outline_markdown = ollama_client._generate_rule_fallback(prompt, trial_system_prompt)
 
     from gateway.utils.citation_guard import audit_citations_in_text
     citation_audit = audit_citations_in_text(outline_markdown, auto_sanitize=True)
@@ -524,7 +526,7 @@ Please output the risk assessment, playbook deviation, and redline modifications
                             "negotiation_tip": "Demand immediate deletion of cross-default, or strictly limit it to final non-appealable judgments for material indebtedness directly under this Agreement.",
                             "suggested_clause": "[Intentionally Deleted - Cross-default provisions are hereby deleted in their entirety].",
                             "playbook_deviation": "CRITICAL_BREACH",
-                            "matched_playbook_rule": "Cross-Default（交叉违约）条款必须彻底删除或严格限定为本合同项下已经法院终审裁判确定的实质性债务违约",
+                            "matched_playbook_rule": "Cross-Default（交叉违约）条款必须整条删除或严格限定为本合同项下已经法院终审裁判确定的实质性债务违约",
                             "deviation_reason": "Original clause creates unbounded contagion default across all affiliates and external contracts."
                         }
                     ]
@@ -589,7 +591,7 @@ Please output the risk assessment, playbook deviation, and redline modifications
                             "negotiation_tip": "Delete cross-default and adopt neutral international arbitration.",
                             "suggested_clause": "[Intentionally Deleted - Cross-default provisions shall not apply].",
                             "playbook_deviation": "CRITICAL_BREACH",
-                            "matched_playbook_rule": "Cross-Default（交叉违约）条款必须彻底删除或严格限定为本合同项下已经法院终审裁判确定的实质性债务违约",
+                            "matched_playbook_rule": "Cross-Default（交叉违约）条款必须整条删除或严格限定为本合同项下已经法院终审裁判确定的实质性债务违约",
                             "deviation_reason": "Contagion risk across affiliates without notice."
                         }
                     ]

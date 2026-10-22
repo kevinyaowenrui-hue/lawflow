@@ -730,7 +730,7 @@ def import_custom_statute(
 
 
 def get_statute_database_stats() -> Dict[str, Any]:
-    """获取数据库全局运行指标；不含服务器绝对路径。"""
+    """获取数据库全局运行指标；不含服务器文件系统完整路径。"""
     init_statute_database()
     with get_db_connection() as conn:
         cursor = conn.cursor()

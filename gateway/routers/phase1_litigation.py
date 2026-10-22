@@ -200,9 +200,10 @@ def _pymupdf_paginated_render(paragraphs: List[str], pdf_path: str) -> bool:
     total_pages = doc.page_count
     for pno in range(total_pages):
         page = doc[pno]
-        footer_rect = fitz.Rect(margin_x, page_height - 35, page_width - margin_x, page_height - 15)
-        footer_str = f"LawFlow 智律工作台 · 电子文书存证副本 · 第 {pno + 1} 页 / 共 {total_pages} 页"
-        page.insert_textbox(footer_rect, footer_str, fontsize=8, fontname="china-s", align=1)
+        from gateway.utils.disclaimer import disclaimer_pdf_footer_line
+        footer_rect = fitz.Rect(margin_x, page_height - 48, page_width - margin_x, page_height - 12)
+        footer_str = disclaimer_pdf_footer_line(page_no=pno + 1, total_pages=total_pages)
+        page.insert_textbox(footer_rect, footer_str, fontsize=6.5, fontname="china-s", align=1)
 
     doc.save(pdf_path)
     doc.close()
@@ -217,9 +218,12 @@ async def convert_docx_to_pdf(docx_path: str, pdf_path: str, title: str = "司�
     优先 LibreOffice (soffice)；其次 Stirling-PDF；最后 PyMuPDF 按行分页兜底。
     全部失败时返回 False，不得生成缺页/空壳 PDF。
     """
+    from gateway.utils.disclaimer import stamp_disclaimer_on_pdf
+
     # 1. LibreOffice
     if _convert_docx_via_soffice(docx_path, pdf_path):
         logger.info(f"LibreOffice 成功将 {docx_path} 转换为 {pdf_path}")
+        stamp_disclaimer_on_pdf(pdf_path)
         return True
 
     # 2. Stirling-PDF
@@ -234,6 +238,7 @@ async def convert_docx_to_pdf(docx_path: str, pdf_path: str, title: str = "司�
                         with open(pdf_path, "wb") as pdf_file:
                             pdf_file.write(resp.content)
                         logger.info(f"Stirling-PDF 成功将 {docx_path} 转换为 {pdf_path}")
+                        stamp_disclaimer_on_pdf(pdf_path)
                         return True
         except Exception:
             continue
@@ -244,6 +249,7 @@ async def convert_docx_to_pdf(docx_path: str, pdf_path: str, title: str = "司�
         ok = _pymupdf_paginated_render(paragraphs, pdf_path)
         if ok:
             logger.info(f"PyMuPDF 分页渲染成功: {pdf_path}")
+            stamp_disclaimer_on_pdf(pdf_path)
             return True
         logger.error("PyMuPDF 分页渲染失败：未生成有效 PDF")
         return False
@@ -972,6 +978,8 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
     doc.render(context_main)
     doc.save(main_docx_path)
     _highlight_placeholders_in_docx(main_docx_path)
+    from gateway.utils.disclaimer import add_disclaimer_to_docx
+    add_disclaimer_to_docx(main_docx_path)
 
     pdf_ok = await convert_docx_to_pdf(main_docx_path, main_pdf_path, title=doc_label, text_summary=facts_polished)
     if not pdf_ok:
@@ -1137,7 +1145,7 @@ async def download_doc(filename: str):
 
 
 # ==============================================================================
-# P3: 二审/再审生死局·一审裁决漏洞剖析与最高院类案分歧穿透接口
+# P3: 二审/再审关键阶段·一审裁决漏洞剖析与最高院类案分歧穿透接口
 # ==============================================================================
 class AppealAuditRequest(BaseModel):
     judgment_text: Optional[str] = Field(default="", description="一审判决书全文或裁判理由段落")

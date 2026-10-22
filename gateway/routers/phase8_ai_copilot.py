@@ -539,7 +539,7 @@ async def copilot_converse_orchestrate(req: CopilotConverseReq):
 
     orchestration_result = None
     if has_rule_hit:
-        # 命中明确办案动作或问候，毫秒级直接直通，彻底消灭数秒等待
+        # 命中明确办案动作或问候，毫秒级直接直通，充分消灭数秒等待
         orchestration_result = rule_result
     else:
         # 仅在无规则命中且可能为复杂开放式法理咨询时，尝试异步调用大模型 (超时严控在 2.5 秒)

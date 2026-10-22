@@ -1,10 +1,10 @@
 """
 LawFlow 智律工作台 - 接案利益冲突穿透排查引擎 (Conflict of Interest Check Engine)
-严格遵循：
-- 《中华人民共和国律师法》第三十九条
-- 中华全国律师协会《律师执业行为规范(试行)》第五十条、第五十一条
-- 司法部《律师和律师事务所违法行为处罚办法》
-实现接案前强制穿透式利益冲突排查与执业红线阻断。
+规则定性（律师 L-I20）：
+- PROHIBITED：不得代理（如同一案件中为双方当事人担任代理人）
+- WAIVABLE_WITH_CONSENT：告知并经委托人同意后可以代理（如律所与委托人存在法律服务关系、本所律师担任该委托人对方当事人的代理人）
+- CAUTION：关联主体需人工判断
+《律师法》引用仅写「第三十九条」（不分项）；《律师执业行为规范》（2017修订）条号待律师核实。
 """
 
 from __future__ import annotations
@@ -24,6 +24,20 @@ from gateway.core.db import connect
 from gateway.core.paths import get_laws_db_path
 
 logger = logging.getLogger("lawflow.conflict_checker")
+
+# 冲突等级优先级（数值越大越严）
+_LEVEL_RANK = {
+    "CLEAR": 0,
+    "CAUTION": 1,
+    "WAIVABLE_WITH_CONSENT": 2,
+    "PROHIBITED": 3,
+    "UNABLE_TO_CHECK": 4,
+}
+
+_CONSENT_NOTE = "须书面告知相关委托人并取得同意，并留存记录"
+
+_RULE_LAWYER_LAW = "《律师法》第三十九条"
+_RULE_CONDUCT_TODO = "《律师执业行为规范》（2017修订）第 TODO(律师核实) 条"
 
 
 @contextmanager
@@ -219,7 +233,6 @@ def delete_demo_conflict_cases() -> int:
             ("%【演示】%",),
         )
         n = cursor.rowcount or 0
-    # 清空后本进程内不再自动回种，除非显式 seed_demo / 重启且 SEED_DEMO=1
     _CONFLICT_DEMO_SEEDED = True
     return n
 
@@ -231,12 +244,20 @@ def clean_name(name: Optional[str]) -> str:
     return n
 
 
+def _name_match(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    return a == b or a in b or b in a
+
+
 def _unable_to_check_response() -> Dict[str, Any]:
     return {
         "status": "error",
         "conflict_level": "UNABLE_TO_CHECK",
         "verdict": "UNABLE_TO_CHECK",
         "has_conflict": None,
+        "requires_consent": False,
+        "consent_note": "",
         "status_label": "无法完成利益冲突排查，请稍后重试或人工排查",
         "summary": "无法完成利益冲突排查，请稍后重试或人工排查",
         "recommendation": "无法完成利益冲突排查，请稍后重试或人工排查",
@@ -245,6 +266,33 @@ def _unable_to_check_response() -> Dict[str, Any]:
         "total_conflicts": 0,
         "conflict_items": [],
         "conflicts": [],
+    }
+
+
+def _make_item(
+    *,
+    conflict_type: str,
+    level: str,
+    conflict_party: str,
+    matched_role: str,
+    record: Any,
+    action_required: str,
+) -> Dict[str, Any]:
+    return {
+        "conflict_type": conflict_type,
+        "severity": level,
+        "conflict_level": level,
+        "conflict_party": conflict_party,
+        "matched_role": matched_role,
+        "matched_case_id": record["case_id"],
+        "matched_case_title": record["case_title"],
+        "lead_lawyer": record["lead_lawyer"],
+        "case_status": record["case_status"],
+        "rule_basis": f"{_RULE_LAWYER_LAW}；{_RULE_CONDUCT_TODO}",
+        "rule_verified": False,
+        "action_required": action_required,
+        "requires_consent": level == "WAIVABLE_WITH_CONSENT",
+        "consent_note": _CONSENT_NOTE if level == "WAIVABLE_WITH_CONSENT" else "",
     }
 
 
@@ -264,13 +312,10 @@ def check_conflict_of_interest(
     **kwargs,
 ) -> Dict[str, Any]:
     """
-    全方位多维利益冲突穿透排查算法
-    核查维度：
-    1. 【直接利益冲突】待起诉被告是我所在办客户或法律顾问单位（CRITICAL_BLOCKED）；
-    2. 【同案双方代理冲突】原被告双方均为我所代理客户（CRITICAL_BLOCKED）；
-    3. 【穿透关联利益冲突】被告法定代表人/实控人/母子公司为我所客户（HIGH_WARNING）；
-    4. 【历史客户利益冲突】对方曾为我所已结案客户，可能存在案情关联或保密义务（CAUTION_REQUIRED）；
-    5. 【合格发证】若无冲突，生成合规审计合格数字凭据。
+    利益冲突穿透排查：
+    1. 【不得代理】拟接案件中双方当事人均为我所客户（PROHIBITED）；
+    2. 【须告知并经同意】对方为常年顾问/在办客户或历史客户（WAIVABLE_WITH_CONSENT）；
+    3. 【需人工判断】对方为关联主体（CAUTION）。
     """
     p_raw = plaintiff_name or client_name
     d_raw = defendant_name or opposing_party
@@ -283,7 +328,11 @@ def check_conflict_of_interest(
     d_id = (d_id_raw or "").strip()
 
     conflict_items: List[Dict[str, Any]] = []
-    highest_severity = 0  # 0: none, 1: CAUTION, 2: WARNING, 3: BLOCKED
+    highest_rank = 0
+
+    # 跨底档收集：双方是否分别为我所客户（用于同案双方不得代理）
+    plaintiff_client_hits: List[Any] = []
+    defendant_client_hits: List[Any] = []
 
     try:
         init_conflict_registry_table()
@@ -303,10 +352,8 @@ def check_conflict_of_interest(
 
             for r in records:
                 r_client = clean_name(r["client_name"])
-                r_opposing = clean_name(r["opposing_name"])
                 r_status = r["case_status"]
                 r_client_id = (r["client_uscc_id"] or "").strip()
-                r_opposing_id = (r["opposing_uscc_id"] or "").strip()
 
                 affs: List[Any] = []
                 try:
@@ -321,113 +368,105 @@ def check_conflict_of_interest(
                     if a.get("id_card") or a.get("uscc")
                 ]
 
-                is_defendant_my_client = (
-                    (
-                        d_clean
-                        and (d_clean == r_client or d_clean in r_client or r_client in d_clean)
-                    )
-                    or (d_id and d_id == r_client_id)
+                is_plaintiff_my_client = (
+                    _name_match(p_clean, r_client) or (p_id and p_id == r_client_id)
                 )
+                is_defendant_my_client = (
+                    _name_match(d_clean, r_client) or (d_id and d_id == r_client_id)
+                )
+
+                if is_plaintiff_my_client:
+                    plaintiff_client_hits.append(r)
+                if is_defendant_my_client:
+                    defendant_client_hits.append(r)
 
                 if is_defendant_my_client:
                     if r_status in ["ACTIVE", "RETAINER"]:
-                        highest_severity = max(highest_severity, 3)
+                        highest_rank = max(highest_rank, _LEVEL_RANK["WAIVABLE_WITH_CONSENT"])
                         conflict_items.append(
-                            {
-                                "conflict_type": "常年顾问/在办客户利益冲突 (DIRECT_CLIENT_CONFLICT)",
-                                "severity": "CRITICAL_BLOCKED",
-                                "conflict_party": d_clean,
-                                "matched_role": "现为我所客户",
-                                "matched_case_id": r["case_id"],
-                                "matched_case_title": r["case_title"],
-                                "lead_lawyer": r["lead_lawyer"],
-                                "case_status": r_status,
-                                "rule_basis": "《律师法》第39条第(三)项及《律师执业行为规范》第五十条第(四)项：在担任法律顾问期间，为顾问单位的对方当事人代理；第五十条第(一)项：在同一案件中代理有利益冲突的当事人。",
-                                "action_required": "【执业红线熔断阻断】严禁承接！本案被告为您所当前正式法律顾问单位或在办客户，承接该案将构成严重利益冲突并面临司法行政纪律处分。",
-                            }
+                            _make_item(
+                                conflict_type="常年顾问/在办客户利益冲突 (DIRECT_CLIENT_CONFLICT)",
+                                level="WAIVABLE_WITH_CONSENT",
+                                conflict_party=d_clean,
+                                matched_role="现为我所客户",
+                                record=r,
+                                action_required="【须告知并经同意】本案相对方为我所当前法律顾问单位或在办客户；告知相关委托人并取得书面同意且留存记录后方可代理。",
+                            )
                         )
                     elif r_status == "CLOSED":
-                        highest_severity = max(highest_severity, 1)
+                        highest_rank = max(highest_rank, _LEVEL_RANK["WAIVABLE_WITH_CONSENT"])
                         conflict_items.append(
-                            {
-                                "conflict_type": "历史已结案客户再代理冲突 (FORMER_CLIENT_CONFLICT)",
-                                "severity": "CAUTION_REQUIRED",
-                                "conflict_party": d_clean,
-                                "matched_role": "曾为我所已结案客户",
-                                "matched_case_id": r["case_id"],
-                                "matched_case_title": r["case_title"],
-                                "lead_lawyer": r["lead_lawyer"],
-                                "case_status": r_status,
-                                "rule_basis": "《律师执业行为规范》第五十一条：在曾经代理的案件结束后，在与该案件有实质性联系的案件中，为原案件的对方当事人担任代理人。",
-                                "action_required": "【需签署利益冲突豁免函】请核对两案是否存在实质联系及知晓商业秘密。主办律师需取得该前客户书面豁免知情同意书（Conflict Waiver）方可立案。",
-                            }
+                            _make_item(
+                                conflict_type="历史已结案客户再代理冲突 (FORMER_CLIENT_CONFLICT)",
+                                level="WAIVABLE_WITH_CONSENT",
+                                conflict_party=d_clean,
+                                matched_role="曾为我所已结案客户",
+                                record=r,
+                                action_required="【须告知并经同意】请核对两案是否存在实质联系及保密义务；取得前客户书面同意并留存记录后方可立案。",
+                            )
                         )
 
                 is_defendant_affiliate = any(
-                    d_clean and (d_clean == an or d_clean in an or an in d_clean)
-                    for an in aff_names
+                    _name_match(d_clean, an) for an in aff_names
                 ) or any(d_id and d_id == ai for ai in aff_ids)
 
                 if is_defendant_affiliate and r_status in ["ACTIVE", "RETAINER"]:
-                    highest_severity = max(highest_severity, 2)
-                    matched_aff = next(
-                        (
-                            a
-                            for a in affs
-                            if clean_name(a.get("name")) == d_clean
-                            or a.get("id_card") == d_id
-                            or a.get("uscc") == d_id
-                        ),
-                        {},
-                    )
-                    conflict_items.append(
-                        {
-                            "conflict_type": "穿透式关联主体利益冲突 (PIERCING_AFFILIATE_CONFLICT)",
-                            "severity": "HIGH_WARNING",
-                            "conflict_party": d_clean,
-                            "matched_role": f"系我所顾问/在办客户【{r['client_name']}】之关联方 ({matched_aff.get('relation', '关联实控主体')})",
-                            "matched_case_id": r["case_id"],
-                            "matched_case_title": r["case_title"],
-                            "lead_lawyer": r["lead_lawyer"],
-                            "case_status": r_status,
-                            "rule_basis": "《律师法》第39条及《律师执业行为规范》第四十九条：利益冲突不仅包括当事人本人，还包括当事人的控股股东、实际控制人、分支机构等实质关联主体。",
-                            "action_required": "【高危提示】拟起诉主体系我所现存客户之实控人或核心子公司，虽非直接签约主体，但承接极易引发委托人解约与侵权投诉，需经律所管委会特别审批。",
-                        }
-                    )
+                    # 若已作为直接客户命中，不再重复记关联
+                    if not is_defendant_my_client:
+                        highest_rank = max(highest_rank, _LEVEL_RANK["CAUTION"])
+                        matched_aff = next(
+                            (
+                                a
+                                for a in affs
+                                if clean_name(a.get("name")) == d_clean
+                                or a.get("id_card") == d_id
+                                or a.get("uscc") == d_id
+                            ),
+                            {},
+                        )
+                        conflict_items.append(
+                            _make_item(
+                                conflict_type="穿透式关联主体利益冲突 (PIERCING_AFFILIATE_CONFLICT)",
+                                level="CAUTION",
+                                conflict_party=d_clean,
+                                matched_role=f"系我所顾问/在办客户【{r['client_name']}】之关联方 ({matched_aff.get('relation', '关联实控主体')})",
+                                record=r,
+                                action_required="【需人工判断】拟起诉主体系我所现存客户之关联方，请律所按内部程序人工审查后再决定是否承接。",
+                            )
+                        )
 
-                is_plaintiff_my_client = (
-                    (p_clean and (p_clean == r_client or p_clean in r_client))
-                    or (p_id and p_id == r_client_id)
+            # 同案双方均为我所客户 → 不得代理
+            if plaintiff_client_hits and defendant_client_hits:
+                highest_rank = max(highest_rank, _LEVEL_RANK["PROHIBITED"])
+                hit = defendant_client_hits[0]
+                conflict_items.append(
+                    _make_item(
+                        conflict_type="同案双方代理对立冲突 (DUAL_REPRESENTATION_BLOCKED)",
+                        level="PROHIBITED",
+                        conflict_party=f"{p_clean} 与 {d_clean}",
+                        matched_role="双方当事人均在我所业务底档内",
+                        record=hit,
+                        action_required="【不得代理】同一案件中为双方当事人担任代理人，不得承接。",
+                    )
                 )
-                if is_plaintiff_my_client and is_defendant_my_client:
-                    highest_severity = max(highest_severity, 3)
-                    conflict_items.append(
-                        {
-                            "conflict_type": "同案双方代理对立冲突 (DUAL_REPRESENTATION_BLOCKED)",
-                            "severity": "CRITICAL_BLOCKED",
-                            "conflict_party": f"{p_clean} 与 {d_clean}",
-                            "matched_role": "双方当事人均在我所业务底档内",
-                            "matched_case_id": r["case_id"],
-                            "matched_case_title": r["case_title"],
-                            "lead_lawyer": r["lead_lawyer"],
-                            "case_status": r_status,
-                            "rule_basis": "《律师法》第39条第(三)项：在同一案件中为双方当事人担任代理人。",
-                            "action_required": "【法定义务绝对禁止】此乃司法行政机关直接吊销执业证之法定绝对红线，严禁任何形式的代理！",
-                        }
-                    )
 
-        if highest_severity >= 3:
-            verdict = "CRITICAL_BLOCKED"
-            status_label = "【顶格红线·禁止代理】存在法定直接利益冲突"
-        elif highest_severity == 2:
-            verdict = "HIGH_WARNING"
-            status_label = "【高危预警·管委会审批】存在实控人或子公司穿透冲突"
-        elif highest_severity == 1:
-            verdict = "CAUTION_REQUIRED"
-            status_label = "【审慎立案·需备豁免函】涉及历史已结案客户"
+        if highest_rank >= _LEVEL_RANK["PROHIBITED"]:
+            verdict = "PROHIBITED"
+            status_label = "【不得代理】存在法定直接利益冲突"
+        elif highest_rank >= _LEVEL_RANK["WAIVABLE_WITH_CONSENT"]:
+            verdict = "WAIVABLE_WITH_CONSENT"
+            status_label = "【须告知并经同意】存在可豁免利益冲突"
+        elif highest_rank >= _LEVEL_RANK["CAUTION"]:
+            verdict = "CAUTION"
+            status_label = "【需人工判断】存在关联主体冲突线索"
         else:
             verdict = "CLEAR"
-            status_label = "【核验合格·可以立案】全库穿透排查无任何利益冲突"
+            status_label = "【未发现冲突】全库排查未发现利益冲突登记"
+
+        requires_consent = verdict == "WAIVABLE_WITH_CONSENT"
+        # 若同时有 PROHIBITED 与 WAIVABLE，以禁止为准，不要求同意路径
+        if verdict == "PROHIBITED":
+            requires_consent = False
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cert_hash = hashlib.sha256(
@@ -442,8 +481,8 @@ def check_conflict_of_interest(
         )
         if not triggered_rules and verdict == "CLEAR":
             triggered_rules = [
-                "《律师法》第39条检验通过",
-                "《律师执业行为规范》第50条/51条检验通过",
+                f"{_RULE_LAWYER_LAW}（本地底档未命中冲突）",
+                f"{_RULE_CONDUCT_TODO}（本地底档未命中冲突）",
             ]
 
         conflicts_formatted = []
@@ -458,6 +497,10 @@ def check_conflict_of_interest(
                     "handling_lawyer": it.get("lead_lawyer", ""),
                     "description": it.get("action_required", ""),
                     "rule_basis": it.get("rule_basis", ""),
+                    "rule_verified": it.get("rule_verified", False),
+                    "conflict_level": it.get("conflict_level", ""),
+                    "requires_consent": it.get("requires_consent", False),
+                    "consent_note": it.get("consent_note", ""),
                 }
             )
 
@@ -478,7 +521,7 @@ def check_conflict_of_interest(
                 "2. 律所常年法律顾问服务名录存续期重叠性比对",
                 "3. 控股子公司、法定代表人及实际控制人股权穿透核查",
                 "4. 历史已结案客户再代理保密义务与实质关联性审查",
-                "5. 中华全国律师协会《律师执业行为规范》第50/51条强制规则库",
+                f"5. {_RULE_LAWYER_LAW}与{_RULE_CONDUCT_TODO}（rule_verified=false，待律师核实）",
             ],
             "digital_fingerprint": f"SHA256:{cert_hash[:24]}...",
         }
@@ -488,6 +531,8 @@ def check_conflict_of_interest(
             "conflict_level": verdict,
             "verdict": verdict,
             "has_conflict": (verdict != "CLEAR"),
+            "requires_consent": requires_consent,
+            "consent_note": _CONSENT_NOTE if requires_consent else "",
             "status_label": status_label,
             "summary": status_label,
             "recommendation": status_label,

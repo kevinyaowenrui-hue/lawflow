@@ -5,10 +5,11 @@ strAppDir = objFSO.GetParentFolderName(WScript.ScriptFullName)
 strLauncherPyw = objFSO.BuildPath(strAppDir, "launcher.pyw")
 objShell.CurrentDirectory = strAppDir
 
-strHermesPyw = objShell.ExpandEnvironmentStrings("%USERPROFILE%\AppData\Local\hermes\hermes-agent\venv\Scripts\pythonw.exe")
+' 优先使用项目内 .venv\Scripts\pythonw.exe，其次 PATH 中的 pythonw
+strVenvPyw = objFSO.BuildPath(strAppDir, ".venv\Scripts\pythonw.exe")
 
-If objFSO.FileExists(strHermesPyw) Then
-    strCmd = """" & strHermesPyw & """ """ & strLauncherPyw & """"
+If objFSO.FileExists(strVenvPyw) Then
+    strCmd = """" & strVenvPyw & """ """ & strLauncherPyw & """"
 Else
     strCmd = "pythonw.exe """ & strLauncherPyw & """"
 End If

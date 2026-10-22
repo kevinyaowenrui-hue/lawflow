@@ -1,0 +1,10 @@
+# LawFlow 智律工作台 — 可选能力依赖
+# 安装：pip install -r requirements-optional.txt
+# 未安装时的降级行为：
+#   easyocr     — OCR 回退到 PyMuPDF / 空文本，不阻断证据流水线
+#   pydub       — 音频转码跳过或提示缺少 ffmpeg/pydub
+#   pillow-heif — HEIC/HEIF 图片无法打开，其它格式不受影响
+
+easyocr>=1.7.0
+pydub>=0.25.0
+pillow-heif>=0.13.0

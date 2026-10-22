@@ -1,129 +1,95 @@
 # LawFlow 智律工作台 (LawFlow Workspace)
 
-> **面向一线诉讼律师与企业法务总监的实战级私有化法律科技中枢**  
-> 告别“泛泛而谈的 AI 法律玩具”，将**请求权基础分析法、证据三性对抗逻辑、司法会计精算与执行穿透攻防体系**深度嵌入办案动线。
+面向诉讼律师与企业法务的**本地优先**办案提效工作台：精算、文书流水线、证据整理、法条 FTS 检索、案件空间与可选云端大模型。
 
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Zero-Jank](https://img.shields.io/badge/Frontend-Zero--Jank%20Vanilla%20SPA-orange.svg)]()
 [![CI](https://github.com/kevinyaowenrui-hue/lawflow/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinyaowenrui-hue/lawflow/actions/workflows/ci.yml)
 
 ---
 
-## 🌟 核心实务五大攻防大屏 (P0 - P4)
+## 功能概览（客观描述）
 
-LawFlow 摒弃传统的“单轮对话生成几千字废话”模式，围绕头部律所合伙人一线承办的极端疑难案件，打造了五大攻防中枢：
+| 模块 | 说明 |
+| :--- | :--- |
+| 实务精算 | 人民币大写、身份证/信用代码校验、诉讼费分段、LPR 分段计息、劳动补偿 N/N+1/2N、时效与保全续封等 |
+| 立案文书 | 按模板生成起诉状等 Word/PDF 打包下载 |
+| 证据与庭审 | 合卷/贝茨码、敏感信息涂黑、证据目录、三性意见与庭审提纲（依赖大模型时需配置 Ollama 或云端） |
+| 合同审查 | 红线手册对比，可导出带 Word 修订轨的稿件 |
+| 法条库 | SQLite FTS5 关键词与条号检索、废止拦截、子母法关联（收录范围有限） |
+| 类案检索 | 关键词/FTS 检索与咨询注入；**非**向量 RAG |
+| 电子签约 | 可对接 DocuSeal；未配置时为**演示**签署流程 |
+| 案件空间 | 卷宗挂载、图谱、阅卷表、工作流断点、任务看板 |
+| 深度屏 | 要件推演、上诉审计、执行穿透等；部分场景在接入真实数据前为**演示** |
 
-### 1. P0 跨境英文合同霸王条款 Redline 与非破坏性修订
-* **实务痛点**：大模型重写英文采购合同时原格式炸裂、条款空洞。
-* **攻防利器**：
-  * 基于双向最长公共子序列（LCS）的**非破坏性模糊锚定引擎**；
-  * 内置跨国并购强/弱势甲乙方博弈 Playbook；
-  * 原文档样式 100% 保留，直接导出带 **Word 原生批注与修订轨道**的 `.docx` 文件。
-
-### 2. P1 卷宗物理视觉切片 (BBox Grounding) 与调解 NPV 动态精算
-* **实务痛点**：开庭前夕临时收到 50 页新证据，法官主持当庭调解时无法快速验算方案真伪。
-* **攻防利器**：
-  * 原卷 PDF 坐标级切片提取，点击质证意见即可直接弹出**对应卷宗页码的高清视觉裁剪片段**；
-  * 离散现金流 **NPV 动态贴现模型** 与以物抵债折价清偿精算，3 分钟算清调解案值，杜绝客户因时间价值产生隐性亏损。
-
-### 3. P2 《民法典》第 561 条法定冲抵精算与第 692 条保证期间生死线
-* **实务痛点**：民间借贷与企业借款中债务人主张“已偿还款项应先抵扣本金”，以及多主体交叉网状担保主张责任免除。
-* **攻防利器**：
-  * 严格遵循《民法典》第 561 条法定清偿顺序（**实现债权费用 ➔ 利息 ➔ 本金**），一键出具带法言法语的穿行对账单；
-  * 自动化测算《民法典》第 692 条法定 6 个月保证期间除斥线，拦截保证责任法定灭失重大执业风险；
-  * 穿透新《公司法》第 15 条对外担保法定决议效力。
-
-### 4. P3 二审/再审关键阶段·一审裁决漏洞剖析与最高院类案分歧穿透
-* **实务痛点**：一审 8000 万对赌回购案件惨遭地方中院裁判滑铁卢，距上诉截止日仅剩 5 天。
-* **攻防利器**：
-  * **三大致命败诉破绽探针**：股权回购错定民间借贷套 4 倍 LPR、宏观行业调控滥用《民法典》第 533 条情势变更、违约金畸重调减剥夺机会成本；
-  * **最高法院及权威高院类案裁判分歧对抗矩阵**（最高法公报判例 vs 一审错误样本）；
-  * 一键生成符合《最高人民法院关于统一法律适用加强类案检索的指导意见（试行）》（法发〔2020〕24号）规范的《类案检索法律论证意见书》与《民事上诉状（事实与理由靶向重构版）》。
-
-### 5. P4 1.2 亿元执行终本破局·财产线索穿透与追加被执行人作战大屏
-* **实务痛点**：执行局裁定终结本次执行程序（终本），被执行人空壳账面仅剩 342.18 元，实控人金蝉脱壳转移财产。
-* **攻防利器**：
-  * **出资未届期转让穿透探针**：依据新《公司法》第 47/88 条及追加规定第 17-19 条，击穿 0 元转让股权找五保老人背债阴谋，追加原股东张某某在未出资 4950 万元范围内承担补充清偿责任；
-  * **一人公司人格混同探针**：依据《公司法》第 23 条第三款及追加规定第 20 条，归集公转私混同流水，触发**法定举证责任倒置**，追加实控人对 1.2 亿元全部债务承担连带责任；
-  * **假离婚撤销探针**：比对时序倒错，依据《民法典》第 538 条行使**债权人撤销权**，追回 4500 万元两套豪宅恢复拍卖；
-  * **倒签租赁破壁探针**：穿透发票开票日、租金流向与实际管领权，排除案外人虚假异议，提起执行异议之诉；
-  * 一键生成《追加被执行人申请书》与《执行异议之诉起诉状》并原生导出 Word。
+架构细节见 [ARCHITECTURE.md](ARCHITECTURE.md)；能力状态见 [ROADMAP.md](ROADMAP.md)。
 
 ---
 
-## 🛡️ 司法“本地库比对”底座：Citation Guard
+## 已知限制
 
-* **废止法规硬熔断**：严禁引用已废止的《合同法》《物权法》《担保法》《民法通则》，自动重写衔接《民法典》现行条款；
-* **本地 SQLite FTS5 法条库穿透**：条号真实性、内容一致性校验；收录范围为引擎实际引用的部分条文（已核验 / 待律师核验分列统计），并非「权威法典全集」；
-* **司法裁判案号防伪核验**：仅允许引用数据库中已核验（非演示）的案号；未核验案号不得写入生成文书。
-
----
-
-## 🏗️ 系统架构
-
-```mermaid
-graph TD
-    subgraph Frontend["前端表现层 (Port: 5221)"]
-        UI["LawFlow 现代化原生单页架构<br/>Zero-Jank | 无外链阻塞 | 原生系统字体栈"]
-        M1["01 实务精算与核验"]
-        M2["02 立案文书流水线"]
-        M3["03 证据清洗与庭审"]
-        M4["04 类案分歧与二审翻盘"]
-        M5["05 要件推演与执行破局"]
-        M6["06 法条库与子母法图谱"]
-        M7["07 案件空间中枢"]
-        M8["08 智律语音中枢"]
-    end
-
-    subgraph Gateway["网关与服务层 (FastAPI)"]
-        GW["LawFlow API 网关"]
-        CG["Citation Guard 法条熔断引擎"]
-        Calc["cn_legal_calc 法律数学引擎"]
-        Appeal["Appellate & Precedent Engine"]
-        Enforce["Enforcement & Asset Engine"]
-        DocxGen["Word/OpenXML 原生排版引擎"]
-    end
-
-    subgraph Storage["数据与模型层"]
-        DB1["cn_laws_kb.db 现行有效法典库"]
-        DB2["matter_vault.db 卷宗数据库"]
-        Ollama["Local Ollama / DeepSeek API"]
-    end
-
-    Frontend ==> Gateway
-    Gateway ==> Storage
-```
+- **法条库**需律师核验；未核验条文不得当作权威全文引用。
+- **判例库**默认可能为空；仅已核验案号可写入生成文书。
+- **电子签约**在未配置 `DOCUSEAL_*` 时仅为演示，不具生产签署效力。
+- **P3 / P4** 等攻防大屏在接入真实卷宗与财产线索前标注为演示。
+- 检索为 **SQLite FTS5**，不是向量 RAG；外部向量引擎 / RAGFlow 为规划中、未使用。
+- 可选 OCR/音频/HEIF 依赖见 `requirements-optional.txt`；缺失时自动降级。
 
 ---
 
-## 🚀 快速启动
+## 快速启动
 
 ### 1. 环境准备
+
 ```bash
 git clone https://github.com/kevinyaowenrui-hue/lawflow.git
 cd lawflow
 
-# 安装依赖
-pip install -r requirements.txt # 或 pip install fastapi uvicorn python-docx pydantic jinja2
+python -m venv .venv
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt
+# 可选能力（OCR / 音频 / HEIF）
+# pip install -r requirements-optional.txt
+
+copy .env.example .env
+# 编辑 .env，至少设置 LAWFLOW_API_TOKEN=
 ```
 
-### 2. 启动开发服务器
-```bash
-# 启动统一网关 (默认绑定 127.0.0.1:5221)
-python -m uvicorn gateway.main:app --host 127.0.0.1 --port 5221 --reload
-```
-打开浏览器访问：`http://127.0.0.1:5221`
+### 2. 启动
 
-### 3. 运行全量实证自动化测试套件
 ```bash
+python -m uvicorn gateway.main:app --host 127.0.0.1 --port 5221
+```
+
+浏览器打开：`http://127.0.0.1:5221`
+
+也可使用仓库内 `start_gateway.bat`（优先项目 `.venv`）。
+
+### 3. 测试
+
+```bash
+pip install -r requirements-dev.txt
 python -m pytest
 ```
-> 测试统一位于 `tests/`；覆盖率与 CI 见 `.github/workflows/ci.yml`。
+
+测试位于 `tests/`；CI 见 `.github/workflows/ci.yml`。
+
+### 4. Docker（可选）
+
+```bash
+# 需已填写 .env 中的 LAWFLOW_API_TOKEN
+docker compose up --build
+# 映射 127.0.0.1:5221
+```
+
+Docassemble、RAGFlow 等为**规划中，当前代码未使用**（compose profile `planned`）。电子签容器：`docker compose --profile phase3 up`（需设置 `DOCUSEAL_WEBHOOK_SECRET`）。
 
 ---
 
-## 📄 开源许可证
+## 开源许可证
 
-本项目基于 [MIT License](LICENSE) 开源。
+本项目附带 [MIT License](LICENSE)。若仓库已转为私有且不打算开源，请业主自行决定是否删除 `LICENSE` 与 README 中的 MIT 徽章。

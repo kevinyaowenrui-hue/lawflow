@@ -234,14 +234,11 @@ async def api_export_review_table_xlsx(table_id: str):
 # 2. 双栏穿透式原文定位与案卷原件高分辨率切片 (Source Grounding & Visual Crop)
 # ==============================================================================
 
-CJK_FONT_CANDIDATES = [
-    "C:/Windows/Fonts/msyh.ttc",
-    "C:/Windows/Fonts/simsun.ttc",
-    "C:/Windows/Fonts/simhei.ttf",
-    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-]
+def _cjk_font_candidates() -> list:
+    """通过 paths 模块解析字体候选，避免写死开发者本机盘符。"""
+    from gateway.core.paths import get_cjk_font_candidates
+    return get_cjk_font_candidates()
+
 
 
 def generate_source_grounding_visual_crop(
@@ -276,7 +273,7 @@ def generate_source_grounding_visual_crop(
     if doc is None:
         is_synthesized = True
         doc = fitz.open()
-        font_path = next((f for f in CJK_FONT_CANDIDATES if os.path.exists(f)), None)
+        font_path = next((f for f in _cjk_font_candidates() if os.path.exists(f)), None)
 
         page_marker = f"--- 第 {page_no} 页 ---"
         page_text = full_text

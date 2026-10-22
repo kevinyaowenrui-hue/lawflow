@@ -11,6 +11,7 @@ import os
 import sys
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -21,6 +22,39 @@ from fastapi.staticfiles import StaticFiles
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
+
+
+def bootstrap_env_and_logging(env_file: str | Path | None = None) -> int:
+    """
+    加载 .env（仅文件存在时；不覆盖已设置的环境变量），并按 LOG_LEVEL 配置根日志级别。
+    返回解析后的 logging 级别整数值。
+    """
+    from dotenv import load_dotenv
+
+    if env_file is None:
+        env_file = os.environ.get("LAWFLOW_DOTENV_FILE") or str(Path(BASE_DIR) / ".env")
+    env_path = Path(env_file)
+    if env_path.is_file():
+        # override=False：不覆盖进程中已存在的环境变量
+        load_dotenv(dotenv_path=str(env_path), override=False)
+
+    level_name = (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
+    level = getattr(logging, level_name, None)
+    if not isinstance(level, int):
+        level = logging.INFO
+    root = logging.getLogger()
+    if not root.handlers:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    root.setLevel(level)
+    logging.getLogger("lawflow.gateway").setLevel(level)
+    return level
+
+
+_RESOLVED_LOG_LEVEL = bootstrap_env_and_logging()
 
 from gateway.core.ollama_client import ollama_client
 from gateway.core.security import (
@@ -45,19 +79,14 @@ from gateway.utils.matter_vault_db import init_matter_vault_db
 from gateway.utils.review_table_engine import init_review_tables_schema
 from gateway.utils.agent_task_db import init_agent_task_db
 
-# 日志规范配置
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
 logger = logging.getLogger("lawflow.gateway")
+logger.setLevel(_RESOLVED_LOG_LEVEL)
 
-from gateway.core.paths import get_base_dir, get_laws_db_path
+from gateway.core.paths import get_base_dir, get_frontend_dir, get_laws_db_path
 
 
 def _frontend_dir() -> str:
-    return str(get_base_dir() / "frontend")
+    return str(get_frontend_dir())
 
 
 def _parse_csv_env(name: str, default: str) -> list:
@@ -231,8 +260,8 @@ if os.path.exists(_frontend_dir()):
 @app.get("/api/health", summary="全局网关健康检查探针")
 @app.get("/api/v1/health", summary="全局网关健康检查探针")
 async def health_check():
-    """健康检查仅返回最小信息，避免未鉴权面泄露内部状态。"""
-    return {"status": "healthy"}
+    """健康检查返回最小信息；含 app 标识供桌面启动器确认是否为 LawFlow 进程。"""
+    return {"status": "healthy", "app": "LawFlow"}
 
 
 @app.get("/", response_class=HTMLResponse, summary="工作台 Web UI 首页")

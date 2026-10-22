@@ -1,6 +1,8 @@
+# 构建上下文须为仓库根目录：
+#   docker build -f gateway/Dockerfile -t lawflow:test .
+#   或 docker compose build（compose 已将 context 设为 "."）
 FROM python:3.11-slim
 
-# 安装中文公文支持与基础图形依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fontconfig \
     ca-certificates \
@@ -8,25 +10,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 创建法院中文字体挂载目录与应用路径
-RUN mkdir -p /usr/share/fonts/truetype/custom /app/storage /app/templates /app/frontend
+RUN mkdir -p /usr/share/fonts/truetype/custom /app/storage /app/templates /app/frontend /app/fonts
 
 WORKDIR /app
 
-# 安装 Python 核心依赖
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple || \
     pip install --no-cache-dir -r requirements.txt
 
-# 复制代码
-COPY . /app/gateway/
-COPY ./main.py /app/main.py
+COPY gateway/ /app/gateway/
+COPY frontend/ /app/frontend/
+COPY templates/ /app/templates/
+COPY data/ /app/data/
 
-# 环境变量
 ENV PYTHONUNBUFFERED=1
-ENV GATEWAY_PORT=8000
+ENV LAWFLOW_STORAGE_DIR=/app/storage
+ENV LAWFLOW_FRONTEND_DIR=/app/frontend
+ENV LAWFLOW_TEMPLATES_DIR=/app/templates
+ENV LAWFLOW_FONTS_DIR=/usr/share/fonts/truetype/custom
 ENV GATEWAY_HOST=0.0.0.0
+ENV GATEWAY_PORT=5221
 
-EXPOSE 8000
+EXPOSE 5221
 
-CMD ["python", "main.py"]
+# 挂载 fonts/ 后刷新字体缓存，再启动网关
+CMD ["sh", "-c", "fc-cache -f 2>/dev/null || true; exec uvicorn gateway.main:app --host 0.0.0.0 --port 5221"]

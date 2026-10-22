@@ -31,6 +31,7 @@ class LLMConfigReq(BaseModel):
     ollama_model: Optional[str] = Field(default="gemma4:12b")
     ollama_base_url: Optional[str] = Field(default="http://127.0.0.1:11434")
     pii_shield_enabled: Optional[bool] = Field(default=None, description="是否启用本地 PII 自动脱敏网关")
+    cloud_consent: Optional[bool] = Field(default=None, description="是否同意脱敏后向第三方云端发送案情文本")
 
 
 class PIIScanReq(BaseModel):
@@ -140,6 +141,12 @@ async def save_llm_settings(req: LLMConfigReq):
 
     if req.pii_shield_enabled is not None:
         new_cfg["pii_shield_enabled"] = bool(req.pii_shield_enabled)
+
+    if req.cloud_consent is not None:
+        new_cfg["cloud_consent"] = bool(req.cloud_consent)
+    elif req.provider == "cloud":
+        # 显式切换云端但未传 consent 时保持原值；未同意则不允许静默开通
+        pass
 
     # 只有用户输入了非空 API Key 才覆盖更新，避免前端回显脱敏值覆盖真实密钥
     if req.api_key and not req.api_key.startswith("****"):

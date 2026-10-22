@@ -85,9 +85,14 @@ async def start_litigation_workflow(
   ]
 }}
 """
+    from gateway.utils.pii_sanitizer import build_entities_from_matter
+
+    _wf_entities = build_entities_from_matter(matter_id) if matter_id else []
     step1_data = {}
     try:
-        raw_out = await ollama_client.generate(prompt=prompt, temperature=0.2)
+        raw_out = await ollama_client.generate(
+            prompt=prompt, temperature=0.2, custom_entities=_wf_entities or None
+        )
         step1_data = ollama_client.extract_json(raw_out)
     except Exception as e:
         logger.warning(f"工作流 Step 1 大模型提取失败，启动规则兜底: {e}")
@@ -245,7 +250,12 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
 """
         step3_data = {}
         try:
-            raw_out3 = await ollama_client.generate(prompt=prompt_step3, temperature=0.2)
+            from gateway.utils.pii_sanitizer import build_entities_from_matter as _bem
+
+            _entities3 = _bem(matter_id) if matter_id else []
+            raw_out3 = await ollama_client.generate(
+                prompt=prompt_step3, temperature=0.2, custom_entities=_entities3 or None
+            )
             step3_data = ollama_client.extract_json(raw_out3)
         except Exception as e:
             logger.warning(f"Step 3 预测失败，使用标准规则库兜底: {e}")

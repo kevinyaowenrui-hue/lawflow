@@ -128,6 +128,19 @@ def validate_ollama_base_url(ollama_base_url: str) -> None:
         raise HTTPException(status_code=422, detail="ollama_base_url 仅允许 127.0.0.1 / localhost / ::1")
 
 
+def is_loopback_host(url: str) -> bool:
+    """判断 URL 主机是否为本机环回地址。"""
+    host = (urlparse((url or "").strip()).hostname or "").lower()
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
+def is_remote_ollama_url(url: str) -> bool:
+    """Ollama base URL 主机非环回时视同出网。"""
+    if not (url or "").strip():
+        return False
+    return not is_loopback_host(url)
+
+
 class UniversalLLMClient:
     """
     通用大模型网关客户端：双模自适应（本地 Ollama / 云端 OpenAI 兼容 API）+ 规则兜底
@@ -135,10 +148,34 @@ class UniversalLLMClient:
     def __init__(self):
         self.settings: Dict[str, Any] = self._load_settings()
         self._active_ollama_url: Optional[str] = None
+        self.last_llm_mode: str = "rule_fallback"
 
     @property
     def pii_shield_enabled(self) -> bool:
         return self.settings.get("pii_shield_enabled", True)
+
+    @property
+    def cloud_consent(self) -> bool:
+        return bool(self.settings.get("cloud_consent", False))
+
+    def _cloud_route_allowed(self) -> bool:
+        """
+        云端路由需同时具备 API Key 与 cloud_consent。
+        provider=auto 且有 Key 时，未同意不得静默走云端。
+        """
+        api_key = (self.settings.get("api_key") or "").strip()
+        if not api_key:
+            return False
+        provider = self.settings.get("provider", "auto")
+        if provider not in ("cloud", "auto"):
+            return False
+        return bool(self.settings.get("cloud_consent", False))
+
+    def _should_force_pii_mask(self, target: str = "cloud") -> bool:
+        """云端始终按盾牌设置；远程 Ollama 强制脱敏（无视盾牌关闭）。"""
+        if target == "remote_ollama":
+            return True
+        return bool(self.settings.get("pii_shield_enabled", True))
 
     def _load_secret_key(self) -> str:
         env_key = os.getenv("LLM_API_KEY", "").strip()
@@ -213,6 +250,7 @@ class UniversalLLMClient:
             "ollama_base_url": os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/"),
             "fallback_ollama_url": os.getenv("HOST_OLLAMA_URL", "http://host.docker.internal:11434").rstrip("/"),
             "pii_shield_enabled": True,
+            "cloud_consent": False,
             "api_key_set": False,
         }
 
@@ -286,6 +324,7 @@ class UniversalLLMClient:
             "ollama_model": self.settings.get("ollama_model", "gemma4:12b"),
             "ollama_base_url": self.settings.get("ollama_base_url", "http://127.0.0.1:11434"),
             "pii_shield_enabled": bool(self.settings.get("pii_shield_enabled", True)),
+            "cloud_consent": bool(self.settings.get("cloud_consent", False)),
             "presets": PROVIDER_PRESETS
         }
 
@@ -293,8 +332,7 @@ class UniversalLLMClient:
     @property
     def model(self) -> str:
         provider = self.settings.get("provider", "auto")
-        api_key = self.settings.get("api_key", "").strip()
-        if provider == "cloud" or (provider == "auto" and api_key):
+        if provider == "cloud" or (provider == "auto" and self._cloud_route_allowed()):
             return self.settings.get("model", "deepseek-chat")
         return self.settings.get("ollama_model", "gemma4:12b")
 
@@ -354,8 +392,12 @@ class UniversalLLMClient:
         base_url = (cfg.get("base_url") or "").rstrip("/")
         model = cfg.get("model") or "deepseek-chat"
 
-        # 判断测试云端还是本地
-        is_cloud_test = (provider == "cloud") or (provider == "auto" and bool(api_key))
+        # 测试云端：显式 cloud，或 auto 且有 Key（测速不强制 consent，便于用户确认前探测）
+        consent = bool(cfg.get("cloud_consent", self.settings.get("cloud_consent", False)))
+        is_cloud_test = (provider == "cloud") or (provider == "auto" and bool(api_key) and consent)
+        # 显式 cloud 测速即使未 consent 也允许探测连通性（不代表业务路由会走云端）
+        if provider == "cloud" and api_key:
+            is_cloud_test = True
 
         start_time = time.time()
         if is_cloud_test:
@@ -434,33 +476,41 @@ class UniversalLLMClient:
     async def check_health(self) -> Dict[str, Any]:
         """健康检查探针：判断当前工作模式（云端 / 本地 / 规则兜底）"""
         provider = self.settings.get("provider", "auto")
-        api_key = self.settings.get("api_key", "").strip()
 
-        # 1. 优先尝试云端配置（如果设为 cloud，或者为 auto 且有 key）
-        if provider == "cloud" or (provider == "auto" and api_key):
-            test_res = await self.test_connection()
+        # 1. 云端：需 Key + cloud_consent
+        if self._cloud_route_allowed():
+            test_res = await self.test_connection({
+                **self.settings,
+                "provider": "cloud",
+                "cloud_consent": True,
+            })
             if test_res.get("success"):
-                return {
+                result = {
                     "status": "healthy",
                     "mode": "cloud",
+                    "llm_mode": "cloud",
                     "provider_label": f"云端引擎 ({self.settings.get('model', 'deepseek-chat')})",
                     "target_model": self.settings.get("model", "deepseek-chat"),
                     "model_ready": True,
                     "connected_url": self.settings.get("base_url", ""),
                     "latency_ms": test_res.get("latency_ms", 0)
                 }
+                self.last_llm_mode = "cloud"
+                return result
             elif provider == "cloud":
-                # 显式指定云端但失败
-                return {
+                result = {
                     "status": "degraded",
-                    "mode": "rule_engine",
-                    "provider_label": "规则兜底模式 (云端 API 异常)",
+                    "mode": "rule_fallback",
+                    "llm_mode": "rule_fallback",
+                    "provider_label": "规则模式（未连接模型）",
                     "target_model": "法律专家规则引擎",
-                    "model_ready": True,
+                    "model_ready": False,
                     "error": test_res.get("error")
                 }
+                self.last_llm_mode = "rule_fallback"
+                return result
 
-        # 2. 尝试本地 Ollama
+        # 2. 尝试本地 / 远程 Ollama
         if provider in ["auto", "ollama"]:
             ollama_url = await self._resolve_ollama_url()
             try:
@@ -469,29 +519,36 @@ class UniversalLLMClient:
                     if resp.status_code == 200:
                         data = resp.json()
                         models = [m.get("name") for m in data.get("models", [])]
-                        has_model = any(self.model in m for m in models)
-                        return {
+                        target = self.settings.get("ollama_model", "gemma4:12b")
+                        has_model = any(target in m for m in models)
+                        result = {
                             "status": "healthy",
                             "mode": "ollama",
-                            "provider_label": f"本地引擎 ({self.model})",
-                            "target_model": self.model,
+                            "llm_mode": "ollama",
+                            "provider_label": f"本地引擎 ({target})",
+                            "target_model": target,
                             "model_ready": has_model,
                             "connected_url": ollama_url,
                             "available_models": models
                         }
+                        self.last_llm_mode = "ollama"
+                        return result
             except Exception:
                 pass
 
-        # 3. 自动降级为规则引擎模式（保障无显卡用户正常使用）
-        return {
+        # 3. 规则兜底：model_ready 必须为 false
+        result = {
             "status": "fallback",
-            "mode": "rule_engine",
-            "provider_label": "专家规则兜底模式 (免显卡)",
+            "mode": "rule_fallback",
+            "llm_mode": "rule_fallback",
+            "provider_label": "规则模式（未连接模型）",
             "target_model": "规范实务模板引擎",
-            "model_ready": True,
+            "model_ready": False,
             "connected_url": "本地纯规则计算",
             "message": "未连接大模型，所有诉讼算税、利息精算及文书生成均通过法律专家规则引擎高质量兜底。"
         }
+        self.last_llm_mode = "rule_fallback"
+        return result
 
     async def generate(
         self,
@@ -508,28 +565,35 @@ class UniversalLLMClient:
         （若启用 PII 隐私网关，云端交互全程经本地加密脱敏与双向无损还原）
         """
         provider = self.settings.get("provider", "auto")
-        api_key = self.settings.get("api_key", "").strip()
 
-        # 路径 A: 云端 API
-        if (provider == "cloud" and api_key) or (provider == "auto" and api_key):
+        # 路径 A: 云端 API（必须 cloud_consent）
+        if self._cloud_route_allowed():
             try:
-                return await self._generate_cloud(prompt, system_prompt, temperature, max_tokens, custom_entities)
+                out = await self._generate_cloud(prompt, system_prompt, temperature, max_tokens, custom_entities)
+                self.last_llm_mode = "cloud"
+                return out
             except Exception as e:
                 logger.warning(f"云端大模型调用失败，尝试降级: {e}")
                 if provider == "cloud":
+                    self.last_llm_mode = "rule_fallback"
                     return self._generate_rule_fallback(prompt, system_prompt, cause_of_action=cause_of_action)
 
-        # 路径 B: 本地 Ollama (仅当确认本地 Ollama 在线时调用，避免无显卡用户每次请求堵塞 7 秒超时)
+        # 路径 B: Ollama（远程时强制脱敏）
         if provider in ["auto", "ollama"]:
             if await self._is_ollama_online():
                 try:
-                    return await self._generate_ollama(prompt, system_prompt, temperature, max_tokens)
+                    out = await self._generate_ollama(
+                        prompt, system_prompt, temperature, max_tokens, custom_entities
+                    )
+                    self.last_llm_mode = "ollama"
+                    return out
                 except Exception as e:
                     logger.warning(f"本地 Ollama 调用失败，启动专家规则兜底: {e}")
             else:
                 logger.debug("本地 Ollama 处于离线状态，直通专家规则兜底模式")
 
         # 路径 C: 专家规则兜底生成
+        self.last_llm_mode = "rule_fallback"
         return self._generate_rule_fallback(prompt, system_prompt, cause_of_action=cause_of_action)
 
     async def _generate_cloud(
@@ -544,12 +608,12 @@ class UniversalLLMClient:
         api_key = self.settings.get("api_key", "")
         model = self.settings.get("model", "deepseek-chat")
 
-        # 本地 PII 隐私脱敏处理 (出站拦截)
+        # 本地 PII 隐私脱敏处理 (出站拦截) — 云端默认启用
         mapping: Dict[str, str] = {}
         send_prompt = prompt
         send_system = system_prompt
 
-        if self.settings.get("pii_shield_enabled", True):
+        if self._should_force_pii_mask("cloud"):
             send_prompt, mapping_p, _ = pii_sanitizer.mask(prompt, custom_entities)
             mapping.update(mapping_p)
             if system_prompt:
@@ -577,7 +641,6 @@ class UniversalLLMClient:
             if resp.status_code == 200:
                 data = resp.json()
                 raw_reply = data["choices"][0]["message"]["content"].strip()
-                # 本地 PII 隐私还原 (入站复原)
                 if mapping:
                     raw_reply = pii_sanitizer.unmask(raw_reply, mapping)
                 return raw_reply
@@ -589,12 +652,28 @@ class UniversalLLMClient:
         prompt: str,
         system_prompt: Optional[str],
         temperature: float,
-        max_tokens: int
+        max_tokens: int,
+        custom_entities: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         base_url = await self._resolve_ollama_url()
+        mapping: Dict[str, str] = {}
+        send_prompt = prompt
+        send_system = system_prompt
+
+        remote = is_remote_ollama_url(base_url)
+        use_pii = self._should_force_pii_mask("remote_ollama") if remote else bool(
+            self.settings.get("pii_shield_enabled", True)
+        )
+        if use_pii:
+            send_prompt, mapping_p, _ = pii_sanitizer.mask(prompt, custom_entities)
+            mapping.update(mapping_p)
+            if system_prompt:
+                send_system, mapping_s, _ = pii_sanitizer.mask(system_prompt, custom_entities)
+                mapping.update(mapping_s)
+
         payload = {
-            "model": self.model,
-            "prompt": prompt,
+            "model": self.settings.get("ollama_model", "gemma4:12b"),
+            "prompt": send_prompt,
             "stream": False,
             "options": {
                 "temperature": temperature,
@@ -602,14 +681,17 @@ class UniversalLLMClient:
                 "num_ctx": 32768
             }
         }
-        if system_prompt:
-            payload["system"] = system_prompt
+        if send_system:
+            payload["system"] = send_system
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(f"{base_url}/api/generate", json=payload)
             if resp.status_code == 200:
                 data = resp.json()
-                return data.get("response", "").strip()
+                raw_reply = data.get("response", "").strip()
+                if mapping:
+                    raw_reply = pii_sanitizer.unmask(raw_reply, mapping)
+                return raw_reply
             else:
                 raise RuntimeError(f"Ollama 返回异常: HTTP {resp.status_code} - {resp.text}")
 
@@ -621,17 +703,18 @@ class UniversalLLMClient:
     ) -> str:
         """统一对齐对话接口（支持云端 PII 本地双向脱敏还原）"""
         provider = self.settings.get("provider", "auto")
-        api_key = self.settings.get("api_key", "").strip()
 
-        if (provider == "cloud" and api_key) or (provider == "auto" and api_key):
+        if self._cloud_route_allowed():
             try:
                 base_url = self.settings.get("base_url", "https://api.deepseek.com/v1").rstrip("/")
-                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-                
-                # 云端 PII 拦截
+                headers = {
+                    "Authorization": f"Bearer {self.settings.get('api_key', '')}",
+                    "Content-Type": "application/json",
+                }
+
                 mapping: Dict[str, str] = {}
                 send_messages = []
-                use_pii = self.settings.get("pii_shield_enabled", True)
+                use_pii = self._should_force_pii_mask("cloud")
                 for msg in messages:
                     c = msg.get("content", "")
                     if use_pii:
@@ -652,23 +735,48 @@ class UniversalLLMClient:
                         raw_reply = resp.json()["choices"][0]["message"]["content"].strip()
                         if mapping:
                             raw_reply = pii_sanitizer.unmask(raw_reply, mapping)
+                        self.last_llm_mode = "cloud"
                         return raw_reply
             except Exception as e:
                 logger.warning(f"云端 chat 失败: {e}")
 
-        # 尝试 Ollama
+        # 尝试 Ollama（远程强制脱敏）
         try:
             base_url = await self._resolve_ollama_url()
-            payload = {"model": self.model, "messages": messages, "stream": False, "options": {"temperature": temperature}}
+            mapping: Dict[str, str] = {}
+            remote = is_remote_ollama_url(base_url)
+            use_pii = self._should_force_pii_mask("remote_ollama") if remote else bool(
+                self.settings.get("pii_shield_enabled", True)
+            )
+            send_messages = []
+            for msg in messages:
+                c = msg.get("content", "")
+                if use_pii:
+                    m_c, m_map, _ = pii_sanitizer.mask(c, custom_entities)
+                    mapping.update(m_map)
+                    send_messages.append({"role": msg["role"], "content": m_c})
+                else:
+                    send_messages.append(msg)
+
+            payload = {
+                "model": self.settings.get("ollama_model", "gemma4:12b"),
+                "messages": send_messages,
+                "stream": False,
+                "options": {"temperature": temperature},
+            }
             async with httpx.AsyncClient(timeout=120.0) as client:
                 resp = await client.post(f"{base_url}/api/chat", json=payload)
                 if resp.status_code == 200:
-                    return resp.json().get("message", {}).get("content", "").strip()
+                    raw_reply = resp.json().get("message", {}).get("content", "").strip()
+                    if mapping:
+                        raw_reply = pii_sanitizer.unmask(raw_reply, mapping)
+                    self.last_llm_mode = "ollama"
+                    return raw_reply
         except Exception as e:
             logger.warning(f"Ollama chat 失败: {e}")
 
-        # 兜底返回最后一条内容或默认指引
         last_user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+        self.last_llm_mode = "rule_fallback"
         return self._generate_rule_fallback(last_user_msg, None)
 
     def _generate_rule_fallback(

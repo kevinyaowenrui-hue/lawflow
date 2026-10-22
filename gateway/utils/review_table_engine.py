@@ -386,7 +386,13 @@ def add_row_to_table(table_id: str, doc_title: str, doc_type: str, content_text:
     return table
 
 
-async def execute_cell_extraction(doc_title: str, doc_text: str, col_name: str, instruction: str) -> Dict[str, Any]:
+async def execute_cell_extraction(
+    doc_title: str,
+    doc_text: str,
+    col_name: str,
+    instruction: str,
+    matter_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     针对单份文档在特定列指令下，执行 LLM 结构化抽取或规则降级解析，
     输出提取值 (value)、置信度 (confidence) 与精准引注摘录 (source_quote)。
@@ -428,7 +434,15 @@ async def execute_cell_extraction(doc_title: str, doc_text: str, col_name: str, 
     system_prompt = "你是一名商事诉讼与非诉尽调要素抽取专家。输出必须是符合标准的 JSON，严禁任何前缀与废话。"
 
     try:
-        raw_out = await ollama_client.generate(prompt=prompt, system_prompt=system_prompt, temperature=0.1)
+        from gateway.utils.pii_sanitizer import build_entities_from_matter
+
+        _rt_entities = build_entities_from_matter(matter_id) if matter_id else []
+        raw_out = await ollama_client.generate(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.1,
+            custom_entities=_rt_entities or None,
+        )
         parsed = ollama_client.extract_json(raw_out)
         if isinstance(parsed, dict) and "value" in parsed:
             val = str(parsed.get("value", "")).strip()
@@ -498,7 +512,8 @@ async def run_single_cell_refresh(table_id: str, row_id: str, col_id: str) -> Di
         doc_title=row["doc_title"],
         doc_text=row.get("content_text", ""),
         col_name=col["name"],
-        instruction=col["instruction"]
+        instruction=col["instruction"],
+        matter_id=table.get("matter_id"),
     )
 
     if row_id not in table["cells"]:
@@ -539,7 +554,8 @@ async def run_column_refresh(table_id: str, col_id: str) -> Dict[str, Any]:
             doc_title=row["doc_title"],
             doc_text=row.get("content_text", ""),
             col_name=col["name"],
-            instruction=col["instruction"]
+            instruction=col["instruction"],
+            matter_id=table.get("matter_id"),
         )
         if rid not in table["cells"]:
             table["cells"][rid] = {}
@@ -575,7 +591,8 @@ async def run_all_table_extraction(table_id: str) -> Dict[str, Any]:
                 doc_title=row["doc_title"],
                 doc_text=row.get("content_text", ""),
                 col_name=col["name"],
-                instruction=col["instruction"]
+                instruction=col["instruction"],
+                matter_id=table.get("matter_id"),
             )
             table["cells"][rid][cid] = res
 

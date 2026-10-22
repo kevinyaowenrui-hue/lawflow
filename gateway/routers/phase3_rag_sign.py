@@ -300,14 +300,23 @@ async def api_rag_consult(req: RAGConsultReq):
 
     user_prompt = f"【律师咨询问题】\n{req.question}\n\n{context_str}\n\n请出具专业律师办案策略指导意见。"
 
+    from gateway.utils.pii_sanitizer import build_entities_from_matter
+
+    _rag_entities = build_entities_from_matter(getattr(req, "matter_id", "") or "")
     try:
-        ans = await ollama_client.generate(prompt=user_prompt, system_prompt=system_prompt, temperature=0.2)
+        ans = await ollama_client.generate(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            temperature=0.2,
+            custom_entities=_rag_entities or None,
+        )
         return {
             "status": "success",
             "question": req.question,
             "statute_references": statutes,
             "winning_case_references": cases,
-            "legal_strategy": ans
+            "legal_strategy": ans,
+            "llm_mode": getattr(ollama_client, "last_llm_mode", "rule_fallback"),
         }
     except Exception as e:
         logger.warning(f"RAG 咨询异常，启动规则兜底: {e}")

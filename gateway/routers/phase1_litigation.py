@@ -803,12 +803,30 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
 
 请将上述材料改写为条理清晰、因果严密、引用具体法律条文（如《民法典》或《劳动合同法》具体法条）的《事实与理由》。"""
 
+    from gateway.utils.pii_sanitizer import build_entities_from_parties
+
+    custom_entities = build_entities_from_parties([
+        {
+            "name": plaintiff.get("name"),
+            "address": plaintiff.get("address"),
+            "legal_rep": plaintiff.get("legal_rep"),
+            "party_type": plaintiff.get("party_type"),
+        },
+        {
+            "name": defendant.get("name"),
+            "address": defendant.get("address"),
+            "legal_rep": defendant.get("legal_rep"),
+            "party_type": defendant.get("party_type"),
+        },
+    ])
+
     try:
         facts_polished = await ollama_client.generate(
             prompt=prompt,
             system_prompt=FACTS_POLISH_SYSTEM_PROMPT,
             temperature=0.2,
             cause_of_action=req.cause_of_action,
+            custom_entities=custom_entities,
         )
     except Exception as e:
         logger.warning(f"大模型润色异常，降级使用原始笔记: {e}")
@@ -1125,6 +1143,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         "generated_documents": generated_docs,
         "main_docx_path": main_docx_path,
         "main_pdf_path": main_pdf_path if pdf_ok else None,
+        "llm_mode": getattr(ollama_client, "last_llm_mode", "rule_fallback"),
     }
 
 

@@ -253,7 +253,8 @@ async def api_mount_document(matter_id: str, req: DocumentMountReq):
 async def api_upload_mount_document(
     matter_id: str,
     file: UploadFile = File(...),
-    doc_type: str = Form("evidence")
+    doc_type: str = Form("evidence"),
+    redact_on_ingest: bool = Form(True),
 ):
     matter = get_matter_by_id(matter_id)
     if not matter:
@@ -272,8 +273,28 @@ async def api_upload_mount_document(
         buffer.write(raw)
 
     file_size = os.path.getsize(saved_path)
-    # 调用统一 OCR 与文档文本提取引擎
+    # 调用统一 OCR 与文档文本提取引擎（原文件按原样保存在存储目录）
     extracted_text = extract_evidence_text(saved_path)
+
+    redacted_count = 0
+    if redact_on_ingest and extracted_text:
+        from gateway.utils.pii_sanitizer import pii_sanitizer
+
+        # 入库文字仅掩码身份证号与银行卡号；原文件不变供律师查看
+        masked_text, _mapping, stats = pii_sanitizer.mask(
+            extracted_text,
+            custom_entities=None,
+            mask_phones=False,
+            mask_id_cards=True,
+            mask_bank_cards=True,
+            mask_emails=False,
+            mask_uscc=False,
+            mask_addresses=False,
+            mask_role_names=False,
+        )
+        cats = stats.get("categories") or {}
+        redacted_count = int(cats.get("id_card", 0)) + int(cats.get("bank_card", 0))
+        extracted_text = masked_text
 
     doc_data = {
         "doc_type": doc_type,
@@ -287,7 +308,9 @@ async def api_upload_mount_document(
             "original_filename": file.filename,
             "stored_name": stored,
             "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "extracted_chars": len(extracted_text)
+            "extracted_chars": len(extracted_text),
+            "redact_on_ingest": bool(redact_on_ingest),
+            "redacted_count": redacted_count,
         }
     }
 
@@ -298,7 +321,8 @@ async def api_upload_mount_document(
     return {
         "status": "success",
         "message": f"文件【{file.filename}】已完成解析并成功挂载入空间",
-        "document": doc
+        "document": doc,
+        "redacted_count": redacted_count,
     }
 
 

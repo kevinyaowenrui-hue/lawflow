@@ -591,12 +591,16 @@ async def copilot_converse_orchestrate(req: CopilotConverseReq):
   ]
 }}
 """
+                from gateway.utils.pii_sanitizer import build_entities_from_matter
+
+                _copilot_entities = build_entities_from_matter(req.matter_id or "")
                 raw_llm_out = await asyncio.wait_for(
                     ollama_client.generate(
                         prompt=llm_prompt,
                         system_prompt="你输出的内容必须是纯 JSON 格式。",
                         temperature=0.1,
-                        max_tokens=600
+                        max_tokens=600,
+                        custom_entities=_copilot_entities or None,
                     ),
                     timeout=2.5
                 )

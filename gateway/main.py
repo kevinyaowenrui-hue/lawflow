@@ -260,8 +260,50 @@ if os.path.exists(_frontend_dir()):
 @app.get("/api/health", summary="全局网关健康检查探针")
 @app.get("/api/v1/health", summary="全局网关健康检查探针")
 async def health_check():
-    """健康检查返回最小信息；含 app 标识供桌面启动器确认是否为 LawFlow 进程。"""
-    return {"status": "healthy", "app": "LawFlow"}
+    """健康检查：含实际 llm_mode 与 model_ready；规则兜底时 model_ready 为 false。"""
+    health = await ollama_client.check_health()
+    llm_mode = health.get("llm_mode") or health.get("mode") or "rule_fallback"
+    if llm_mode in ("rule_engine", "fallback"):
+        llm_mode = "rule_fallback"
+    model_ready = bool(health.get("model_ready"))
+    if llm_mode == "rule_fallback":
+        model_ready = False
+    return {
+        "status": "healthy",
+        "app": "LawFlow",
+        "llm_mode": llm_mode,
+        "model_ready": model_ready,
+    }
+
+
+# Content-Security-Policy：同源默认；内联脚本暂保留 unsafe-inline（批次 17 A-09 拆分前端后去除）
+_CSP_HEADER = (
+    "default-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "connect-src 'self'; "
+    "font-src 'self' data:"
+)
+
+
+@app.middleware("http")
+async def csp_middleware(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    ctype = (response.headers.get("content-type") or "").lower()
+    if (
+        path == "/"
+        or path.startswith("/static")
+        or path.endswith(".html")
+        or path.endswith(".js")
+        or "text/html" in ctype
+    ):
+        response.headers["Content-Security-Policy"] = _CSP_HEADER
+    return response
 
 
 @app.get("/", response_class=HTMLResponse, summary="工作台 Web UI 首页")
@@ -275,8 +317,11 @@ async def serve_index():
             html = html.replace("</head>", f"  {meta}\n</head>", 1)
         else:
             html = meta + html
-        return HTMLResponse(html)
-    return HTMLResponse("<h2>LawFlow 智律工作台初始化中... 请稍后刷新。</h2>")
+        return HTMLResponse(html, headers={"Content-Security-Policy": _CSP_HEADER})
+    return HTMLResponse(
+        "<h2>LawFlow 智律工作台初始化中... 请稍后刷新。</h2>",
+        headers={"Content-Security-Policy": _CSP_HEADER},
+    )
 
 
 @app.get("/favicon.ico", include_in_schema=False)

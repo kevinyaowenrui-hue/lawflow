@@ -331,11 +331,15 @@ async def auto_generate_evidence_catalog(req: AutoEvidenceCatalogReq):
 
 请按照规范的法庭举证要求，将上述证据梳理提炼为规范的 JSON 数组。"""
 
+    from gateway.utils.pii_sanitizer import build_entities_from_parties
+
+    _catalog_entities = build_entities_from_parties([{"name": getattr(req, "plaintiff_name", None)}])
     try:
         raw_output = await ollama_client.generate(
             prompt=prompt,
             system_prompt=EVIDENCE_STRUCTURING_PROMPT,
-            temperature=0.2
+            temperature=0.2,
+            custom_entities=_catalog_entities or None,
         )
         parsed_items = ollama_client.extract_json(raw_output)
         if isinstance(parsed_items, dict) and "error" in parsed_items:

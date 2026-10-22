@@ -277,10 +277,18 @@ async def extract_case_graphs_from_text(facts_text: str, documents_text: str = "
 请直接输出规范 JSON 对象，严格符合 system prompt 定义的字段结构。"""
 
     try:
+        # 从正文中的「原告：…；被告：…」弱提示生成实体（无 matter_id 时）
+        from gateway.utils.pii_sanitizer import build_entities_from_parties, pii_sanitizer
+
+        _parties = []
+        for m in pii_sanitizer.ROLE_NAME_PATTERN.finditer(combined_content[:2000]):
+            _parties.append({"name": m.group(1), "party_type": "natural"})
+        _graph_entities = build_entities_from_parties(_parties)
         raw_output = await ollama_client.generate(
             prompt=prompt,
             system_prompt=CASE_GRAPH_SYSTEM_PROMPT,
-            temperature=0.1
+            temperature=0.1,
+            custom_entities=_graph_entities or None,
         )
         parsed = ollama_client.extract_json(raw_output)
 

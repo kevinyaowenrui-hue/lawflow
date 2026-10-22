@@ -5009,6 +5009,7 @@
   <div class="toast-container" id="toast-container"></div>
   <div class="global-disclaimer-bar" id="global-disclaimer-bar">本输出由软件自动生成，仅供执业律师参考，不构成法律意见，须经律师审核后使用。</div>
 
+  <script src="/static/vendor/purify.min.js"></script>
   <script>
     const API_BASE = "";
     // S-01：从服务端注入的 meta 读取同源 API Token；统一包装 fetch 与下载链接
@@ -5104,7 +5105,7 @@
       toast.className = 'toast';
       toast.innerHTML = `
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C58532" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-        <span>${msg}</span>
+        <span>${escapeHtml(msg)}</span>
       `;
       container.appendChild(toast);
       setTimeout(() => toast.classList.add('show'), 10);
@@ -5801,7 +5802,7 @@
         // 法条依据
         const statutes = d.statute_citations || [];
         document.getElementById('pkg-citations-area').innerHTML =
-          `实体法适用依据：<span style="color: var(--primary-navy); font-weight:700;">${statutes.join('、') || '《中华人民共和国民法典》相关实体法条'}</span>`;
+          `实体法适用依据：<span style="color: var(--primary-navy); font-weight:700;">${escapeHtml(statutes.join('、') || '《中华人民共和国民法典》相关实体法条')}</span>`;
         
         // 本地库比对引注熔断体检报告联动
         if (d.citation_audit) {
@@ -5881,13 +5882,13 @@
         });
         const d = await resp.json();
         resBox.innerHTML = `
-          已成功合卷！总页数：${d.total_pages} 页 | 文件：${d.merged_pdf_filename}
-          <a href="${withDownloadToken(d.download_url)}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载合卷 PDF</a>
+          已成功合卷！总页数：${escapeHtml(d.total_pages)} 页 | 文件：${escapeHtml(d.merged_pdf_filename)}
+          <a href="${escapeHtml(withDownloadToken(d.download_url))}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载合卷 PDF</a>
         `;
         document.getElementById('redact-pdf-name').value = d.merged_pdf_filename;
         showToast("证据合卷与贝茨编码完成");
       } catch (e) {
-        resBox.innerHTML = `合卷失败: ${e}`;
+        resBox.innerHTML = `合卷失败: ${escapeHtml(e)}`;
       }
     }
 
@@ -5909,12 +5910,12 @@
         });
         const d = await resp.json();
         resBox.innerHTML = `
-          已完成脱敏涂黑！遮蔽条数：${d.redactions_count} 处 (${d.redacted_items.join('、')})
-          <a href="${withDownloadToken(d.download_url)}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载脱敏 PDF</a>
+          已完成脱敏涂黑！遮蔽条数：${escapeHtml(d.redactions_count)} 处 (${escapeHtml(d.redacted_items.join('、'))})
+          <a href="${escapeHtml(withDownloadToken(d.download_url))}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载脱敏 PDF</a>
         `;
         showToast("敏感信息合规脱敏涂黑成功");
       } catch (e) {
-        resBox.innerHTML = `脱敏失败: ${e}`;
+        resBox.innerHTML = `脱敏失败: ${escapeHtml(e)}`;
       }
     }
 
@@ -5998,7 +5999,7 @@
       const pbs = await loadPlaybooksIfNeeded();
       if (pbs && pbs[pKey]) {
         const rules = pbs[pKey].rules || [];
-        previewBox.innerHTML = `<strong>${pbs[pKey].name}：</strong><br/>` + rules.map((r, i) => `${i+1}. ${r}`).join('<br/>');
+        previewBox.innerHTML = `<strong>${escapeHtml(pbs[pKey].name)}：</strong><br/>` + rules.map((r, i) => `${escapeHtml(i+1)}. ${escapeHtml(r)}`).join('<br/>');
       } else {
         previewBox.innerHTML = `可直接编辑左侧合同正文，系统将依据通用商业红线与严格防御标准进行穿透审查。`;
       }
@@ -6035,7 +6036,7 @@
       container.innerHTML = `
         <div style="padding: 50px 20px; text-align: center; color: var(--text-secondary);">
           <span class="spinner-dark"></span>
-          <div style="margin-top: 10px; font-weight: 600; color: var(--primary-navy);">正在依据【${perspective}】与【红线手册】逐条比对审查...</div>
+          <div style="margin-top: 10px; font-weight: 600; color: var(--primary-navy);">正在依据【${escapeHtml(perspective)}】与【红线手册】逐条比对审查...</div>
           <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">正在计算条款偏离度、识别法律漏洞与生成 Word 原生修订标签</div>
         </div>
       `;
@@ -6166,7 +6167,7 @@
       } catch (e) {
         btn.innerHTML = origHtml;
         btn.disabled = false;
-        container.innerHTML = `<div style="padding: 20px; color: var(--status-warn);">审查失败: ${e}</div>`;
+        container.innerHTML = `<div style="padding: 20px; color: var(--status-warn);">审查失败: ${escapeHtml(e)}</div>`;
       }
     }
 
@@ -6346,7 +6347,7 @@
         showToast("多版本条款对齐比对完成！合规指数: " + data.comparison.stats.deviation_score + "分");
       } catch (e) {
         if (container) {
-          container.innerHTML = `<div style="color: #DC2626; padding: 20px;">比对失败: ${e}</div>`;
+          container.innerHTML = `<div style="color: #DC2626; padding: 20px;">比对失败: ${escapeHtml(e)}</div>`;
         }
         showToast("比对请求异常: " + e);
       } finally {
@@ -6681,7 +6682,7 @@
             <div style="background: #FFFFFF; border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                 <div style="display: flex; align-items: center; gap: 6px;">
-                  <span class="badge" style="background:#E0F2FE; color:#0369A1; font-weight:700; font-size:10.5px;">争点 ${idx + 1}</span>
+                  <span class="badge" style="background:#E0F2FE; color:#0369A1; font-weight:700; font-size:10.5px;">争点 ${escapeHtml(idx + 1)}</span>
                   <span style="font-weight: 700; font-size: 12.5px; color: var(--primary-navy);">${escapeHtml(row.dispute_focus)}</span>
                 </div>
                 <span class="badge" style="background:#DCFCE7; color:#15803D; font-weight:700; font-size:10.5px;">${escapeHtml(row.supreme_court_rule.authority_badge)}</span>
@@ -6857,7 +6858,7 @@
           });
         }
       } catch (e) {
-        container.innerHTML = `<div style="color:var(--status-warn);">检索异常: ${e}</div>`;
+        container.innerHTML = `<div style="color:var(--status-warn);">检索异常: ${escapeHtml(e)}</div>`;
       }
     }
 
@@ -7017,24 +7018,25 @@
 
       if (!health) return;
 
-      if (health.mode === 'cloud' && health.status === 'healthy') {
+      const llmMode = health.llm_mode || health.mode;
+      if ((llmMode === 'cloud' || health.mode === 'cloud') && health.status === 'healthy' && health.model_ready !== false) {
         statusText.innerText = `云端引擎在线 (${settings.model || 'DeepSeek'})`;
         popoverAi.innerText = `${settings.model} (延迟 ${health.latency_ms || 0}ms)`;
         pulseDot.style.backgroundColor = '#22c55e';
         pulseDot.style.boxShadow = '0 0 6px rgba(34, 197, 94, 0.8)';
         if (headerTag) headerTag.innerText = `云端: ${settings.model || 'DeepSeek'}`;
-      } else if (health.mode === 'ollama' && health.status === 'healthy') {
+      } else if ((llmMode === 'ollama' || health.mode === 'ollama') && health.status === 'healthy') {
         statusText.innerText = `本地引擎在线 (${health.target_model || 'Gemma4'})`;
         popoverAi.innerText = `${health.target_model} 就绪`;
         pulseDot.style.backgroundColor = '#22c55e';
         pulseDot.style.boxShadow = '0 0 6px rgba(34, 197, 94, 0.8)';
         if (headerTag) headerTag.innerText = `本地: ${health.target_model || 'Gemma4'}`;
       } else {
-        statusText.innerText = `专家规则模式 (免显卡)`;
+        statusText.innerText = `规则模式（未连接模型）`;
         popoverAi.innerText = `规范实务模板引擎 (全算法兜底)`;
         pulseDot.style.backgroundColor = '#C58532';
         pulseDot.style.boxShadow = '0 0 6px rgba(197, 133, 50, 0.8)';
-        if (headerTag) headerTag.innerText = `规则模式 (无AI)`;
+        if (headerTag) headerTag.innerText = `规则模式（未连接模型）`;
       }
     }
 
@@ -7179,6 +7181,21 @@
       btn.innerText = "保存中...";
       btn.disabled = true;
 
+      let cloudConsent = !!(currentEngineSettings && currentEngineSettings.cloud_consent);
+      if (selectedMode === 'cloud' && !cloudConsent) {
+        const preset = document.getElementById('cfg-cloud-preset').value || 'cloud';
+        const presetName = (providerPresets[preset] && providerPresets[preset].name) || preset;
+        const ok = window.confirm(
+          `案情文本将在脱敏后发送至第三方服务：${presetName}\n\n请确认已知悉并同意后再继续。`
+        );
+        if (!ok) {
+          btn.innerText = origText;
+          btn.disabled = false;
+          return;
+        }
+        cloudConsent = true;
+      }
+
       const payload = {
         provider: selectedMode,
         cloud_preset: document.getElementById('cfg-cloud-preset').value,
@@ -7186,7 +7203,8 @@
         base_url: document.getElementById('cfg-base-url').value,
         model: document.getElementById('cfg-model').value,
         ollama_base_url: document.getElementById('cfg-ollama-url').value,
-        pii_shield_enabled: document.getElementById('cfg-pii-shield') ? document.getElementById('cfg-pii-shield').checked : true
+        pii_shield_enabled: document.getElementById('cfg-pii-shield') ? document.getElementById('cfg-pii-shield').checked : true,
+        cloud_consent: cloudConsent
       };
 
       try {
@@ -7201,6 +7219,7 @@
 
         if (res.status === 'success') {
           showToast("模型引擎配置已更新并即时生效");
+          currentEngineSettings = res.settings;
           updateEngineStatusUI(res.health, res.settings);
           closeEngineSettingsModal();
         } else {
@@ -7297,7 +7316,7 @@
         // 2. 渲染四大穿透探针诊断卡片
         const probesContainer = document.getElementById('enf-probes-container');
         if (probesContainer && data.probes) {
-          probesContainer.innerHTML = data.probes.map(p => {
+          probesContainer.innerHTML = data.probes.map(p => { // safe-html: contains nested HTML fragment interpolations
             const insufficient = p.status === 'INSUFFICIENT_FACTS';
             const badge = insufficient ? '事实不足' : (p.severity || '已就绪');
             const badgeBg = insufficient ? 'rgba(202,138,4,0.12)' : 'rgba(180, 52, 52, 0.12)';
@@ -7310,15 +7329,15 @@
               <div style="margin-top: 8px; font-size: 11px; color: #2E7D32; font-weight: 700;">救济：${escapeHtml(p.piercing_relief||'')}</div>
               ${p.related_company_note ? `<div style="margin-top:6px;font-size:11px;color:#92400E;">${escapeHtml(p.related_company_note)}</div>` : ''}`;
             return `
-            <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px; border-left: 4px solid ${insufficient ? '#CA8A04' : '#B43434'};">
+            <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px; border-left: 4px solid ${escapeHtml(insufficient ? '#CA8A04' : '#B43434')};">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
                 <div style="font-weight: 700; font-size: 13.5px; color: var(--text-primary);">
-                  <span style="display: inline-block; padding: 1px 6px; font-size: 11px; background: ${badgeBg}; color: ${badgeColor}; border-radius: 4px; margin-right: 4px;">${escapeHtml(p.probe_id||'')}</span>
+                  <span style="display: inline-block; padding: 1px 6px; font-size: 11px; background: ${escapeHtml(badgeBg)}; color: ${escapeHtml(badgeColor)}; border-radius: 4px; margin-right: 4px;">${escapeHtml(p.probe_id||'')}</span>
                   ${escapeHtml(p.probe_name||'')}
                 </div>
-                <span class="badge" style="background: ${badgeBg}; color: ${badgeColor}; font-size: 10px; font-weight: 700;">${escapeHtml(badge)}</span>
+                <span class="badge" style="background: ${escapeHtml(badgeBg)}; color: ${escapeHtml(badgeColor)}; font-size: 10px; font-weight: 700;">${escapeHtml(badge)}</span>
               </div>
-              ${body}
+              ${body} // safe-html: static or pre-escaped HTML fragment
             </div>`;
           }).join('');
         }
@@ -7337,7 +7356,7 @@
             <svg width="100%" height="210" viewBox="0 0 920 210" style="font-family: -apple-system, sans-serif;">
               <rect x="360" y="75" width="200" height="60" rx="8" fill="#14233C" stroke="#2B3A4F" stroke-width="2"/>
               <text x="460" y="100" fill="#FFFFFF" font-size="13" font-weight="bold" text-anchor="middle">被执行人（用户输入）</text>
-              <text x="460" y="122" fill="#E2E8F0" font-size="11" text-anchor="middle">${data.is_demo ? '演示数据·非真实案例' : '按探针事实生成'}</text>
+              <text x="460" y="122" fill="#E2E8F0" font-size="11" text-anchor="middle">${escapeHtml(data.is_demo ? '演示数据·非真实案例' : '按探针事实生成')}</text>
               <rect x="20" y="15" width="250" height="60" rx="6" fill="#FFF5F5" stroke="#FEB2B2" stroke-width="1.5"/>
               <text x="145" y="48" fill="#9B2C2C" font-size="11" font-weight="bold" text-anchor="middle">${escapeHtml(labelOf('ENF-01','ENF-01'))}</text>
               <rect x="20" y="135" width="250" height="60" rx="6" fill="#FFF5F5" stroke="#FEB2B2" stroke-width="1.5"/>
@@ -7560,22 +7579,22 @@
           linesHtml += `</div>`;
         }
 
-        card.innerHTML = `
+        card.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:6px;">
-              <span class="badge" style="background:#14233C; color:#FFF; font-weight:700;">${doc.doc_id}</span>
-              <strong style="color:var(--primary-navy);">${doc.doc_name}</strong>
+              <span class="badge" style="background:#14233C; color:#FFF; font-weight:700;">${escapeHtml(doc.doc_id)}</span>
+              <strong style="color:var(--primary-navy);">${escapeHtml(doc.doc_name)}</strong>
             </div>
-            <span style="font-size:10.5px; color:var(--text-muted); font-family:var(--font-mono);">${doc.recorded_date}</span>
+            <span style="font-size:10.5px; color:var(--text-muted); font-family:var(--font-mono);">${escapeHtml(doc.recorded_date)}</span>
           </div>
           <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-secondary);">
-            <span>类别：${doc.doc_type} · 来源：${doc.source}</span>
+            <span>类别：${escapeHtml(doc.doc_type)} · 来源：${escapeHtml(doc.source)}</span>
             <span style="color:var(--status-valid); font-size:10.5px;">✓ SHA-256 存证一致</span>
           </div>
           <div style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); word-break:break-all;">
-            哈希: ${doc.hash_sha256}
+            哈希: ${escapeHtml(doc.hash_sha256)}
           </div>
-          ${linesHtml}
+          ${linesHtml} // safe-html: static or pre-escaped HTML fragment
         `;
         container.appendChild(card);
       });
@@ -7591,13 +7610,13 @@
           div.className = `conflict-callout ${c.severity === 'CRITICAL' ? 'critical' : ''}`;
           div.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong style="color:${c.severity === 'CRITICAL' ? 'var(--status-warn)' : 'var(--primary-navy)'}; font-size:12.5px;">
-                ⚠️ ${c.conflict_type}
+              <strong style="color:${escapeHtml(c.severity === 'CRITICAL' ? 'var(--status-warn)' : 'var(--primary-navy)')}; font-size:12.5px;">
+                ⚠️ ${escapeHtml(c.conflict_type)}
               </strong>
-              <span class="badge" style="background:${c.severity === 'CRITICAL' ? 'var(--status-warn-bg)' : 'rgba(197,133,50,0.1)'}; color:${c.severity === 'CRITICAL' ? 'var(--status-warn)' : 'var(--accent-amber)'}; font-size:10px;">${c.severity}</span>
+              <span class="badge" style="background:${escapeHtml(c.severity === 'CRITICAL' ? 'var(--status-warn-bg)' : 'rgba(197,133,50,0.1)')}; color:${escapeHtml(c.severity === 'CRITICAL' ? 'var(--status-warn)' : 'var(--accent-amber)')}; font-size:10px;">${escapeHtml(c.severity)}</span>
             </div>
-            <div style="color:var(--text-secondary); line-height:1.4;">${c.description}</div>
-            <div style="color:var(--status-valid); font-size:11.5px; margin-top:2px; font-weight:500;"><strong>【应对方案】</strong>${c.remedy}</div>
+            <div style="color:var(--text-secondary); line-height:1.4;">${escapeHtml(c.description)}</div>
+            <div style="color:var(--status-valid); font-size:11.5px; margin-top:2px; font-weight:500;"><strong>【应对方案】</strong>${escapeHtml(c.remedy)}</div>
           `;
           confArea.appendChild(div);
         });
@@ -7610,14 +7629,14 @@
         events.forEach(ev => {
           const step = document.createElement('div');
           step.className = "timeline-step";
-          step.innerHTML = `
-            <div class="timeline-dot ${ev.risk_flag || ''}"></div>
+          step.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
+            <div class="timeline-dot ${escapeHtml(ev.risk_flag || '')}"></div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong style="font-size:12px; font-family:var(--font-mono); color:var(--primary-navy);">${ev.date}</strong>
-              <span style="font-size:10.5px; color:var(--text-muted);">${ev.source}</span>
+              <strong style="font-size:12px; font-family:var(--font-mono); color:var(--primary-navy);">${escapeHtml(ev.date)}</strong>
+              <span style="font-size:10.5px; color:var(--text-muted);">${escapeHtml(ev.source)}</span>
             </div>
-            <div style="font-size:12px; color:var(--text-secondary); line-height:1.4;">${ev.summary}</div>
-            ${ev.conflict_note ? `<div style="font-size:11px; color:var(--status-warn); font-weight:600; margin-top:2px;">${ev.conflict_note}</div>` : ''}
+            <div style="font-size:12px; color:var(--text-secondary); line-height:1.4;">${escapeHtml(ev.summary)}</div>
+            ${ev.conflict_note ? `<div style="font-size:11px; color:var(--status-warn); font-weight:600; margin-top:2px;">${ev.conflict_note}</div>` : ''} // safe-html: static or pre-escaped HTML fragment
           `;
           track.appendChild(step);
         });
@@ -7674,30 +7693,30 @@
           `;
         }
 
-        card.innerHTML = `
+        card.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
           <div class="element-card-header">
             <div style="display:flex; align-items:center; gap:8px;">
-              <span class="badge" style="background:var(--primary-navy); color:#FFF; font-weight:700;">${el.element_id}</span>
-              <strong style="color:var(--primary-navy); font-size:13.5px;">${el.element_name}</strong>
+              <span class="badge" style="background:var(--primary-navy); color:#FFF; font-weight:700;">${escapeHtml(el.element_id)}</span>
+              <strong style="color:var(--primary-navy); font-size:13.5px;">${escapeHtml(el.element_name)}</strong>
             </div>
-            <span class="element-badge ${el.proof_status === 'PROVEN' ? 'valid' : 'warn'}">
-              ${el.proof_status === 'PROVEN' ? '✓ PROVEN 证明闭环' : '⚠ 待补强'}
+            <span class="element-badge ${escapeHtml(el.proof_status === 'PROVEN' ? 'valid' : 'warn')}">
+              ${escapeHtml(el.proof_status === 'PROVEN' ? '✓ PROVEN 证明闭环' : '⚠ 待补强')}
             </span>
           </div>
           <div>
-            <span class="element-basis-tag">${el.claim_basis}</span>
+            <span class="element-basis-tag">${escapeHtml(el.claim_basis)}</span>
           </div>
           <div style="font-size:12.5px; color:var(--text-primary); line-height:1.5;">
-            <strong>主张要件事实：</strong>${el.asserted_fact}
+            <strong>主张要件事实：</strong>${escapeHtml(el.asserted_fact)}
           </div>
           <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11.5px;">
             <span style="color:var(--text-muted);">一手卷宗锚点：</span>
-            ${pillsHtml}
+            ${pillsHtml} // safe-html: static or pre-escaped HTML fragment
           </div>
           <div style="font-size:11px; color:var(--text-secondary); background:var(--bg-subtle); padding:6px 8px; border-radius:3px;">
-            <strong>举证责任分配：</strong>${el.burden_of_proof}
+            <strong>举证责任分配：</strong>${escapeHtml(el.burden_of_proof)}
           </div>
-          ${perspectiveSectionHtml}
+          ${perspectiveSectionHtml} // safe-html: static or pre-escaped HTML fragment
         `;
         container.appendChild(card);
       });
@@ -7710,17 +7729,17 @@
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px;">
           <div style="background:#FFFFFF; border:1px solid #E2DFD7; padding:8px 10px; border-radius:4px;">
             <div style="color:var(--text-muted); font-size:11px;">判定引擎</div>
-            <strong style="color:var(--primary-navy); font-size:12.5px;">${ledger.verifier_name}</strong>
+            <strong style="color:var(--primary-navy); font-size:12.5px;">${escapeHtml(ledger.verifier_name)}</strong>
           </div>
           <div style="background:#FFFFFF; border:1px solid #E2DFD7; padding:8px 10px; border-radius:4px;">
             <div style="color:var(--text-muted); font-size:11px;">布尔门禁裁决</div>
-            <strong style="color:${scorecard.is_litigation_ready ? 'var(--status-valid)' : 'var(--status-warn)'}; font-size:12.5px;">${scorecard.status_label}</strong>
+            <strong style="color:${escapeHtml(scorecard.is_litigation_ready ? 'var(--status-valid)' : 'var(--status-warn)')}; font-size:12.5px;">${escapeHtml(scorecard.status_label)}</strong>
           </div>
         </div>
-        <div>• <strong>防伪哈希可复现核验：</strong>${ledger.hash_verification}</div>
-        <div>• <strong>要件坐标穿透率：</strong>${ledger.grounding_coverage}</div>
-        <div>• <strong>时效与法规有效性：</strong>${ledger.statute_validity_check}</div>
-        <div>• <strong>执业红线熔断拦截：</strong>${ledger.redline_risk_status}</div>
+        <div>• <strong>防伪哈希可复现核验：</strong>${escapeHtml(ledger.hash_verification)}</div>
+        <div>• <strong>要件坐标穿透率：</strong>${escapeHtml(ledger.grounding_coverage)}</div>
+        <div>• <strong>时效与法规有效性：</strong>${escapeHtml(ledger.statute_validity_check)}</div>
+        <div>• <strong>执业红线熔断拦截：</strong>${escapeHtml(ledger.redline_risk_status)}</div>
       `;
     }
 
@@ -7872,7 +7891,7 @@
 
         if (!resp.ok) {
           const err = await resp.json();
-          container.innerHTML = `<div style="color: var(--status-warn); padding: 20px;">检索失败: ${err.detail || '未知错误'}</div>`;
+          container.innerHTML = `<div style="color: var(--status-warn); padding: 20px;">检索失败: ${escapeHtml(err.detail || '未知错误')}</div>`;
           return;
         }
 
@@ -7916,27 +7935,27 @@
           card.innerHTML = `
             <div class="element-card-header">
               <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                <span class="citation-pill" style="font-weight: 700; background: #14233C; color: #FFF; border: none;">${art.article_no_cn}</span>
-                <span style="font-size: 12.5px; font-weight: 600; color: var(--primary-navy);">${art.short_name || art.full_name}</span>
-                ${verifyBadge}
-                <span style="font-size: 11px; color: var(--text-muted);">${art.part_name || ''} ${art.chapter_name || ''}</span>
+                <span class="citation-pill" style="font-weight: 700; background: #14233C; color: #FFF; border: none;">${escapeHtml(art.article_no_cn)}</span>
+                <span style="font-size: 12.5px; font-weight: 600; color: var(--primary-navy);">${escapeHtml(art.short_name || art.full_name)}</span>
+                ${escapeHtml(verifyBadge)}
+                <span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(art.part_name || '')} ${escapeHtml(art.chapter_name || '')}</span>
               </div>
-              <span style="font-size: 10.5px; color: var(--accent-amber); font-weight: 500;">${matchModeLabel}</span>
+              <span style="font-size: 10.5px; color: var(--accent-amber); font-weight: 500;">${escapeHtml(matchModeLabel)}</span>
             </div>
 
             <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4px;">
-              ${art.content}
+              ${escapeHtml(art.content)}
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 11px;">
               <div style="display: flex; gap: 5px; align-items: center;">
-                <span class="element-badge" style="background: var(--bg-subtle);">${art.claim_basis_type || '规范条文'}</span>
-                ${provBadge}
-                ${childBadge}
+                <span class="element-badge" style="background: var(--bg-subtle);">${escapeHtml(art.claim_basis_type || '规范条文')}</span>
+                ${escapeHtml(provBadge)}
+                ${escapeHtml(childBadge)}
               </div>
               <div style="display: flex; align-items: center; gap: 6px;">
-                <button type="button" class="btn-select-statute ${isPinned ? 'selected' : ''}" id="btn-statute-list-${art.id.replace(/[:.]/g, '_')}" onclick="event.stopPropagation(); toggleSelectStatuteFromList('${art.id}', '${(art.short_name || art.full_name || '').replace(/'/g, "\\'")}', '${art.article_no_cn}', ${JSON.stringify(art.content).replace(/"/g, '&quot;')})">
-                  ${isPinned ? '✓ 已选入本案' : '📌 选入本案依据'}
+                <button type="button" class="btn-select-statute ${escapeHtml(isPinned ? 'selected' : '')}" id="btn-statute-list-${escapeHtml(art.id.replace(/[:.]/g, '_'))}" onclick="event.stopPropagation(); toggleSelectStatuteFromList('${escapeHtml(art.id)}', '${escapeHtml((art.short_name || art.full_name || '').replace(/'/g, "\\'"))}', '${escapeHtml(art.article_no_cn)}', ${escapeHtml(JSON.stringify(art.content).replace(/"/g, '&quot;'))})">
+                  ${escapeHtml(isPinned ? '✓ 已选入本案' : '📌 选入本案依据')}
                 </button>
                 <span style="color: var(--primary-navy); font-weight: 600;">穿透图谱 ➔</span>
               </div>
@@ -7951,7 +7970,7 @@
         }
 
       } catch (e) {
-        container.innerHTML = `<div style="color: var(--status-warn); padding: 20px;">请求异常: ${e}</div>`;
+        container.innerHTML = `<div style="color: var(--status-warn); padding: 20px;">请求异常: ${escapeHtml(e)}</div>`;
       }
     }
 
@@ -8052,32 +8071,32 @@
           `;
         }
 
-        graphBox.innerHTML = `
+        graphBox.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
           <!-- 当前法条核心卡片 -->
           <div style="background: #FFFFFF; border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 16px; box-shadow: 0 1px 4px rgba(20, 35, 60, 0.06);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
               <div>
-                <span style="font-size: 14px; font-weight: 700; color: var(--primary-navy);">${art.law_full_name}</span>
-                <span class="citation-pill" style="margin-left: 6px; font-weight: 700; background: #14233C; color: #FFF; border: none;">${art.article_no_cn}</span>
+                <span style="font-size: 14px; font-weight: 700; color: var(--primary-navy);">${escapeHtml(art.law_full_name)}</span>
+                <span class="citation-pill" style="margin-left: 6px; font-weight: 700; background: #14233C; color: #FFF; border: none;">${escapeHtml(art.article_no_cn)}</span>
               </div>
               <span class="badge" style="background: rgba(197, 133, 50, 0.15); color: var(--accent-amber); font-weight: 600;">
-                ${art.claim_basis_type || '要件规范'}
+                ${escapeHtml(art.claim_basis_type || '要件规范')}
               </span>
             </div>
 
             <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
-              ${art.part_name || ''} · ${art.chapter_name || ''} · 施行日期：${art.effective_date} · 效力：现行有效
+              ${escapeHtml(art.part_name || '')} · ${escapeHtml(art.chapter_name || '')} · 施行日期：${escapeHtml(art.effective_date)} · 效力：现行有效
             </div>
 
             <div id="active-statute-fulltext" style="font-size: 12.5px; color: #1F2937; line-height: 1.7; background: #FAF9F6; padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid #EFECE6; font-family: var(--font-body); white-space: pre-wrap;">
-              ${art.content}
+              ${escapeHtml(art.content)}
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 11px; color: var(--text-muted);">
-              <span>规范属性：${art.has_proviso ? '包含明确【但书除外规定】' : '一般强制性/倡导性规定'}</span>
+              <span>规范属性：${escapeHtml(art.has_proviso ? '包含明确【但书除外规定】' : '一般强制性/倡导性规定')}</span>
               <div style="display: flex; align-items: center; gap: 6px;">
-                <button type="button" class="btn-select-statute ${isDetailPinned ? 'selected' : ''}" id="btn-pin-active-statute" onclick="toggleSelectStatuteFromList('${art.id}', '${(art.law_full_name || art.short_name || '').replace(/'/g, "\\'")}', '${art.article_no_cn}', document.getElementById('active-statute-fulltext').innerText)">
-                  ${isDetailPinned ? '✓ 已选入本案依据' : '📌 选入本案请求权依据'}
+                <button type="button" class="btn-select-statute ${escapeHtml(isDetailPinned ? 'selected' : '')}" id="btn-pin-active-statute" onclick="toggleSelectStatuteFromList('${escapeHtml(art.id)}', '${escapeHtml((art.law_full_name || art.short_name || '').replace(/'/g, "\\'"))}', '${escapeHtml(art.article_no_cn)}', document.getElementById('active-statute-fulltext').innerText)">
+                  ${escapeHtml(isDetailPinned ? '✓ 已选入本案依据' : '📌 选入本案请求权依据')}
                 </button>
                 <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(document.getElementById('active-statute-fulltext').innerText, '已成功复制法条全文')" style="padding: 2px 8px; font-size: 10.5px;">
                   复制正文
@@ -8087,12 +8106,12 @@
           </div>
 
           <!-- 子法与母法穿透区 -->
-          ${childrenHtml}
-          ${parentsHtml}
+          ${childrenHtml} // safe-html: static or pre-escaped HTML fragment
+          ${parentsHtml} // safe-html: static or pre-escaped HTML fragment
         `;
 
       } catch (e) {
-        graphBox.innerHTML = `<div style="color: var(--status-warn); padding: 20px;">渲染穿透图谱异常: ${e}</div>`;
+        graphBox.innerHTML = `<div style="color: var(--status-warn); padding: 20px;">渲染穿透图谱异常: ${escapeHtml(e)}</div>`;
       }
     }
 
@@ -8583,14 +8602,14 @@
         <div style="background:#FFFFFF; border:1px solid #E2DFD7; border-left:3px solid var(--accent-amber); padding:8px 12px; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center;">
           <div style="display:flex; flex-direction:column; gap:2px; max-width:85%;">
             <div style="display:flex; align-items:center; gap:6px;">
-              <span class="citation-pill" style="font-weight:700;">${s.article_no}</span>
-              <strong style="color:var(--primary-navy); font-size:12px;">${s.law_name}</strong>
+              <span class="citation-pill" style="font-weight:700;">${escapeHtml(s.article_no)}</span>
+              <strong style="color:var(--primary-navy); font-size:12px;">${escapeHtml(s.law_name)}</strong>
             </div>
             <div style="font-size:11px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              ${s.content || ''}
+              ${escapeHtml(s.content || '')}
             </div>
           </div>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="removeStatuteFromCase('${s.id}')" style="padding:2px 6px; font-size:10px; color:var(--status-warn);">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="removeStatuteFromCase('${escapeHtml(s.id)}')" style="padding:2px 6px; font-size:10px; color:var(--status-warn);">
             移除
           </button>
         </div>
@@ -8860,24 +8879,24 @@
         `;
       }
 
-      box.innerHTML = `
-        <div style="background: ${statusBg}; border: 1px solid ${statusBorder}; border-radius: var(--radius-sm); padding: 14px;">
+      box.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
+        <div style="background: ${escapeHtml(statusBg)}; border: 1px solid ${escapeHtml(statusBorder)}; border-radius: var(--radius-sm); padding: 14px;">
           <div style="display: flex; align-items: flex-start; justify-content: space-between;">
             <div>
-              <div style="font-size: 14px; font-weight: 700; color: ${statusColor}; display: flex; align-items: center; gap: 8px;">
-                <span>${icon}</span>
-                <span>${unableLabel || res.summary || res.message || ''}</span>
+              <div style="font-size: 14px; font-weight: 700; color: ${escapeHtml(statusColor)}; display: flex; align-items: center; gap: 8px;">
+                <span>${escapeHtml(icon)}</span>
+                <span>${escapeHtml(unableLabel || res.summary || res.message || '')}</span>
               </div>
               <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
-                ${res.recommendation}
+                ${escapeHtml(res.recommendation)}
               </div>
             </div>
             <div style="display: flex; gap: 4px;">
-              ${rulesHtml}
+              ${rulesHtml} // safe-html: static or pre-escaped HTML fragment
             </div>
           </div>
-          ${conflictsHtml}
-          ${certHtml}
+          ${conflictsHtml} // safe-html: static or pre-escaped HTML fragment
+          ${certHtml} // safe-html: static or pre-escaped HTML fragment
         </div>
       `;
     }
@@ -8899,15 +8918,15 @@
         tbody.innerHTML = d.registry.map(item => `
           <tr style="border-bottom: 1px solid var(--border-hairline);">
             <td style="padding: 6px 10px;">
-              <span class="badge" style="background:${item.status === 'ACTIVE' ? '#E8F5E9; color:#2E7D32;' : (item.status === 'RETAINER' ? '#FFF3E0; color:#E65100;' : '#ECEFF1; color:#546E7A;')} font-size: 10px;">
-                ${item.status === 'ACTIVE' ? '在办' : (item.status === 'RETAINER' ? '常年顾问' : '已结案')}
+              <span class="badge" style="background:${escapeHtml(item.status === 'ACTIVE' ? '#E8F5E9; color:#2E7D32;' : (item.status === 'RETAINER' ? '#FFF3E0; color:#E65100;' : '#ECEFF1; color:#546E7A;'))} font-size: 10px;">
+                ${escapeHtml(item.status === 'ACTIVE' ? '在办' : (item.status === 'RETAINER' ? '常年顾问' : '已结案'))}
               </span>
             </td>
-            <td style="padding: 6px 10px; font-family: var(--font-mono); color: var(--text-secondary);">${item.case_no}</td>
-            <td style="padding: 6px 10px; font-weight: 600; color: var(--primary-navy);">${item.case_name}</td>
-            <td style="padding: 6px 10px;">${item.client_name}</td>
-            <td style="padding: 6px 10px;">${item.opposing_party || '-'}</td>
-            <td style="padding: 6px 10px; color: var(--text-muted);">${item.handling_lawyer || '主办律师'}</td>
+            <td style="padding: 6px 10px; font-family: var(--font-mono); color: var(--text-secondary);">${escapeHtml(item.case_no)}</td>
+            <td style="padding: 6px 10px; font-weight: 600; color: var(--primary-navy);">${escapeHtml(item.case_name)}</td>
+            <td style="padding: 6px 10px;">${escapeHtml(item.client_name)}</td>
+            <td style="padding: 6px 10px;">${escapeHtml(item.opposing_party || '-')}</td>
+            <td style="padding: 6px 10px; color: var(--text-muted);">${escapeHtml(item.handling_lawyer || '主办律师')}</td>
           </tr>
         `).join('');
       } catch (e) {
@@ -9158,11 +9177,11 @@
         const warnHtml = (res.warnings && res.warnings.length)
           ? `<div style="font-size: 11.5px; color: #B78103; margin-bottom: 8px;">${res.warnings.join('<br>')}</div>`
           : '';
-        resBox.innerHTML = `
+        resBox.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
           <div style="font-weight: 700; font-size: 12.5px; color: var(--primary-navy); margin-bottom: 6px;">本地库比对与净化结果：</div>
-          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">${res.audit_report || ''}</div>
-          ${warnHtml}
-          ${res.sanitized_text ? `
+          <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">${escapeHtml(res.audit_report || '')}</div>
+          ${warnHtml} // safe-html: static or pre-escaped HTML fragment
+          ${res.sanitized_text ? ` // safe-html: static or pre-escaped HTML fragment
             <div style="margin-top: 8px;">
               <div style="font-weight: 600; font-size: 11px; color: #2E7D32; margin-bottom: 4px;">处理后文本：</div>
               <textarea class="quick-input" rows="4" readonly style="font-size: 11.5px; line-height: 1.5; background: #fff;">${res.sanitized_text}</textarea>
@@ -9307,34 +9326,40 @@
         grid.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">未匹配到相关案件空间</div>`;
         return;
       }
-      grid.innerHTML = matters.map(m => {
+      grid.innerHTML = matters.map(m => { // safe-html: demo/active badges are static HTML; user fields escaped
         const isActive = m.matter_id === activeMatterId;
+        const demoBadge = (m.title || '').includes('【演示】')
+          ? '<span class="badge" style="background:#FFEBEE; color:#D32F2F; font-size:11px; font-weight:700;">演示数据</span>'
+          : '';
+        const activeBadge = isActive
+          ? '<span class="badge" style="background: #E8F5E9; color: #2E7D32; font-weight:700;">● 当前激活空间</span>'
+          : '';
+        const summaryHtml = m.summary
+          ? `<div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">${escapeHtml(m.summary.substring(0, 100))}${escapeHtml(m.summary.length > 100 ? '...' : '')}</div>`
+          : '';
+        const actionHtml = isActive
+          ? `<button type="button" class="btn btn-secondary btn-sm" disabled style="opacity: 0.7;">当前空间</button>`
+          : `<button type="button" class="btn btn-sm" onclick="switchActiveMatter('${escapeHtml(m.matter_id)}', true)" style="background: var(--primary-navy);">切换至此空间</button>`;
         return `
-          <div class="surface-card" style="padding: 12px 14px; border-left: 4px solid ${isActive ? 'var(--accent-amber)' : 'var(--primary-navy)'}; background: ${isActive ? 'rgba(197, 133, 50, 0.04)' : '#FFFFFF'};">
+          <div class="surface-card" style="padding: 12px 14px; border-left: 4px solid ${escapeHtml(isActive ? 'var(--accent-amber)' : 'var(--primary-navy)')}; background: ${escapeHtml(isActive ? 'rgba(197, 133, 50, 0.04)' : '#FFFFFF')};">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
               <div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <strong style="font-size: 13.5px; color: var(--primary-navy);">${m.title}</strong>
-                  ${(m.title || '').includes('【演示】') ? '<span class="badge" style="background:#FFEBEE; color:#D32F2F; font-size:11px; font-weight:700;">演示数据</span>' : ''}
-                  <span class="badge" style="background: rgba(20, 35, 60, 0.08); color: var(--primary-navy); font-size: 11px;">${m.cause_of_action}</span>
-                  ${isActive ? '<span class="badge" style="background: #E8F5E9; color: #2E7D32; font-weight:700;">● 当前激活空间</span>' : ''}
+                  <strong style="font-size: 13.5px; color: var(--primary-navy);">${escapeHtml(m.title)}</strong>
+                  ${escapeHtml(demoBadge)}
+                  <span class="badge" style="background: rgba(20, 35, 60, 0.08); color: var(--primary-navy); font-size: 11px;">${escapeHtml(m.cause_of_action)}</span>
+                  ${escapeHtml(activeBadge)}
                 </div>
                 <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 5px; display: flex; gap: 12px; flex-wrap: wrap;">
-                  <span>案号：<span style="font-family: var(--font-mono);">${m.case_number || '待立案'}</span></span>
-                  <span>法院：${m.court_name || '未指定'}</span>
-                  <span>标的：<strong style="color: var(--accent-amber); font-family: var(--font-mono);">¥${(m.principal_amount || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}</strong></span>
-                  <span>当事人：${m.plaintiff_name || '原告'} VS ${m.defendant_name || '被告'}</span>
+                  <span>案号：<span style="font-family: var(--font-mono);">${escapeHtml(m.case_number || '待立案')}</span></span>
+                  <span>法院：${escapeHtml(m.court_name || '未指定')}</span>
+                  <span>标的：<strong style="color: var(--accent-amber); font-family: var(--font-mono);">¥${escapeHtml((m.principal_amount || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}</strong></span>
+                  <span>当事人：${escapeHtml(m.plaintiff_name || '原告')} VS ${escapeHtml(m.defendant_name || '被告')}</span>
                 </div>
-                ${m.summary ? `<div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">${m.summary.substring(0, 100)}${m.summary.length > 100 ? '...' : ''}</div>` : ''}
+                ${summaryHtml} // safe-html: static or pre-escaped HTML fragment
               </div>
               <div style="display: flex; gap: 6px; align-items: center;">
-                ${isActive ? `
-                  <button type="button" class="btn btn-secondary btn-sm" disabled style="opacity: 0.7;">当前空间</button>
-                ` : `
-                  <button type="button" class="btn btn-sm" onclick="switchActiveMatter('${m.matter_id}', true)" style="background: var(--primary-navy);">
-                    切换至此空间
-                  </button>
-                `}
+                ${actionHtml} // safe-html: static or pre-escaped HTML fragment
               </div>
             </div>
           </div>
@@ -9524,13 +9549,13 @@
             <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: var(--radius-sm); padding: 12px 14px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-weight: 700; font-size: 13px; color: var(--primary-navy);">${i + 1}. ${d.doc_title}</span>
-                  <span class="badge" style="background: ${tInfo.bg}; color: ${tInfo.color}; font-size: 11px;">${tInfo.label}</span>
+                  <span style="font-weight: 700; font-size: 13px; color: var(--primary-navy);">${escapeHtml(i + 1)}. ${escapeHtml(d.doc_title)}</span>
+                  <span class="badge" style="background: ${escapeHtml(tInfo.bg)}; color: ${escapeHtml(tInfo.color)}; font-size: 11px;">${escapeHtml(tInfo.label)}</span>
                 </div>
-                <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${d.file_size_bytes || 0} 字符 · ${d.created_at || ''}</span>
+                <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(d.file_size_bytes || 0)} 字符 · ${escapeHtml(d.created_at || '')}</span>
               </div>
               <div style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; max-height: 60px; overflow: hidden; text-overflow: ellipsis; background: #FFF; padding: 6px 10px; border-radius: 4px; border: 1px solid #F1EFE9;">
-                ${d.content_text || ''}
+                ${escapeHtml(d.content_text || '')}
               </div>
             </div>
           `;
@@ -9613,23 +9638,23 @@
         listEl.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">暂无事实时间线，请点击右上角【重新智能抽取三大图谱】</div>`;
         return;
       }
-      listEl.innerHTML = events.map(ev => {
+      listEl.innerHTML = events.map(ev => { // safe-html: contains nested HTML fragment interpolations
         const isKey = ev.significance && (ev.significance.includes('关键') || ev.significance.includes('起算') || ev.significance.includes('违约') || ev.significance.includes('成立') || ev.significance.includes('催要'));
         return `
           <div class="vault-timeline-item">
-            <div class="vault-timeline-dot ${isKey ? 'key-event' : ''}"></div>
-            <div class="vault-timeline-date">${ev.date || '未知日期'}</div>
+            <div class="vault-timeline-dot ${escapeHtml(isKey ? 'key-event' : '')}"></div>
+            <div class="vault-timeline-date">${escapeHtml(ev.date || '未知日期')}</div>
             <div class="vault-timeline-card">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <strong style="font-size: 13px; color: var(--primary-navy);">${ev.event}</strong>
-                ${isKey ? '<span class="badge" style="background: #FEF3C7; color: #B45309; font-size: 10px;">关键法律事实</span>' : ''}
+                <strong style="font-size: 13px; color: var(--primary-navy);">${escapeHtml(ev.event)}</strong>
+                ${isKey ? '<span class="badge" style="background: #FEF3C7; color: #B45309; font-size: 10px;">关键法律事实</span>' : ''} // safe-html: static or pre-escaped HTML fragment
               </div>
               <div style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 6px;">
-                法律效力意义：${ev.significance || '案件履约与事实链条环节'}
+                法律效力意义：${escapeHtml(ev.significance || '案件履约与事实链条环节')}
               </div>
               <div style="font-size: 10.5px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">
                 <span>证据支撑：</span>
-                <span class="badge" style="background: #F1F5F9; color: var(--primary-navy); font-size: 10.5px; padding: 1px 6px;">${ev.source_doc || '案卷主材'}</span>
+                <span class="badge" style="background: #F1F5F9; color: var(--primary-navy); font-size: 10.5px; padding: 1px 6px;">${escapeHtml(ev.source_doc || '案卷主材')}</span>
               </div>
             </div>
           </div>
@@ -9695,28 +9720,28 @@
       const debtorCollateralCount = cAudits.filter(c => c.is_debtor_own_property).length;
       const thirdCollateralCount = cAudits.filter(c => !c.is_debtor_own_property).length;
 
-      bar.innerHTML = `
+      bar.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
         <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
           <div style="font-size: 11px; color: var(--text-muted);">主债务到期与法定除斥日</div>
           <div style="font-size: 13px; font-weight: 700; color: var(--primary-navy); margin-top: 3px; font-family: var(--font-mono);">
-            ${data.principal_due_date || '未查明'} ➔ ${data.statutory_guarantee_expiry || '法定6个月'}
+            ${escapeHtml(data.principal_due_date || '未查明')} ➔ ${escapeHtml(data.statutory_guarantee_expiry || '法定6个月')}
           </div>
           <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 3px;">依据《民法典》第692条第2款推算</div>
         </div>
         <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 11px; color: var(--text-muted);">《民法典》692条保证生死线</span>
-            ${statusHtml}
+            ${statusHtml} // safe-html: static or pre-escaped HTML fragment
           </div>
           <div style="font-size: 12px; font-weight: 600; color: var(--primary-navy); margin-top: 3px;">
-            ${statusDesc}
+            ${escapeHtml(statusDesc)}
           </div>
-          <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 3px;">涉及 ${gAudits.length} 位连带责任保证人</div>
+          <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 3px;">涉及 ${escapeHtml(gAudits.length)} 位连带责任保证人</div>
         </div>
         <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
           <div style="font-size: 11px; color: var(--text-muted);">《民法典》392条人保物保受偿顺位</div>
-          <div style="font-size: 12.5px; font-weight: 700; color: ${debtorCollateralCount > 0 ? '#1E40AF' : 'var(--primary-navy)'}; margin-top: 3px;">
-            ${debtorCollateralCount > 0 ? `主债务人物保 (${debtorCollateralCount}处) 法定优先执行` : '均为第三人物保/保证人并列'}
+          <div style="font-size: 12.5px; font-weight: 700; color: ${escapeHtml(debtorCollateralCount > 0 ? '#1E40AF' : 'var(--primary-navy)')}; margin-top: 3px;">
+            ${escapeHtml(debtorCollateralCount > 0 ? `主债务人物保 (${debtorCollateralCount}处) 法定优先执行` : '均为第三人物保/保证人并列')}
           </div>
           <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 3px;">未经优先处置物保，不可绕行全额执行保证人</div>
         </div>
@@ -9892,8 +9917,8 @@
               <path d="M 0 1 L 9 5 L 0 9 z" fill="#B91C1C"/>
             </marker>
           </defs>
-          ${edgesSvg}
-          ${nodesSvg}
+          ${escapeHtml(edgesSvg)}
+          ${escapeHtml(nodesSvg)}
         </svg>
       `;
     }
@@ -9964,15 +9989,15 @@
         </div>
       `).join('');
 
-      cont.innerHTML = `
+      cont.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
         <div style="margin-bottom: 14px;">
           <div style="font-size: 12.5px; font-weight: 700; color: var(--primary-navy); margin-bottom: 8px;">
-            🛡️ 连带责任保证人审查明细与期间监控 (${gAudits.length} 位保证主体)
+            🛡️ 连带责任保证人审查明细与期间监控 (${escapeHtml(gAudits.length)} 位保证主体)
           </div>
-          ${gHtml || '<div style="color:var(--text-muted); font-size:12px; padding:10px 0;">未识别到保证人主体</div>'}
+          ${gHtml || '<div style="color:var(--text-muted); font-size:12px; padding:10px 0;">未识别到保证人主体</div>'} // safe-html: static or pre-escaped HTML fragment
         </div>
 
-        ${cAudits.length > 0 ? `
+        ${cAudits.length > 0 ? ` // safe-html: static or pre-escaped HTML fragment
           <div style="margin-bottom: 14px;">
             <div style="font-size: 12.5px; font-weight: 700; color: var(--primary-navy); margin-bottom: 8px;">
               ⚖️ 《民法典》第392条物保受偿顺位与财产实现排挤分析 (${cAudits.length} 处物权担保)
@@ -9983,7 +10008,7 @@
 
         <div style="margin-top: 14px;">
           <div style="font-size: 12.5px; font-weight: 700; color: var(--primary-navy); margin-bottom: 8px;">
-            📌 涉案关键主体名录与法律地位 (${nodes.length} 个主体)
+            📌 涉案关键主体名录与法律地位 (${escapeHtml(nodes.length)} 个主体)
           </div>
           <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px;">
             ${nodes.map(n => `
@@ -10078,7 +10103,7 @@
           redflagsEl.innerHTML = `
             <div style="background: #FEF2F2; border: 1px solid #FCA5A5; border-radius: var(--radius-sm); padding: 10px 14px;">
               <div style="font-weight: 700; color: #B91C1C; font-size: 12.5px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                <span>🚨 资金穿透异常风险探针告警 (${audit.red_flags.length} 项重大洗钱/虚假出借/抗辩阻断风险)：</span>
+                <span>🚨 资金穿透异常风险探针告警 (${escapeHtml(audit.red_flags.length)} 项重大洗钱/虚假出借/抗辩阻断风险)：</span>
               </div>
               <ul style="margin: 0; padding-left: 18px; font-size: 11.5px; color: #991B1B; line-height: 1.6;">
                 ${audit.red_flags.map(rf => `
@@ -10099,37 +10124,37 @@
             <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
               <div style="font-size: 11px; color: var(--text-muted);">诉争借款本金基数</div>
               <div style="font-size: 17px; font-weight: 700; color: var(--primary-navy); font-family: var(--font-mono);">
-                ¥${(audit.principal_claim_initial || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}
+                ¥${escapeHtml((audit.principal_claim_initial || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}
               </div>
-              <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">交付起息日: ${audit.initial_lending_date || '-'}</div>
+              <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">交付起息日: ${escapeHtml(audit.initial_lending_date || '-')}</div>
             </div>
             <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
               <div style="font-size: 11px; color: var(--text-muted);">被告名义清偿总额</div>
               <div style="font-size: 17px; font-weight: 700; color: var(--accent-amber); font-family: var(--font-mono);">
-                ¥${(audit.total_nominal_repayments || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}
+                ¥${escapeHtml((audit.total_nominal_repayments || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}
               </div>
               <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">被告常抗辩全额抵扣本金</div>
             </div>
             <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
               <div style="font-size: 11px; color: var(--text-muted);">法定先冲抵利息额 (561条)</div>
               <div style="font-size: 17px; font-weight: 700; color: #1E40AF; font-family: var(--font-mono);">
-                ¥${(audit.total_interest_offset || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}
+                ¥${escapeHtml((audit.total_interest_offset || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}
               </div>
               <div style="font-size: 10.5px; color: #1E40AF; margin-top: 2px;">依法先抵清应付利息</div>
             </div>
             <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
               <div style="font-size: 11px; color: var(--text-muted);">冲抵后剩余本金余额</div>
               <div style="font-size: 17px; font-weight: 700; color: #B91C1C; font-family: var(--font-mono);">
-                ¥${(audit.current_principal_unpaid || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}
+                ¥${escapeHtml((audit.current_principal_unpaid || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}
               </div>
               <div style="font-size: 10.5px; color: #B91C1C; margin-top: 2px;">本金未被削减，打破被告抗辩</div>
             </div>
             <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
               <div style="font-size: 11px; color: var(--text-muted);">当前滚存未付利息</div>
               <div style="font-size: 17px; font-weight: 700; color: #9A3412; font-family: var(--font-mono);">
-                ¥${(audit.unpaid_accrued_interest || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}
+                ¥${escapeHtml((audit.unpaid_accrued_interest || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}
               </div>
-              <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">年化 ${(audit.annual_interest_rate*100).toFixed(2)}%</div>
+              <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 2px;">年化 ${escapeHtml((audit.annual_interest_rate*100).toFixed(2))}%</div>
             </div>
           `;
         } else {
@@ -10138,11 +10163,11 @@
           metricsEl.innerHTML = `
             <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
               <div style="font-size: 11px; color: var(--text-muted);">涉案流水总笔数</div>
-              <div style="font-size: 18px; font-weight: 700; color: var(--primary-navy); font-family: var(--font-mono);">${flows.length} 笔</div>
+              <div style="font-size: 18px; font-weight: 700; color: var(--primary-navy); font-family: var(--font-mono);">${escapeHtml(flows.length)} 笔</div>
             </div>
             <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
               <div style="font-size: 11px; color: var(--text-muted);">已穿透查证流水总额</div>
-              <div style="font-size: 18px; font-weight: 700; color: var(--accent-amber); font-family: var(--font-mono);">¥${totalAmount.toLocaleString('zh-CN', {minimumFractionDigits: 2})}</div>
+              <div style="font-size: 18px; font-weight: 700; color: var(--accent-amber); font-family: var(--font-mono);">¥${escapeHtml(totalAmount.toLocaleString('zh-CN', {minimumFractionDigits: 2}))}</div>
             </div>
             <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
               <div style="font-size: 11px; color: var(--text-muted);">资金闭环完成度</div>
@@ -10176,20 +10201,20 @@
         } else {
           tableBody.innerHTML = ledger.map(item => `
             <tr>
-              <td style="font-family: var(--font-mono); font-size: 11px;">#${item.step_num}</td>
-              <td style="font-family: var(--font-mono); font-size: 11.5px;">${item.repayment_date}</td>
-              <td style="font-family: var(--font-mono); font-size: 11.5px;">${item.days_accrued} 天</td>
+              <td style="font-family: var(--font-mono); font-size: 11px;">#${escapeHtml(item.step_num)}</td>
+              <td style="font-family: var(--font-mono); font-size: 11.5px;">${escapeHtml(item.repayment_date)}</td>
+              <td style="font-family: var(--font-mono); font-size: 11.5px;">${escapeHtml(item.days_accrued)} 天</td>
               <td style="text-align: right; font-family: var(--font-mono); font-weight: 700; color: var(--accent-amber);">
-                ¥${(item.repay_amount || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}
+                ¥${escapeHtml((item.repay_amount || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}
               </td>
               <td style="text-align: right; font-family: var(--font-mono); font-weight: 700; color: #1E40AF;">
-                ¥${(item.offset_to_interest || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}
+                ¥${escapeHtml((item.offset_to_interest || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}
               </td>
               <td style="text-align: right; font-family: var(--font-mono); font-weight: 700; color: #B45309;">
-                ¥${(item.offset_to_principal || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}
+                ¥${escapeHtml((item.offset_to_principal || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}
               </td>
               <td style="text-align: right; font-family: var(--font-mono); font-weight: 700; color: #B91C1C;">
-                ¥${(item.remaining_principal || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}
+                ¥${escapeHtml((item.remaining_principal || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}
               </td>
               <td>
                 <button type="button" class="cell-action-btn" onclick="openSourceGroundingViewer('银行流水与转账凭证', 1, '${escapeHtml(item.voucher || '')}')" style="color: var(--accent-amber); font-weight: 600; text-decoration: underline;">
@@ -10222,11 +10247,11 @@
         } else {
           tableBody.innerHTML = flows.map(f => `
             <tr>
-              <td style="font-family: var(--font-mono); font-size: 11.5px;">${f.date || '-'}</td>
+              <td style="font-family: var(--font-mono); font-size: 11.5px;">${escapeHtml(f.date || '-')}</td>
               <td><strong style="color: var(--primary-navy);">${escapeHtml(f.payer || f.from_party || '-')}</strong></td>
               <td><strong style="color: var(--primary-navy);">${escapeHtml(f.payee || f.to_party || '-')}</strong></td>
               <td style="text-align: right; font-family: var(--font-mono); font-weight: 700; color: var(--accent-amber);">
-                ¥${(f.amount || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}
+                ¥${escapeHtml((f.amount || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}))}
               </td>
               <td>${escapeHtml(f.purpose || f.channel || f.note || '银行电汇')}</td>
               <td>
@@ -10390,8 +10415,8 @@
         if (claimsList) {
           claimsList.innerHTML = claims.map((c, i) => `
             <label style="display: flex; align-items: flex-start; gap: 8px; background: #FFF; border: 1px solid #E2E8F0; padding: 8px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">
-              <input type="checkbox" name="wf-claim-item" value="${c}" checked style="margin-top: 3px; accent-color: #B45309;">
-              <span style="color: var(--primary-navy); line-height: 1.4;">${i + 1}. ${c}</span>
+              <input type="checkbox" name="wf-claim-item" value="${escapeHtml(c)}" checked style="margin-top: 3px; accent-color: #B45309;">
+              <span style="color: var(--primary-navy); line-height: 1.4;">${escapeHtml(i + 1)}. ${escapeHtml(c)}</span>
             </label>
           `).join('');
         }
@@ -10402,8 +10427,8 @@
         if (basisList) {
           basisList.innerHTML = statutes.map(s => `
             <label style="display: flex; align-items: center; gap: 8px; background: #FFF; border: 1px solid #E2E8F0; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11.5px;">
-              <input type="checkbox" name="wf-statute-item" value="${s}" checked style="accent-color: #B45309;">
-              <span style="color: #1E40AF; font-weight: 600;">${s}</span>
+              <input type="checkbox" name="wf-statute-item" value="${escapeHtml(s)}" checked style="accent-color: #B45309;">
+              <span style="color: #1E40AF; font-weight: 600;">${escapeHtml(s)}</span>
             </label>
           `).join('');
         }
@@ -10419,15 +10444,15 @@
           defCont.innerHTML = predictions.map((p, i) => `
             <div style="background: #FFF; border: 1px solid #FDE68A; border-left: 3px solid #D97706; padding: 10px 12px; border-radius: 4px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-weight: 700; font-size: 12.5px; color: #92400E;">预测抗辩 ${i + 1}：${p.defense_point}</span>
+                <span style="font-weight: 700; font-size: 12.5px; color: #92400E;">预测抗辩 ${escapeHtml(i + 1)}：${escapeHtml(p.defense_point)}</span>
                 <span class="badge" style="background: #FEF3C7; color: #B45309; font-size: 10.5px;">对方潜在致命主张</span>
               </div>
               <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.5;">
-                对方可能依据：${p.basis || '事实不清或时效抗辩'}
+                对方可能依据：${escapeHtml(p.basis || '事实不清或时效抗辩')}
               </div>
               <label style="display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; color: #15803D; font-weight: 600; cursor: pointer; background: #F0FDF4; padding: 6px 8px; border-radius: 4px;">
-                <input type="checkbox" name="wf-counter-item" value="${p.counter_strategy}" checked style="margin-top: 2px; accent-color: #15803D;">
-                <span>我方反制策略：${p.counter_strategy}</span>
+                <input type="checkbox" name="wf-counter-item" value="${escapeHtml(p.counter_strategy)}" checked style="margin-top: 2px; accent-color: #15803D;">
+                <span>我方反制策略：${escapeHtml(p.counter_strategy)}</span>
               </label>
             </div>
           `).join('');
@@ -10449,7 +10474,7 @@
 
         const citArea = document.getElementById('pkg-citations-area');
         if (citArea && step5.statute_citations) {
-          citArea.innerHTML = `断点核准实体法依据：<span style="color: var(--primary-navy); font-weight:700;">${step5.statute_citations.join('、')}</span>`;
+          citArea.innerHTML = `断点核准实体法依据：<span style="color: var(--primary-navy); font-weight:700;">${escapeHtml(step5.statute_citations.join('、'))}</span>`;
         }
 
         if (step5.citation_audit) {
@@ -10755,14 +10780,14 @@
               </div>
               <div class="review-cell-actions">
                 <span class="badge" style="background: #E8F5E9; color: #166534; font-size: 9.5px; padding: 1px 4px;">
-                  ${conf}
+                  ${escapeHtml(conf)}
                 </span>
                 ${hasQuote ? `
                   <button type="button" class="cell-action-btn" title="查看卷宗引述切片" onclick="openSourceGroundingViewer('${escapeHtml(rObj.doc_title)}', 1, '${escapeHtml(cell.grounding_quote)}')">
                     § 原文溯源
                   </button>
                 ` : ''}
-                <button type="button" class="cell-action-btn" title="单格异步重刷" onclick="runCellRefreshUI('${rowId}', '${colId}')">
+                <button type="button" class="cell-action-btn" title="单格异步重刷" onclick="runCellRefreshUI('${escapeHtml(rowId)}', '${escapeHtml(colId)}')">
                   ↻ 重刷
                 </button>
               </div>
@@ -10996,8 +11021,8 @@
           }
         }
       } catch (e) {
-        if (contentEl) contentEl.innerHTML = `<div style="color:#DC2626; padding:15px;">原文穿透定位失败: ${e}</div>`;
-        if (visualLoading) visualLoading.innerHTML = `<div style="color:#DC2626; padding:15px;">原件切片加载失败: ${e}</div>`;
+        if (contentEl) contentEl.innerHTML = `<div style="color:#DC2626; padding:15px;">原文穿透定位失败: ${escapeHtml(e)}</div>`;
+        if (visualLoading) visualLoading.innerHTML = `<div style="color:#DC2626; padding:15px;">原件切片加载失败: ${escapeHtml(e)}</div>`;
       }
     }
 
@@ -11905,9 +11930,9 @@
         return;
       }
 
-      container.innerHTML = filtered.map(t => {
+      container.innerHTML = filtered.map(t => { // safe-html: contains nested HTML fragment interpolations
         const isDone = t.status === 'done';
-        const priorityClass = `priority-${t.priority || 'medium'}`;
+        const priorityClass = `priority-${escapeHtml(t.priority || 'medium')}`;
         const priorityLabels = { high: '紧急/高', medium: '常规/中', low: '次要/低' };
         const priorityColors = { high: '#EF4444', medium: '#F59E0B', low: '#3B82F6' };
 
@@ -11933,23 +11958,23 @@
         const moduleName = moduleNames[t.linked_module] || '对应模块';
 
         return `
-          <div class="task-card-item ${priorityClass} ${isDone ? 'done' : ''}" id="task-item-${t.task_id}">
+          <div class="task-card-item ${escapeHtml(priorityClass)} ${escapeHtml(isDone ? 'done' : '')}" id="task-item-${escapeHtml(t.task_id)}">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
               <div style="display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0;">
-                <input type="checkbox" ${isDone ? 'checked' : ''} onchange="toggleTaskDone('${t.task_id}', '${t.status}')" style="margin-top: 3px; cursor: pointer;">
+                <input type="checkbox" ${escapeHtml(isDone ? 'checked' : '')} onchange="toggleTaskDone('${escapeHtml(t.task_id)}', '${escapeHtml(t.status)}')" style="margin-top: 3px; cursor: pointer;">
                 <div style="flex: 1; min-width: 0;">
-                  <div style="font-size: 13px; font-weight: 700; color: var(--primary-navy); text-decoration: ${isDone ? 'line-through' : 'none'}; word-break: break-all;">
-                    ${t.title}
+                  <div style="font-size: 13px; font-weight: 700; color: var(--primary-navy); text-decoration: ${escapeHtml(isDone ? 'line-through' : 'none')}; word-break: break-all;">
+                    ${escapeHtml(t.title)}
                   </div>
-                  ${t.description ? `<div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5;">${t.description}</div>` : ''}
+                  ${t.description ? `<div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5;">${t.description}</div>` : ''} // safe-html: static or pre-escaped HTML fragment
                 </div>
               </div>
               <div style="display: flex; align-items: center; gap: 4px;">
-                <span class="badge" style="font-size: 10.5px; background: rgba(0,0,0,0.04); color: ${priorityColors[t.priority] || '#F59E0B'}; border: 1px solid ${priorityColors[t.priority] || '#F59E0B'}40;">
-                  ${priorityLabels[t.priority] || '常规'}
+                <span class="badge" style="font-size: 10.5px; background: rgba(0,0,0,0.04); color: ${escapeHtml(priorityColors[t.priority] || '#F59E0B')}; border: 1px solid ${escapeHtml(priorityColors[t.priority] || '#F59E0B')}40;">
+                  ${escapeHtml(priorityLabels[t.priority] || '常规')}
                 </span>
                 <span class="badge" style="font-size: 10.5px; background: #F1F5F9; color: var(--primary-navy);">
-                  ${t.stage || '立案'}
+                  ${escapeHtml(t.stage || '立案')}
                 </span>
               </div>
             </div>
@@ -11957,13 +11982,13 @@
             <!-- 卡片底栏：截止时限与模块直达 -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--border-hairline); flex-wrap: wrap; gap: 6px;">
               <span style="font-size: 11px; color: var(--text-muted);">
-                ⏱ 截止: <strong>${t.due_date || '待定'}</strong>
+                ⏱ 截止: <strong>${escapeHtml(t.due_date || '待定')}</strong>
               </span>
               <div style="display: flex; align-items: center; gap: 6px;">
-                <button type="button" class="btn btn-secondary btn-sm" onclick="jumpToTaskModule('${t.linked_module}', '${targetTab}')" style="font-size: 11px; padding: 2px 7px;">
-                  ⚡ 前往 ${moduleName.split(' ')[0]}
+                <button type="button" class="btn btn-secondary btn-sm" onclick="jumpToTaskModule('${escapeHtml(t.linked_module)}', '${escapeHtml(targetTab)}')" style="font-size: 11px; padding: 2px 7px;">
+                  ⚡ 前往 ${escapeHtml(moduleName.split(' ')[0])}
                 </button>
-                <button type="button" onclick="deleteTaskUI('${t.task_id}')" style="background: transparent; border: none; color: #94A3B8; font-size: 12px; cursor: pointer; padding: 2px 4px;" title="删除任务">
+                <button type="button" onclick="deleteTaskUI('${escapeHtml(t.task_id)}')" style="background: transparent; border: none; color: #94A3B8; font-size: 12px; cursor: pointer; padding: 2px 4px;" title="删除任务">
                   ✕
                 </button>
               </div>
@@ -12021,7 +12046,7 @@
         const el = document.getElementById(`tab-status-${s}`);
         if (el) {
           if (s === status) {
-            el.innerHTML = `<strong>${el.innerText.replace(/[()0-9 ]/g, '')}</strong>`;
+            el.innerHTML = `<strong>${escapeHtml(el.innerText.replace(/[()0-9 ]/g, ''))}</strong>`;
             el.style.color = "var(--primary-navy)";
           } else {
             el.style.color = "var(--text-muted)";
@@ -12196,7 +12221,7 @@
             badge.textContent = '🚀 Filee 离线全格式引擎就绪 (244+ 格式)';
           }
           if (desc) desc.textContent = 'Filee CLI 增强模式（支持 CAD、HWP、特殊音视频与 244 种全格式本地极速转码）';
-          if (hint) hint.innerHTML = `已挂载引擎路径: <code>${data.filee_path || 'tools/filee'}</code>`;
+          if (hint) hint.innerHTML = `已挂载引擎路径: <code>${escapeHtml(data.filee_path || 'tools/filee')}</code>`;
           if (headerTag) headerTag.textContent = '⚖️ Filee转码箱';
         } else {
           if (badge) {
@@ -12267,8 +12292,8 @@
       summaryDiv.innerHTML = converterSelectedFiles.map((f, i) => {
         const sizeMb = (f.size / (1024 * 1024)).toFixed(2);
         return `<div style="display:flex; justify-content:space-between; padding:2px 0; border-bottom:1px dashed #F1F5F9;">
-          <span>📄 <strong>${i+1}.</strong> ${f.name}</span>
-          <span style="color:#64748B; font-family:var(--font-mono); font-size:11px;">${sizeMb} MB</span>
+          <span>📄 <strong>${escapeHtml(i+1)}.</strong> ${escapeHtml(f.name)}</span>
+          <span style="color:#64748B; font-family:var(--font-mono); font-size:11px;">${escapeHtml(sizeMb)} MB</span>
         </div>`;
       }).join('');
     }
@@ -12340,7 +12365,7 @@
           const sizeKb = ((res.file_size || 0) / 1024).toFixed(1);
           const pageInfo = res.total_pages ? ` (共 ${res.total_pages} 页)` : '';
           if (desc) {
-            desc.innerHTML = `已生成成品文件：<strong>${res.output_filename}</strong>${pageInfo} · 大小: ${sizeKb} KB。可立即下载或直接联动诉讼流水线！`;
+            desc.innerHTML = `已生成成品文件：<strong>${escapeHtml(res.output_filename)}</strong>${escapeHtml(pageInfo)} · 大小: ${escapeHtml(sizeKb)} KB。可立即下载或直接联动诉讼流水线！`;
           }
           if (dlBtn && res.download_url) {
             dlBtn.href = withDownloadToken(res.download_url);

@@ -39,7 +39,8 @@ from gateway.utils.cn_legal_calc import (
     calculate_statute_of_limitations,
     calculate_preservation_renewal,
     verify_statutory_validity,
-    calculate_settlement_npv_and_recovery
+    calculate_settlement_npv_and_recovery,
+    calculate_appeal_deadline,
 )
 from gateway.utils.text_utils import (
     normalize_court_name,
@@ -724,6 +725,29 @@ async def api_settlement_simulation(req: SettlementSimulationReq):
         raise _http_422(str(e)) from e
 
 
+class AppealDeadlineReq(BaseModel):
+    service_date: str = Field(..., example="2026-11-02", description="一审裁判送达日期 YYYY-MM-DD")
+    judgment_type: Literal["judgment", "ruling"] = Field(..., description="judgment=判决 / ruling=裁定")
+    holidays: Optional[List[str]] = Field(default=None, description="额外法定节假日 YYYY-MM-DD 列表；默认读 data/legal/holidays_cn.json")
+    treat_weekend_as_holiday: bool = Field(
+        default=True,
+        description="周六日是否顺延；口径 TODO(律师核实)，默认 True",
+    )
+
+
+@router.post("/api/v1/phase1/calc/appeal-deadline", summary="上诉期截止日测算（《民事诉讼法》第171条）")
+@router.post("/api/calc/appeal-deadline", include_in_schema=False)
+async def api_appeal_deadline(req: AppealDeadlineReq):
+    try:
+        return calculate_appeal_deadline(
+            service_date=req.service_date,
+            judgment_type=req.judgment_type,
+            holidays=req.holidays,
+            treat_weekend_as_holiday=req.treat_weekend_as_holiday,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
+
 
 # ==============================================================================
 # 核心大模型案情法言法语润色与诉讼文书包一键流水线
@@ -1118,10 +1142,22 @@ async def download_doc(filename: str):
 class AppealAuditRequest(BaseModel):
     judgment_text: Optional[str] = Field(default="", description="一审判决书全文或裁判理由段落")
     case_title: Optional[str] = Field(default=None, description="案件名称")
-    claim_amount: Optional[float] = Field(default=80000000.0, description="回购或争议标的金额")
-    agreed_repurchase_rate: Optional[float] = Field(default=0.15, description="合同约定年化回购溢价/违约金率")
-    first_instance_court: Optional[str] = Field(default="一审中级人民法院", description="作出一审判决之法院名称")
+    claim_amount: Optional[float] = Field(default=None, description="回购或争议标的金额")
+    agreed_repurchase_rate: Optional[float] = Field(default=None, description="合同约定年化回购溢价/违约金率")
+    first_instance_court: str = Field(..., description="作出一审判决之法院名称（必填，无默认）")
     first_instance_errors: Optional[List[str]] = Field(default=None, description="一审争议与错误倾向")
+    use_demo: bool = Field(default=False, description="为 true 时载入 data/demo/appeal_demo.json")
+    appellant: Optional[PartyInfo] = Field(default=None, description="上诉人完整身份信息")
+    appellee: Optional[PartyInfo] = Field(default=None, description="被上诉人完整身份信息")
+    first_instance_case_no: Optional[str] = Field(default=None, description="原审案号")
+    cause_of_action: Optional[str] = Field(default=None, description="案由")
+    appellate_court: Optional[str] = Field(default=None, description="二审法院；未填则文书写待填写上一级法院")
+    judgment_type: Optional[Literal["judgment", "ruling"]] = Field(default=None, description="判决或裁定")
+    service_date: Optional[str] = Field(default=None, description="送达日期 YYYY-MM-DD")
+    include_preservation_insurance: bool = Field(
+        default=False,
+        description="用户明确提供时才写入保全责任险保费诉请",
+    )
 
 
 class AppealExportDocxRequest(BaseModel):
@@ -1134,14 +1170,34 @@ class AppealExportDocxRequest(BaseModel):
 @router.post("/api/v1/phase1/appeal-audit", summary="二审/再审一审判决漏洞剖析与最高院类案分歧穿透（别名）")
 async def api_appeal_audit(req: AppealAuditRequest):
     try:
+        appeal_deadline = None
+        if req.service_date and req.judgment_type:
+            try:
+                appeal_deadline = calculate_appeal_deadline(
+                    req.service_date, req.judgment_type
+                ).get("deadline")
+            except ValueError:
+                appeal_deadline = None
         res = analyze_first_instance_judgment_and_precedents(
             judgment_text=req.judgment_text or "",
             case_title=req.case_title,
-            claim_amount=req.claim_amount or 80000000.0,
-            agreed_repurchase_rate=req.agreed_repurchase_rate or 0.15,
-            first_instance_court=req.first_instance_court or "一审中级人民法院",
-            first_instance_errors=req.first_instance_errors
+            claim_amount=req.claim_amount,
+            agreed_repurchase_rate=req.agreed_repurchase_rate,
+            first_instance_court=req.first_instance_court,
+            first_instance_errors=req.first_instance_errors,
+            use_demo=req.use_demo,
+            appellant=req.appellant.model_dump() if req.appellant else None,
+            appellee=req.appellee.model_dump() if req.appellee else None,
+            first_instance_case_no=req.first_instance_case_no,
+            cause_of_action=req.cause_of_action,
+            appellate_court=req.appellate_court,
+            judgment_type=req.judgment_type,
+            service_date=req.service_date,
+            include_preservation_insurance=req.include_preservation_insurance,
+            appeal_deadline=appeal_deadline,
         )
+        if appeal_deadline:
+            res["appeal_deadline"] = appeal_deadline
         return res
     except Exception as e:
         logger.error(f"二审类案审计失败: {e}", exc_info=True)

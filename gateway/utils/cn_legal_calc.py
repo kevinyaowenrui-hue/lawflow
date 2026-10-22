@@ -10,6 +10,7 @@ LawFlow 智律工作台 - 中国法律实务精确数学与规则计算引擎
 """
 
 import calendar
+import json
 import logging
 from datetime import datetime, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -1369,6 +1370,96 @@ def calculate_preservation_renewal(
         "status_level": status_level,
         "status_label": status_label,
         "alert_message": alert_msg
+    }
+
+
+# ==============================================================================
+# 8b. 上诉期截止日测算（《民事诉讼法》第171条；送达次日起算）
+# ==============================================================================
+def _load_cn_holidays_set(year: Optional[int] = None) -> set:
+    """从 data/legal/holidays_cn.json 加载节假日；verified 可能为 false。"""
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "data" / "legal" / "holidays_cn.json"
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return set()
+    years = data.get("years") or {}
+    out = set()
+    if year is not None and str(year) in years:
+        out.update(years[str(year)].get("dates") or [])
+    else:
+        for yinfo in years.values():
+            out.update(yinfo.get("dates") or [])
+    return out
+
+
+def calculate_appeal_deadline(
+    service_date: str,
+    judgment_type: str,
+    holidays: Optional[List[str]] = None,
+    treat_weekend_as_holiday: bool = True,
+) -> Dict[str, Any]:
+    """
+    上诉期截止日测算。
+    《民事诉讼法》（2023修正）第171条：判决15日、裁定10日，自送达之日起计算；
+    实务口径：自送达次日起算满相应日数之日为届满日；
+    最后一日为法定节假日的，顺延至节假日后第一日（律师 L-I19）。
+    周六、周日是否按节假日顺延：TODO(律师核实)；默认 treat_weekend_as_holiday=True 并在输出注明。
+    """
+    jt = (judgment_type or "").strip().lower()
+    if jt in ("judgment", "判决", "判决书"):
+        jt_norm = "judgment"
+        period_days = 15
+    elif jt in ("ruling", "裁定", "裁定书"):
+        jt_norm = "ruling"
+        period_days = 10
+    else:
+        raise ValueError('judgment_type 仅允许 "judgment"/"ruling"（或判决/裁定）')
+
+    d_service = datetime.strptime(service_date, "%Y-%m-%d").date()
+    # 送达次日起算：届满日 = 送达日 + period_days
+    deadline = d_service + timedelta(days=period_days)
+
+    holiday_set = set(holidays) if holidays is not None else _load_cn_holidays_set(d_service.year)
+    # 若跨年，补充下一年
+    if holidays is None:
+        holiday_set |= _load_cn_holidays_set(deadline.year)
+
+    def _is_non_working(d: date) -> bool:
+        if d.strftime("%Y-%m-%d") in holiday_set:
+            return True
+        if treat_weekend_as_holiday and d.weekday() >= 5:
+            return True
+        return False
+
+    extended = False
+    while _is_non_working(deadline):
+        deadline = deadline + timedelta(days=1)
+        extended = True
+
+    notes = [
+        "起算：自送达次日起算（《民事诉讼法》第一百七十一条；律师 L-I19）。",
+        f"期间：{'判决十五日' if jt_norm == 'judgment' else '裁定十日'}。",
+        "最后一日为法定节假日的，以节假日后的第一日为期限届满日。",
+        "周六、周日是否按节假日顺延的口径 TODO(律师核实)；"
+        f"当前配置 treat_weekend_as_holiday={treat_weekend_as_holiday}。",
+    ]
+    if holidays is None:
+        notes.append("节假日数据来源 data/legal/holidays_cn.json（source 为 TODO，verified 可能为 false）。")
+
+    return {
+        "service_date": service_date,
+        "judgment_type": jt_norm,
+        "period_days": period_days,
+        "deadline": deadline.strftime("%Y-%m-%d"),
+        "extended_for_holiday_or_weekend": extended,
+        "treat_weekend_as_holiday": treat_weekend_as_holiday,
+        "holidays_applied": sorted(holiday_set) if holidays is not None else "loaded_from_file_or_empty",
+        "notes": notes,
+        "legal_basis": "《中华人民共和国民事诉讼法》（2023修正）第一百七十一条",
     }
 
 

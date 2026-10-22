@@ -240,13 +240,11 @@ def test_R20b_cashflow_no_weiyue_phrase():
     assert "12.4" in serialized
 
 
-@pytest.mark.xfail(strict=True, reason="待批次8修复")
 def test_R21_empty_judgment_no_flaws():
     res = analyze_first_instance_judgment_and_precedents(judgment_text="")
     assert res["flaw_diagnostics"] == []
 
 
-@pytest.mark.xfail(strict=True, reason="待批次8修复")
 def test_R22_enforcement_no_demo_numbers():
     res = analyze_enforcement_and_asset_penetration(claim_amount=50000)
     serialized = json.dumps(res, ensure_ascii=False)

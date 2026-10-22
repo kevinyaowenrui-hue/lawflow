@@ -804,21 +804,36 @@ async def generate_adversarial_attack(req: AdversarialAttackReq):
 # 4. 执行终本破局·财产线索穿透与追加被执行人 (POST /api/v1/enforcement/penetration-audit)
 # ==============================================================================
 class EnforcementAuditRequest(BaseModel):
-    case_title: Optional[str] = Field(default="1.2亿元终本借贷及担保执行款财产线索穿透案", description="案件标题")
-    claim_amount: Optional[float] = Field(default=120000000.0, description="执行生效法律文书标的额")
-    book_balance: Optional[float] = Field(default=342.18, description="终本账面查明存款余额")
-    debtor_name: Optional[str] = Field(default="北京华腾智达科技有限公司", description="被执行人企业名称")
-    controller_name: Optional[str] = Field(default="张某某", description="实控人/原股东姓名")
-    transferee_name: Optional[str] = Field(default="赵某某（72岁偏远山区无清偿能力五保人员）", description="接盘受让人")
-    share_capital: Optional[float] = Field(default=50000000.0, description="注册资本总额")
-    subscribed_share_ratio: Optional[float] = Field(default=0.99, description="原股东认缴比例")
-    ex_wife_name: Optional[str] = Field(default="刘某某", description="前妻姓名")
-    divorce_date: Optional[str] = Field(default="2023-06-18", description="协议离婚登记日期")
-    debt_origin_date: Optional[str] = Field(default="2022-10-15", description="债务发生日期")
-    real_estate_value: Optional[float] = Field(default=45000000.0, description="离婚无偿划转房产估值")
-    equipment_value: Optional[float] = Field(default=25000000.0, description="被查封精密数控机床估值")
-    third_party_claimant: Optional[str] = Field(default="某融资租赁（天津）有限公司", description="案外异议人公司名称")
-    intermingled_flows: Optional[List[Dict[str, Any]]] = Field(default=None, description="混同流水列表")
+    case_title: Optional[str] = Field(default=None, description="案件标题")
+    claim_amount: Optional[float] = Field(default=None, description="执行生效法律文书标的额")
+    book_balance: Optional[float] = Field(default=None, description="终本账面查明存款余额")
+    debtor_name: Optional[str] = Field(default=None, description="被执行人企业名称")
+    controller_name: Optional[str] = Field(default=None, description="实控人/原股东姓名")
+    transferee_name: Optional[str] = Field(default=None, description="接盘受让人")
+    share_capital: Optional[float] = Field(default=None, description="注册资本总额")
+    subscribed_share_ratio: Optional[float] = Field(default=None, description="原股东认缴比例")
+    ex_wife_name: Optional[str] = Field(default=None, description="前妻姓名")
+    divorce_date: Optional[str] = Field(default=None, description="协议离婚登记日期")
+    debt_origin_date: Optional[str] = Field(default=None, description="债务发生日期")
+    real_estate_value: Optional[float] = Field(default=None, description="离婚无偿划转房产估值")
+    equipment_value: Optional[float] = Field(default=None, description="被查封设备估值")
+    third_party_claimant: Optional[str] = Field(default=None, description="案外异议人公司名称")
+    intermingled_flows: Optional[List[Dict[str, Any]]] = Field(default=None, description="混同流水列表（兼容旧字段）")
+    use_demo: bool = Field(default=False, description="为 true 时载入 data/demo/enforcement_demo.json")
+    is_one_person_company: Optional[bool] = Field(default=None, description="是否一人有限责任公司")
+    equity_transfers: Optional[List[Dict[str, Any]]] = Field(default=None, description="股权转让事实列表")
+    capital_flows: Optional[List[Dict[str, Any]]] = Field(default=None, description="公私混同流水")
+    divorce_transfer: Optional[Dict[str, Any]] = Field(default=None, description="离婚/无偿转让事实")
+    third_party_objection: Optional[Dict[str, Any]] = Field(default=None, description="案外人异议事实")
+    related_company_hint: bool = Field(default=False, description="是否提示关联公司需另诉")
+    related_company_note: Optional[str] = Field(default=None, description="关联公司用户说明")
+    execution_case_no: Optional[str] = Field(default=None, description="执行案号")
+    court_name: Optional[str] = Field(default=None, description="执行法院")
+    applicant_name: Optional[str] = Field(default=None, description="申请执行人名称")
+    company_unable_to_pay: Optional[bool] = Field(
+        default=None,
+        description="公司不能清偿到期债务（新《公司法》第54条加速到期提示条件）",
+    )
 
 
 class EnforcementExportDocxRequest(BaseModel):
@@ -833,20 +848,32 @@ async def api_enforcement_audit(req: EnforcementAuditRequest):
     try:
         res = analyze_enforcement_and_asset_penetration(
             case_title=req.case_title,
-            claim_amount=req.claim_amount or 120000000.0,
-            book_balance=req.book_balance or 342.18,
-            debtor_name=req.debtor_name or "北京华腾智达科技有限公司",
-            controller_name=req.controller_name or "张某某",
-            transferee_name=req.transferee_name or "赵某某（72岁偏远山区无清偿能力五保人员）",
-            share_capital=req.share_capital or 50000000.0,
-            subscribed_share_ratio=req.subscribed_share_ratio or 0.99,
-            ex_wife_name=req.ex_wife_name or "刘某某",
-            divorce_date=req.divorce_date or "2023-06-18",
-            debt_origin_date=req.debt_origin_date or "2022-10-15",
-            real_estate_value=req.real_estate_value or 45000000.0,
-            equipment_value=req.equipment_value or 25000000.0,
-            third_party_claimant=req.third_party_claimant or "某融资租赁（天津）有限公司",
-            intermingled_flows=req.intermingled_flows
+            claim_amount=req.claim_amount,
+            book_balance=req.book_balance,
+            debtor_name=req.debtor_name,
+            controller_name=req.controller_name,
+            transferee_name=req.transferee_name,
+            share_capital=req.share_capital,
+            subscribed_share_ratio=req.subscribed_share_ratio,
+            ex_wife_name=req.ex_wife_name,
+            divorce_date=req.divorce_date,
+            debt_origin_date=req.debt_origin_date,
+            real_estate_value=req.real_estate_value,
+            equipment_value=req.equipment_value,
+            third_party_claimant=req.third_party_claimant,
+            intermingled_flows=req.intermingled_flows,
+            use_demo=req.use_demo,
+            is_one_person_company=req.is_one_person_company,
+            equity_transfers=req.equity_transfers,
+            capital_flows=req.capital_flows,
+            divorce_transfer=req.divorce_transfer,
+            third_party_objection=req.third_party_objection,
+            related_company_hint=req.related_company_hint,
+            related_company_note=req.related_company_note,
+            execution_case_no=req.execution_case_no,
+            court_name=req.court_name,
+            applicant_name=req.applicant_name,
+            company_unable_to_pay=req.company_unable_to_pay,
         )
         return res
     except Exception as e:

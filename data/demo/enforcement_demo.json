@@ -1,0 +1,50 @@
+{
+  "is_demo": true,
+  "source": "演示数据·非真实案例",
+  "case_title": "1.2亿元终本借贷及担保执行款财产线索穿透案（演示）",
+  "claim_amount": 120000000.0,
+  "book_balance": 342.18,
+  "debtor_name": "北京华腾智达科技有限公司",
+  "controller_name": "张某某",
+  "transferee_name": "赵某某（72岁偏远山区无清偿能力五保人员）",
+  "share_capital": 50000000.0,
+  "subscribed_share_ratio": 0.99,
+  "ex_wife_name": "刘某某",
+  "divorce_date": "2023-06-18",
+  "debt_origin_date": "2022-10-15",
+  "real_estate_value": 45000000.0,
+  "equipment_value": 25000000.0,
+  "third_party_claimant": "某融资租赁（天津）有限公司",
+  "execution_case_no": "（2024）京01执889号",
+  "court_name": "北京市第一中级人民法院",
+  "applicant_name": "某大型金融投资发展控股集团有限公司",
+  "is_one_person_company": true,
+  "equity_transfers": [
+    {
+      "transferor": "张某某",
+      "transferee": "赵某某（72岁偏远山区无清偿能力五保人员）",
+      "consideration": 0,
+      "unpaid_capital": 49500000.0,
+      "evidence_note": "勾结中介以0元对价转让；受让人为职业背债人"
+    }
+  ],
+  "capital_flows": [
+    {"flow_id": "F-01", "date": "2023-01-15", "amount": 3500000.0, "source": "北京华腾智达科技有限公司", "target": "张某某个人微信", "summary": "往来款/差旅备用金"},
+    {"flow_id": "F-02", "date": "2023-03-22", "amount": 5800000.0, "source": "北京华腾智达科技有限公司", "target": "张某某个人招行卡", "summary": "项目咨询费无发票"},
+    {"flow_id": "F-03", "date": "2023-05-10", "amount": 8200000.0, "source": "北京华腾智达科技有限公司", "target": "北京嘉和盛世贸易有限公司（小舅子名下）", "summary": "预付采购款后无货物流水"}
+  ],
+  "divorce_transfer": {
+    "ex_spouse": "刘某某",
+    "divorce_date": "2023-06-18",
+    "debt_origin_date": "2022-10-15",
+    "transferred_assets_value": 45000000.0,
+    "description": "协议离婚将两套别墅、理财与车辆无偿归女方"
+  },
+  "third_party_objection": {
+    "claimant": "某融资租赁（天津）有限公司",
+    "asset_description": "精密数控机床",
+    "asset_value": 25000000.0,
+    "evidence_note": "倒签《售后回租合同》；无真实放款回单；发票时序矛盾"
+  },
+  "related_company_note": "主营业务剥离至亲属名下贸易公司（横向人格否认需另诉，不属执行追加）"
+}

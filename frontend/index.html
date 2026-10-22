@@ -3697,8 +3697,9 @@
           </button>
         </div>
         <button type="button" class="btn btn-secondary btn-sm" onclick="load80MRepurchasePreset()" style="font-size: 11.5px; border-color: var(--accent-amber); color: var(--primary-navy);">
-          ⚡ 一键载入【标的8000万股权回购对赌一审完败案】
+          ⚡ 载入演示案（use_demo）· 非真实案例
         </button>
+        <span id="appeal-demo-badge" style="display:none; margin-left:8px; font-size:11px; color:#B45309; background:#FEF3C7; padding:2px 8px; border-radius:4px;">演示数据·非真实案例</span>
       </div>
 
       <!-- 子面板 A: P3 二审/再审生死局·一审裁决漏洞剖析与最高院类案分歧穿透大屏 -->
@@ -3709,23 +3710,23 @@
           <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
             <div style="font-size: 11px; color: var(--text-muted);">涉案诉讼案由与阶段</div>
             <div style="font-size: 13.5px; font-weight: 700; color: var(--primary-navy); margin-top: 3px;" id="appeal-metric-cause">
-              股权转让及对赌回购纠纷
+              【待填写】案由
             </div>
-            <div style="font-size: 10.5px; color: var(--accent-amber); margin-top: 2px;">二审关键上诉期（剩5天）</div>
+            <div style="font-size: 10.5px; color: var(--accent-amber); margin-top: 2px;" id="appeal-metric-deadline">上诉期截止日：【待填写】</div>
           </div>
           <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
-            <div style="font-size: 11px; color: var(--text-muted);">一审裁决致命漏洞</div>
+            <div style="font-size: 11px; color: var(--text-muted);">一审裁决漏洞诊断</div>
             <div style="font-size: 16px; font-weight: 700; color: #B91C1C; margin-top: 3px; font-family: var(--font-mono);" id="appeal-metric-flaws">
-              3 项严重适用法律错误
+              — 
             </div>
-            <div style="font-size: 10.5px; color: #B91C1C; margin-top: 2px;">定性错误 / 滥用情势变更 / 畸重调减</div>
+            <div style="font-size: 10.5px; color: #B91C1C; margin-top: 2px;">依判决文本关键词识别，无则未识别</div>
           </div>
           <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
-            <div style="font-size: 11px; color: var(--text-muted);">最高法/高院权威类案支持</div>
+            <div style="font-size: 11px; color: var(--text-muted);">已核验类案支持</div>
             <div style="font-size: 16px; font-weight: 700; color: #15803D; margin-top: 3px; font-family: var(--font-mono);" id="appeal-metric-precedents">
-              4 篇权威指导/公报判例
+              —
             </div>
-            <div style="font-size: 10.5px; color: #15803D; margin-top: 2px;">最高法民终1067号 / 九民纪要第5条</div>
+            <div style="font-size: 10.5px; color: #15803D; margin-top: 2px;">法发〔2020〕24号检索层级</div>
           </div>
           <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
             <div style="font-size: 11px; color: var(--text-muted);">最高院裁判尺度统一合规率</div>
@@ -3750,22 +3751,43 @@
 
             <div class="form-row">
               <div class="form-group" style="flex: 1.2;">
-                <label class="form-label">作出一审判决法院</label>
-                <input type="text" id="appeal-input-court" value="江苏省苏州市中级人民法院">
+                <label class="form-label">作出一审判决法院（必填）</label>
+                <input type="text" id="appeal-input-court" placeholder="如：某市中级人民法院" value="">
               </div>
               <div class="form-group" style="flex: 1;">
-                <label class="form-label">回购标的本金 (元)</label>
-                <input type="number" id="appeal-input-amount" value="80000000">
+                <label class="form-label">争议标的金额 (元)</label>
+                <input type="number" id="appeal-input-amount" placeholder="选填" value="">
               </div>
               <div class="form-group" style="flex: 0.8;">
                 <label class="form-label">约定违约金率</label>
-                <input type="number" step="0.01" id="appeal-input-rate" value="0.15">
+                <input type="number" step="0.01" id="appeal-input-rate" placeholder="选填" value="">
+              </div>
+            </div>
+            <div class="form-row" style="margin-top: 6px;">
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label">原审案号</label>
+                <input type="text" id="appeal-input-case-no" placeholder="【待填写】" value="">
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label">案由</label>
+                <input type="text" id="appeal-input-cause" placeholder="【待填写】" value="">
+              </div>
+              <div class="form-group" style="flex: 0.8;">
+                <label class="form-label">裁判种类</label>
+                <select id="appeal-input-judgment-type">
+                  <option value="judgment">判决</option>
+                  <option value="ruling">裁定</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label">送达日期</label>
+                <input type="date" id="appeal-input-service-date" value="">
               </div>
             </div>
 
             <div class="form-group" style="margin-top: 8px;">
               <label class="form-label">一审裁判理由（本院认为）及一审法官认定事实</label>
-              <textarea id="appeal-input-judgment" rows="5" class="quick-input" style="font-size: 12px; line-height: 1.5;">一审法院审理认为：原告某科技创业投资基金合伙企业与被告李某某签订之《增资补充协议》约定未上市回购款及年化15%溢价违约金，实质具有保本保收益之特征，双方真实法律关系名为投资实为借贷，依法应当适用《民间借贷司法解释》关于4倍LPR利息之最高红线限制。此外，目标公司因行业宏观调控及客观市场环境低迷导致IPO暂缓，属于双方订约时无法预见且不可归责于创始人的客观情况，构成情势变更。故对原告主张之逾期违约金全额予以驳回，仅支持按全国银行间同业拆借中心公布的一年期LPR计付利息。</textarea>
+              <textarea id="appeal-input-judgment" rows="5" class="quick-input" style="font-size: 12px; line-height: 1.5;" placeholder="粘贴一审判决书本院认为段落；无关键词时探针将显示未识别"></textarea>
             </div>
 
             <button type="button" class="btn" style="width: 100%; margin-top: 6px;" onclick="runAppealAuditUI()">
@@ -3972,19 +3994,20 @@
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
             <div>
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 16px; font-weight: 800; color: var(--text-primary); letter-spacing: 0.5px;">1.2 亿元借贷及担保执行款 · 财产线索穿透与终本破局指挥台</span>
-                <span class="badge" style="background: rgba(180, 52, 52, 0.12); color: #B43434; font-weight: 700; border: 1px solid rgba(180, 52, 52, 0.2);">终本裁定困局</span>
-                <span class="badge" style="background: rgba(46, 125, 50, 0.12); color: #2E7D32; font-weight: 700; border: 1px solid rgba(46, 125, 50, 0.2);">新《公司法》&追加规定全穿透</span>
+                <span style="font-size: 16px; font-weight: 800; color: var(--text-primary); letter-spacing: 0.5px;">执行财产线索穿透与追加被执行人工作台</span>
+                <span class="badge" style="background: rgba(180, 52, 52, 0.12); color: #B43434; font-weight: 700; border: 1px solid rgba(180, 52, 52, 0.2);">终本破局</span>
+                <span class="badge" style="background: rgba(46, 125, 50, 0.12); color: #2E7D32; font-weight: 700; border: 1px solid rgba(46, 125, 50, 0.2);">新《公司法》&追加规定</span>
               </div>
               <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                被执行人账面仅余 342.18 元，人去楼空。穿透四大隐匿资产动作：转让股权找五保老人背债、一人公司公私资金混用、假离婚净身出户、案外人倒签租赁异议。
+                基于用户输入事实运行四大探针；缺事实时返回 INSUFFICIENT_FACTS。演示案请点「载入演示案（use_demo）」。
               </div>
             </div>
             <div style="display: flex; gap: 8px;">
               <button class="btn btn-secondary" onclick="load120MEnforcementPreset()" style="font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
-                <span>⚡ 载入 1.2 亿终本真实案卷预设</span>
+                <span>⚡ 载入演示案（use_demo）· 非真实案例</span>
               </button>
+              <span id="enf-demo-badge" style="display:none; font-size:11px; color:#B45309; background:#FEF3C7; padding:2px 8px; border-radius:4px; align-self:center;">演示数据·非真实案例</span>
               <button class="btn btn-primary" onclick="runEnforcementAuditUI()" style="font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 <span>启动穿透式财产侦测与责任倒置引擎</span>
@@ -3996,17 +4019,17 @@
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px;">
             <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px;">
               <div style="font-size: 11px; color: var(--text-muted); font-weight: 600;">执行生效法律文书标的</div>
-              <div style="font-size: 20px; font-weight: 800; color: var(--text-primary); margin-top: 2px;" id="enf-kpi-claim">¥ 120,000,000.00</div>
+              <div style="font-size: 20px; font-weight: 800; color: var(--text-primary); margin-top: 2px;" id="enf-kpi-claim">【待填写】</div>
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">本金及违约金孳息全额</div>
             </div>
             <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px;">
               <div style="font-size: 11px; color: #B43434; font-weight: 600;">执行局查明账面存款</div>
-              <div style="font-size: 20px; font-weight: 800; color: #B43434; margin-top: 2px;" id="enf-kpi-balance">¥ 342.18</div>
+              <div style="font-size: 20px; font-weight: 800; color: #B43434; margin-top: 2px;" id="enf-kpi-balance">【待填写】</div>
               <div style="font-size: 11px; color: #B43434; margin-top: 2px;">无车无房无社保 (终本死局)</div>
             </div>
             <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px;">
               <div style="font-size: 11px; color: #2E7D32; font-weight: 600;">穿透锁定可执行责任财产</div>
-              <div style="font-size: 20px; font-weight: 800; color: #2E7D32; margin-top: 2px;" id="enf-kpi-recoverable">¥ 119,500,000.00</div>
+              <div style="font-size: 20px; font-weight: 800; color: #2E7D32; margin-top: 2px;" id="enf-kpi-recoverable">【待填写】</div>
               <div style="font-size: 11px; color: #2E7D32; margin-top: 2px;">覆盖率 99.6% (出资+豪宅+设备)</div>
             </div>
             <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px;">
@@ -6479,58 +6502,102 @@
       }
     }
 
+    let appealUseDemoFlag = false;
+
     function load80MRepurchasePreset() {
-      const courtEl = document.getElementById('appeal-input-court');
-      const amountEl = document.getElementById('appeal-input-amount');
-      const rateEl = document.getElementById('appeal-input-rate');
-      const judgEl = document.getElementById('appeal-input-judgment');
-
-      if (courtEl) courtEl.value = "江苏省苏州市中级人民法院";
-      if (amountEl) amountEl.value = "80000000";
-      if (rateEl) rateEl.value = "0.15";
-      if (judgEl) {
-        judgEl.value = "一审法院审理认为：原告某科技创业投资基金合伙企业与被告李某某签订之《增资补充协议》约定未上市回购款及年化15%溢价违约金，实质具有保本保收益之特征，双方真实法律关系名为投资实为借贷，依法应当适用《民间借贷司法解释》关于4倍LPR利息之最高红线限制。此外，目标公司因行业宏观调控及客观市场环境低迷导致IPO暂缓，属于双方订约时无法预见且不可归责于创始人的客观情况，构成情势变更。故对原告主张之逾期违约金全额予以驳回，仅支持按全国银行间同业拆借中心公布的一年期LPR计付利息。";
-      }
-
+      appealUseDemoFlag = true;
+      const badge = document.getElementById('appeal-demo-badge');
+      if (badge) badge.style.display = 'inline-block';
       switchRagSignSubTab('appeal');
+      showToast('已载入演示数据·非真实案例（use_demo=true）');
       runAppealAuditUI(true);
     }
 
     async function runAppealAuditUI(triggerToast = true) {
-      const court = document.getElementById('appeal-input-court')?.value || '一审中级人民法院';
-      const amount = parseFloat(document.getElementById('appeal-input-amount')?.value) || 80000000.0;
-      const rate = parseFloat(document.getElementById('appeal-input-rate')?.value) || 0.15;
+      const court = (document.getElementById('appeal-input-court')?.value || '').trim();
+      const amountRaw = document.getElementById('appeal-input-amount')?.value;
+      const rateRaw = document.getElementById('appeal-input-rate')?.value;
+      const amount = amountRaw !== undefined && amountRaw !== '' ? parseFloat(amountRaw) : null;
+      const rate = rateRaw !== undefined && rateRaw !== '' ? parseFloat(rateRaw) : null;
       const judgmentText = document.getElementById('appeal-input-judgment')?.value || '';
+      const caseNo = document.getElementById('appeal-input-case-no')?.value || '';
+      const cause = document.getElementById('appeal-input-cause')?.value || '';
+      const judgmentType = document.getElementById('appeal-input-judgment-type')?.value || 'judgment';
+      const serviceDate = document.getElementById('appeal-input-service-date')?.value || '';
+
+      if (!appealUseDemoFlag && !court) {
+        showToast('请填写一审法院名称（必填）');
+        return;
+      }
 
       const flawsCont = document.getElementById('appeal-flaws-container');
       const matrixCont = document.getElementById('appeal-matrix-container');
       const timelineCont = document.getElementById('appeal-timeline-container');
 
       if (flawsCont) flawsCont.innerHTML = `<div style="text-align:center; padding:15px; color:var(--text-muted);"><span class="spinner-dark"></span> 正在诊断一审判决败诉破绽...</div>`;
-      if (matrixCont) matrixCont.innerHTML = `<div style="text-align:center; padding:15px; color:var(--text-muted);"><span class="spinner-dark"></span> 正在穿透最高院同案不同判裁判要旨...</div>`;
+      if (matrixCont) matrixCont.innerHTML = `<div style="text-align:center; padding:15px; color:var(--text-muted);"><span class="spinner-dark"></span> 正在检索已核验类案...</div>`;
 
       try {
+        const payload = {
+          judgment_text: judgmentText,
+          first_instance_court: court || '【演示】一审法院',
+          first_instance_case_no: caseNo || null,
+          cause_of_action: cause || null,
+          judgment_type: judgmentType,
+          service_date: serviceDate || null,
+          use_demo: !!appealUseDemoFlag,
+        };
+        if (amount !== null && !Number.isNaN(amount)) payload.claim_amount = amount;
+        if (rate !== null && !Number.isNaN(rate)) payload.agreed_repurchase_rate = rate;
+
         const resp = await fetch(`${API_BASE}/api/v1/litigation/appeal-audit`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            judgment_text: judgmentText,
-            case_title: '某科技创投基金诉李某某对赌股权回购上诉案',
-            claim_amount: amount,
-            agreed_repurchase_rate: rate,
-            first_instance_court: court
-          })
+          body: JSON.stringify(payload)
         });
 
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
         currentAppealAuditData = data;
 
+        const demoBadge = document.getElementById('appeal-demo-badge');
+        if (demoBadge) {
+          demoBadge.style.display = data.is_demo ? 'inline-block' : 'none';
+        }
+        if (data.is_demo && triggerToast) {
+          showToast(data.demo_notice || '演示数据·非真实案例');
+        }
+
         // 1. 渲染指标栏
         const metricFlaws = document.getElementById('appeal-metric-flaws');
-        if (metricFlaws) metricFlaws.innerText = `${data.total_flaws_found || 3} 项严重适用法律错误`;
+        if (metricFlaws) metricFlaws.innerText = `${data.total_flaws_found || 0} 项识别漏洞`;
         const metricPrecedents = document.getElementById('appeal-metric-precedents');
-        if (metricPrecedents) metricPrecedents.innerText = `${data.total_pro_precedents || 4} 篇权威指导/公报判例`;
+        if (metricPrecedents) metricPrecedents.innerText = `${data.total_pro_precedents || 0} 篇已核验类案`;
+        const metricDeadline = document.getElementById('appeal-metric-deadline');
+        if (metricDeadline) {
+          if (data.appeal_deadline) {
+            metricDeadline.innerText = `上诉期截止日：${data.appeal_deadline}`;
+          } else if (serviceDate) {
+            try {
+              const dlResp = await fetch(`${API_BASE}/api/v1/phase1/calc/appeal-deadline`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ service_date: serviceDate, judgment_type: judgmentType })
+              });
+              if (dlResp.ok) {
+                const dl = await dlResp.json();
+                metricDeadline.innerText = `上诉期截止日：${dl.deadline}`;
+              } else {
+                metricDeadline.innerText = '上诉期截止日：【待填写】';
+              }
+            } catch (_) {
+              metricDeadline.innerText = '上诉期截止日：【待填写】';
+            }
+          } else {
+            metricDeadline.innerText = '上诉期截止日：【待填写】（请填写送达日期）';
+          }
+        }
+        appealUseDemoFlag = false;
 
         // 2. 渲染三大破绽警告卡片
         if (flawsCont) {
@@ -7108,114 +7175,99 @@
       }
     }
 
+    let enforcementUseDemoFlag = false;
+
     function load120MEnforcementPreset() {
-      showToast("已载入 1.2 亿元执行终本案卷预设数据");
+      enforcementUseDemoFlag = true;
+      const badge = document.getElementById('enf-demo-badge');
+      if (badge) badge.style.display = 'inline-block';
+      showToast("已载入演示数据·非真实案例（use_demo=true）");
       runEnforcementAuditUI();
     }
 
     async function runEnforcementAuditUI() {
       try {
-        showToast("正在调用穿透式财产侦测引擎，审计公私混同流水与新公司法责任...");
+        showToast("正在调用执行穿透引擎（缺事实时探针为 INSUFFICIENT_FACTS）...");
         const resp = await fetch(`${API_BASE}/api/v1/enforcement/penetration-audit`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            case_title: "1.2亿元终本借贷及担保执行款财产线索穿透案",
-            claim_amount: 120000000.0,
-            book_balance: 342.18,
-            debtor_name: "北京华腾智达科技有限公司",
-            controller_name: "张某某",
-            transferee_name: "赵某某（72岁偏远山区无清偿能力五保人员）",
-            share_capital: 50000000.0,
-            subscribed_share_ratio: 0.99,
-            ex_wife_name: "刘某某",
-            divorce_date: "2023-06-18",
-            debt_origin_date: "2022-10-15",
-            real_estate_value: 45000000.0,
-            equipment_value: 25000000.0,
-            third_party_claimant: "某融资租赁（天津）有限公司"
+            use_demo: !!enforcementUseDemoFlag
           })
         });
+        enforcementUseDemoFlag = false;
 
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
         currentEnforcementData = data;
+
+        const enfBadge = document.getElementById('enf-demo-badge');
+        if (enfBadge) enfBadge.style.display = data.is_demo ? 'inline-block' : 'none';
+        if (data.is_demo) showToast(data.demo_notice || '演示数据·非真实案例');
 
         // 1. 更新顶部指标条
         const elClaim = document.getElementById('enf-kpi-claim');
         const elBalance = document.getElementById('enf-kpi-balance');
         const elRecoverable = document.getElementById('enf-kpi-recoverable');
         const elRate = document.getElementById('enf-kpi-rate');
-        if (elClaim) elClaim.innerText = `¥ ${Number(data.claim_amount).toLocaleString('zh-CN', {minimumFractionDigits: 2})}`;
-        if (elBalance) elBalance.innerText = `¥ ${Number(data.book_balance).toLocaleString('zh-CN', {minimumFractionDigits: 2})}`;
-        if (elRecoverable) elRecoverable.innerText = `¥ ${Number(data.recoverable_potential).toLocaleString('zh-CN', {minimumFractionDigits: 2})}`;
-        if (elRate) elRate.innerText = "92%";
+        const fmt = (v) => (v === null || v === undefined) ? '【待填写】' : `¥ ${Number(v).toLocaleString('zh-CN', {minimumFractionDigits: 2})}`;
+        if (elClaim) elClaim.innerText = fmt(data.claim_amount);
+        if (elBalance) elBalance.innerText = fmt(data.book_balance);
+        if (elRecoverable) elRecoverable.innerText = fmt(data.recoverable_potential);
+        if (elRate) elRate.innerText = data.is_demo ? "演示" : "—";
 
         // 2. 渲染四大穿透探针诊断卡片
         const probesContainer = document.getElementById('enf-probes-container');
         if (probesContainer && data.probes) {
-          probesContainer.innerHTML = data.probes.map(p => `
-            <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px; border-left: 4px solid #B43434;">
+          probesContainer.innerHTML = data.probes.map(p => {
+            const insufficient = p.status === 'INSUFFICIENT_FACTS';
+            const badge = insufficient ? '事实不足' : (p.severity || '已就绪');
+            const badgeBg = insufficient ? 'rgba(202,138,4,0.12)' : 'rgba(180, 52, 52, 0.12)';
+            const badgeColor = insufficient ? '#A16207' : '#B43434';
+            const body = insufficient
+              ? `<div style="font-size:12px;color:var(--text-secondary);">缺少事实：${escapeHtml((p.missing_facts||[]).join('、') || '未列明')}</div>`
+              : `<div style="font-size: 11px; color: var(--accent-amber); font-weight: 600; margin-bottom: 6px;">法定依据：${escapeHtml(p.target_statute||'')}</div>
+              <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 8px; background: #FAF9F6; padding: 8px 10px; border-radius: 4px;"><strong>【事实】</strong>${escapeHtml(p.factual_findings||'')}</div>
+              <div style="font-size: 12px; color: #14233C; line-height: 1.5; background: rgba(20, 35, 60, 0.04); padding: 8px 10px; border-radius: 4px;"><strong>【路径】</strong>${escapeHtml(p.legal_breakthrough_logic||'')}</div>
+              <div style="margin-top: 8px; font-size: 11px; color: #2E7D32; font-weight: 700;">救济：${escapeHtml(p.piercing_relief||'')}</div>
+              ${p.related_company_note ? `<div style="margin-top:6px;font-size:11px;color:#92400E;">${escapeHtml(p.related_company_note)}</div>` : ''}`;
+            return `
+            <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px; border-left: 4px solid ${insufficient ? '#CA8A04' : '#B43434'};">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
                 <div style="font-weight: 700; font-size: 13.5px; color: var(--text-primary);">
-                  <span style="display: inline-block; padding: 1px 6px; font-size: 11px; background: rgba(180, 52, 52, 0.12); color: #B43434; border-radius: 4px; margin-right: 4px;">${p.probe_id}</span>
-                  ${p.probe_name}
+                  <span style="display: inline-block; padding: 1px 6px; font-size: 11px; background: ${badgeBg}; color: ${badgeColor}; border-radius: 4px; margin-right: 4px;">${escapeHtml(p.probe_id||'')}</span>
+                  ${escapeHtml(p.probe_name||'')}
                 </div>
-                <span class="badge" style="background: rgba(180, 52, 52, 0.12); color: #B43434; font-size: 10px; font-weight: 700;">击穿命中</span>
+                <span class="badge" style="background: ${badgeBg}; color: ${badgeColor}; font-size: 10px; font-weight: 700;">${escapeHtml(badge)}</span>
               </div>
-              <div style="font-size: 11px; color: var(--accent-amber); font-weight: 600; margin-bottom: 6px;">
-                ⚖️ 法定依据：${p.target_statute}
-              </div>
-              <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 8px; background: #FAF9F6; padding: 8px 10px; border-radius: 4px; border: 1px solid #ECEAE4;">
-                <strong style="color: var(--text-primary);">【案件事实透视】</strong>${p.factual_findings}
-              </div>
-              <div style="font-size: 12px; color: #14233C; line-height: 1.5; background: rgba(20, 35, 60, 0.04); padding: 8px 10px; border-radius: 4px; border: 1px solid rgba(20, 35, 60, 0.12);">
-                <strong style="color: #14233C;">【实战突围路径】</strong>${p.legal_breakthrough_logic}
-              </div>
-              <div style="margin-top: 8px; font-size: 11px; color: #2E7D32; font-weight: 700;">
-                🎯 申请执行救济：${p.piercing_relief}
-              </div>
-            </div>
-          `).join('');
+              ${body}
+            </div>`;
+          }).join('');
         }
 
-        // 3. 渲染财产转移与混同拓扑图 (SVG)
+        // 3. 渲染探针状态拓扑（基于本次分析结果，无写死演示数字）
         const topologyBox = document.getElementById('enf-topology-box');
         if (topologyBox) {
+          const probes = data.probes || [];
+          const labelOf = (id, fallback) => {
+            const p = probes.find(x => x.probe_id === id);
+            if (!p) return fallback;
+            if (p.status === 'INSUFFICIENT_FACTS') return id + ' 事实不足';
+            return (p.probe_name || id) + (p.severity ? ' · ' + p.severity : '');
+          };
           topologyBox.innerHTML = `
             <svg width="100%" height="210" viewBox="0 0 920 210" style="font-family: -apple-system, sans-serif;">
-              <!-- 核心节点：被执行人公司 -->
               <rect x="360" y="75" width="200" height="60" rx="8" fill="#14233C" stroke="#2B3A4F" stroke-width="2"/>
-              <text x="460" y="100" fill="#FFFFFF" font-size="13" font-weight="bold" text-anchor="middle">被执行人：北京华腾智达</text>
-              <text x="460" y="122" fill="#E2E8F0" font-size="11" text-anchor="middle">账面仅剩 ¥342.18 · 终本裁定</text>
-
-              <!-- 左上方节点：原股东转让背债 -->
+              <text x="460" y="100" fill="#FFFFFF" font-size="13" font-weight="bold" text-anchor="middle">被执行人（用户输入）</text>
+              <text x="460" y="122" fill="#E2E8F0" font-size="11" text-anchor="middle">${data.is_demo ? '演示数据·非真实案例' : '按探针事实生成'}</text>
               <rect x="20" y="15" width="250" height="60" rx="6" fill="#FFF5F5" stroke="#FEB2B2" stroke-width="1.5"/>
-              <text x="145" y="38" fill="#9B2C2C" font-size="12" font-weight="bold" text-anchor="middle">原股东张某某 ➔ 72岁五保老人</text>
-              <text x="145" y="58" fill="#C53030" font-size="11" text-anchor="middle">0元转让99%认缴股权 (未出资4950万)</text>
-              <path d="M 270 45 L 360 85" stroke="#E53E3E" stroke-width="2" stroke-dasharray="4"/>
-              <text x="275" y="60" fill="#E53E3E" font-size="10" font-weight="bold">新公司法§88补充责任</text>
-
-              <!-- 左下方节点：公私资金混同 -->
+              <text x="145" y="48" fill="#9B2C2C" font-size="11" font-weight="bold" text-anchor="middle">${escapeHtml(labelOf('ENF-01','ENF-01'))}</text>
               <rect x="20" y="135" width="250" height="60" rx="6" fill="#FFF5F5" stroke="#FEB2B2" stroke-width="1.5"/>
-              <text x="145" y="158" fill="#9B2C2C" font-size="12" font-weight="bold" text-anchor="middle">公私混同：张某某微信/私户</text>
-              <text x="145" y="178" fill="#C53030" font-size="11" text-anchor="middle">公转私1750万 + 小舅子空壳承接业务</text>
-              <path d="M 270 165 L 360 125" stroke="#E53E3E" stroke-width="2" stroke-dasharray="4"/>
-              <text x="275" y="150" fill="#E53E3E" font-size="10" font-weight="bold">举证倒置追加连带</text>
-
-              <!-- 右上方节点：假离婚净身出户 -->
+              <text x="145" y="168" fill="#9B2C2C" font-size="11" font-weight="bold" text-anchor="middle">${escapeHtml(labelOf('ENF-02','ENF-02'))}</text>
               <rect x="650" y="15" width="250" height="60" rx="6" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.5"/>
-              <text x="775" y="38" fill="#166534" font-size="12" font-weight="bold" text-anchor="middle">假离婚净身出户 ➔ 前妻刘某某</text>
-              <text x="775" y="58" fill="#15803D" font-size="11" text-anchor="middle">无偿划转4500万豪宅及理财</text>
-              <path d="M 560 85 L 650 45" stroke="#16A34A" stroke-width="2" stroke-dasharray="4"/>
-              <text x="575" y="60" fill="#16A34A" font-size="10" font-weight="bold">民法典§538撤销权</text>
-
-              <!-- 右下方节点：倒签租赁异议机床 -->
+              <text x="775" y="48" fill="#166534" font-size="11" font-weight="bold" text-anchor="middle">${escapeHtml(labelOf('ENF-03','ENF-03'))}</text>
               <rect x="650" y="135" width="250" height="60" rx="6" fill="#FEFCE8" stroke="#FDE047" stroke-width="1.5"/>
-              <text x="775" y="158" fill="#854D0E" font-size="12" font-weight="bold" text-anchor="middle">查封数控机床 (估值2500万)</text>
-              <text x="775" y="178" fill="#A16207" font-size="11" text-anchor="middle">案外租赁公司倒签合同提异议</text>
-              <path d="M 560 125 L 650 165" stroke="#CA8A04" stroke-width="2" stroke-dasharray="4"/>
-              <text x="575" y="150" fill="#CA8A04" font-size="10" font-weight="bold">执行异议之诉击穿</text>
+              <text x="775" y="168" fill="#854D0E" font-size="11" font-weight="bold" text-anchor="middle">${escapeHtml(labelOf('ENF-04','ENF-04'))}</text>
             </svg>
           `;
         }
@@ -7223,7 +7275,7 @@
         // 4. 渲染公文预览
         renderEnforcementDocPreview();
 
-        showToast("执行财产线索穿透分析完成！锁定责任财产 ¥ 119,500,000 元！");
+        showToast(data.is_demo ? (data.demo_notice || '演示数据·非真实案例') : '执行穿透分析完成');
       } catch (e) {
         showToast("执行穿透审计失败: " + e);
       }

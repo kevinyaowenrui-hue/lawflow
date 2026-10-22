@@ -51,7 +51,7 @@ def _annotate_result(item: Dict[str, Any]) -> Dict[str, Any]:
     if int(item.get("hierarchy") or 0) == 4:
         tip = "不得作为裁判依据直接援引，只能在说理部分参考"
         note = item.get("law_version_note") or ""
-        item["citation_caveat"] = tip if tip in note or True else tip
+        item["citation_caveat"] = tip
     if isinstance(item.get("key_terms"), str):
         try:
             item["key_terms"] = json.loads(item["key_terms"])

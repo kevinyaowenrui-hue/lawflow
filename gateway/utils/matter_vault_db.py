@@ -96,6 +96,21 @@ def init_matter_vault_db():
         );
         """)
 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS signing_envelopes (
+            envelope_id TEXT PRIMARY KEY,
+            matter_id TEXT,
+            client_name TEXT,
+            status TEXT NOT NULL,
+            file_path TEXT,
+            file_sha256 TEXT,
+            view_token TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            payload_json TEXT NOT NULL DEFAULT '{}'
+        );
+        """)
+
     if _should_seed_demo():
         seed_demo_matters()
 

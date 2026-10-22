@@ -3928,6 +3928,9 @@
               <div style="font-size: 13px; font-weight: 700; color: var(--primary-navy); margin-bottom: 8px;">
                 远程委托合同电子签约闭环 (微信端手写签名)
               </div>
+              <div id="sign-demo-banner" style="display:block; margin-bottom:10px; padding:10px 12px; background:#FEF3C7; border:1px solid #F59E0B; border-radius:6px; color:#92400E; font-size:12px; font-weight:700; line-height:1.5;">
+                ⚠ 演示模式：未接入真实电子签名服务，签署结果不具有法律效力
+              </div>
               
               <div class="form-row">
                 <div class="form-group"><label class="form-label">委托人姓名</label><input type="text" id="sign-c-name" value="张三"></div>
@@ -6858,17 +6861,30 @@
         currentSignEnvId = d.envelope_id;
         currentSignUrl = d.signing_url;
 
+        const banner = document.getElementById('sign-demo-banner');
+        if (banner) {
+          if (d.is_demo) {
+            banner.style.display = 'block';
+            banner.innerText = '⚠ ' + (d.demo_notice || '演示模式：未接入真实电子签名服务，签署结果不具有法律效力');
+          } else {
+            banner.style.display = 'none';
+          }
+        }
+
         document.getElementById('sign-flow-box').style.display = 'block';
         const linkEl = document.getElementById('sign-h5-link');
         linkEl.href = d.signing_url;
         linkEl.innerText = d.signing_url;
 
-        let audit = "<strong>存证审计链：</strong><br/>";
-        d.envelope.audit_logs.forEach(l => {
-          audit += `• [${l.time}] ${l.action} (${l.operator || l.target})<br/>`;
+        let audit = "<strong>签署审计链：</strong><br/>";
+        (d.envelope && d.envelope.audit_logs || []).forEach(l => {
+          audit += `• [${l.time}] ${l.action} (${l.operator || l.target || ''})<br/>`;
         });
+        if (d.is_demo) {
+          audit += `<div style="color:#92400E;margin-top:6px;font-weight:700;">${d.demo_notice || '演示模式：未接入真实电子签名服务，签署结果不具有法律效力'}</div>`;
+        }
         document.getElementById('sign-audit-trail').innerHTML = audit;
-        showToast("微信手写签约任务已创建");
+        showToast(d.is_demo ? (d.demo_notice || "演示签约任务已创建") : "签约任务已创建");
       } catch (e) {
         showToast("创建签约失败: " + e);
       }
@@ -6891,12 +6907,24 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ envelope_id: currentSignEnvId })
         });
-        const d = await resp.json();
+        const d = await resp.json().catch(() => ({}));
+        if (resp.status === 503) {
+          showToast("webhook 未启用：请设置环境变量 DOCUSEAL_WEBHOOK_SECRET 后再模拟回调");
+          document.getElementById('sign-audit-trail').innerHTML += `
+            <div style="color:#92400E; margin-top:6px; font-weight:600;">演示提示：未配置 DOCUSEAL_WEBHOOK_SECRET，无法模拟签署回调。签署结果不具有法律效力。</div>`;
+          return;
+        }
+        if (!resp.ok) {
+          showToast("签署回调失败: HTTP " + resp.status + (d.detail ? (" " + JSON.stringify(d.detail)) : ""));
+          return;
+        }
+        const sha = d.file_sha256 || "";
         document.getElementById('sign-audit-trail').innerHTML += `
-          <div style="color:var(--status-valid); margin-top:6px; font-weight:600;">✓ 当事人已通过微信完成手写签名，存证哈希：${d.cert_hash}</div>
-          <a href="${d.archived_pdf_url}" class="btn btn-secondary btn-sm" style="margin-top:4px;" download>下载已加盖防伪数字证书的归档委托协议 PDF</a>
+          <div style="color:var(--status-valid); margin-top:6px; font-weight:600;">✓ 签署回调完成。文件 SHA-256 摘要（用于比对文件是否被修改，不等于第三方存证）：${sha}</div>
+          <a href="${withDownloadToken(d.archived_pdf_url || '#')}" class="btn btn-secondary btn-sm" style="margin-top:4px;" download>下载归档委托协议 PDF</a>
+          ${d.is_demo ? '<div style="color:#92400E;margin-top:4px;font-weight:700;">演示模式：未接入真实电子签名服务，签署结果不具有法律效力</div>' : ''}
         `;
-        showToast("模拟签署完成，数字证书已加盖");
+        showToast(d.is_demo ? (d.demo_notice || "演示签署完成（不具法律效力）") : "签署回调完成");
       } catch (e) {
         showToast("签署回调模拟失败: " + e);
       }

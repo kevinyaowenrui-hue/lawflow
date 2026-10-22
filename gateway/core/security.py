@@ -28,10 +28,14 @@ AUTH_EXEMPT_EXACT: Set[str] = {
     "/health",
     "/api/health",
     "/api/v1/health",
+    # DocuSeal / 演示签署回调：使用 DOCUSEAL_WEBHOOK_SECRET，不用 X-LawFlow-Token
+    "/api/v1/phase3/signing-webhook",
 }
 
 AUTH_EXEMPT_PREFIXES: tuple = (
     "/static/",
+    # 当事人 sign-view：仅靠 view_token，无律师 Token
+    "/api/v1/phase3/sign-view/",
 )
 
 # 默认单文件 / 单次总量上限（MB）

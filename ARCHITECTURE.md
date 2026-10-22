@@ -140,7 +140,7 @@ sequenceDiagram
     UI->>GW: 触发电子签署工作流
     GW->>DocuSeal: 创建私有签署 Envelope 并生成安全签名链接
     DocuSeal-->>Client: 短信/链接提醒当事人在线人脸与手写签名
-    Client-->>DocuSeal: 完成签署并加盖数字证书防篡改时间戳
+    Client-->>DocuSeal: 完成在线签署（若已接入真实 DocuSeal；否则为演示模式）
     DocuSeal-->>GW: 签署完成回调通知
     GW-->>UI: 归档已签署 PDF 委托书
 ```

@@ -11,21 +11,31 @@ import re
 import uuid
 import time
 import logging
+import hmac
+import html
+import json
+import hashlib
+import secrets
+import sqlite3
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 import httpx
 import pymupdf as fitz
 
 from gateway.core.ollama_client import ollama_client
+from gateway.core.db import connect
+from gateway.core.paths import get_generated_dir, get_vault_db_path
 from gateway.utils.cn_legal_calc import rmb_to_capital
 
 logger = logging.getLogger("lawflow.phase3")
 router = APIRouter(tags=["阶段三：私有类案检索与电子签约"])
 
-DOCUSEAL_BASE_URL = os.getenv("DOCUSEAL_URL", "http://127.0.0.1:8082").rstrip("/")
-from gateway.core.paths import get_generated_dir
+DEMO_SIGNING_NOTICE = "演示模式：未接入真实电子签名服务，签署结果不具有法律效力"
+FILE_SHA256_LABEL = "文件 SHA-256 摘要（用于比对文件是否被修改，不等于第三方存证）"
+DEFAULT_WEBHOOK_HEADER = "X-LawFlow-Webhook-Secret"
 
 
 # ==============================================================================
@@ -146,6 +156,7 @@ class CreateSigningLinkReq(BaseModel):
     service_fee: float = Field(default=20000.0, example=20000.0)
     agreement_title: str = Field(default="民事委托代理协议及诉讼风险告知书", example="民事委托代理协议及诉讼风险告知书")
     case_summary: str = Field(default="代理原告张三诉北京某公司技术合同纠纷一审诉讼", example="代理原告张三诉北京某公司技术合同纠纷一审诉讼")
+    matter_id: str = Field(default="", example="")
 
 
 # ==============================================================================
@@ -313,36 +324,229 @@ async def api_rag_consult(req: RAGConsultReq):
 # ==============================================================================
 # 6. 远程委托电子签约闭环 (POST /api/v1/phase3/create-signing-link)
 # ==============================================================================
+# 兼容旧测试：进程内字典已废弃，持久化在 SQLite signing_envelopes
 SIGNING_STORAGE: Dict[str, Dict[str, Any]] = {}
+
+
+def _docuseal_base_url() -> str:
+    return (os.getenv("DOCUSEAL_URL") or "").strip().rstrip("/")
+
+
+def _public_base_url() -> str:
+    return (os.getenv("LAWFLOW_PUBLIC_BASE_URL") or "http://127.0.0.1:5221").rstrip("/")
+
+
+def _webhook_secret() -> str:
+    return (os.getenv("DOCUSEAL_WEBHOOK_SECRET") or "").strip()
+
+
+def _webhook_header_name() -> str:
+    return (os.getenv("DOCUSEAL_WEBHOOK_HEADER") or DEFAULT_WEBHOOK_HEADER).strip() or DEFAULT_WEBHOOK_HEADER
+
+
+def ensure_signing_envelopes_table() -> None:
+    with connect(get_vault_db_path(), row_factory=sqlite3.Row) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS signing_envelopes (
+                envelope_id TEXT PRIMARY KEY,
+                matter_id TEXT,
+                client_name TEXT,
+                status TEXT NOT NULL,
+                file_path TEXT,
+                file_sha256 TEXT,
+                view_token TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+                payload_json TEXT NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+
+
+def get_signing_envelope(envelope_id: str) -> Optional[Dict[str, Any]]:
+    """按 envelope_id 读取签约记录（含 payload 展开字段）。"""
+    ensure_signing_envelopes_table()
+    with connect(get_vault_db_path(), row_factory=sqlite3.Row) as conn:
+        row = conn.execute(
+            "SELECT * FROM signing_envelopes WHERE envelope_id = ?",
+            (envelope_id,),
+        ).fetchone()
+    if not row:
+        return None
+    data = dict(row)
+    try:
+        payload = json.loads(data.get("payload_json") or "{}")
+    except Exception:
+        payload = {}
+    merged = {**payload, **{k: data[k] for k in data if k != "payload_json"}}
+    return merged
+
+
+def _save_signing_envelope(record: Dict[str, Any]) -> None:
+    ensure_signing_envelopes_table()
+    core_keys = {
+        "envelope_id",
+        "matter_id",
+        "client_name",
+        "status",
+        "file_path",
+        "file_sha256",
+        "view_token",
+        "created_at",
+        "completed_at",
+    }
+    payload = {k: v for k, v in record.items() if k not in core_keys}
+    with connect(get_vault_db_path(), row_factory=sqlite3.Row) as conn:
+        conn.execute(
+            """
+            INSERT INTO signing_envelopes (
+                envelope_id, matter_id, client_name, status, file_path,
+                file_sha256, view_token, created_at, completed_at, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(envelope_id) DO UPDATE SET
+                matter_id = excluded.matter_id,
+                client_name = excluded.client_name,
+                status = excluded.status,
+                file_path = excluded.file_path,
+                file_sha256 = excluded.file_sha256,
+                view_token = excluded.view_token,
+                created_at = excluded.created_at,
+                completed_at = excluded.completed_at,
+                payload_json = excluded.payload_json
+            """,
+            (
+                record["envelope_id"],
+                record.get("matter_id") or "",
+                record.get("client_name") or "",
+                record.get("status") or "pending_signature",
+                record.get("file_path"),
+                record.get("file_sha256"),
+                record["view_token"],
+                record["created_at"],
+                record.get("completed_at"),
+                json.dumps(payload, ensure_ascii=False),
+            ),
+        )
+
+
+async def _probe_docuseal_available() -> bool:
+    base = _docuseal_base_url()
+    if not base:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            resp = await client.get(f"{base}/api/health")
+            return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def _demo_meta(is_demo: bool) -> Dict[str, Any]:
+    if is_demo:
+        return {
+            "mode": "demo",
+            "is_demo": True,
+            "demo_notice": DEMO_SIGNING_NOTICE,
+        }
+    return {"mode": "docuseal", "is_demo": False}
+
+
+def _finalize_signing_record(record: Dict[str, Any], is_demo: bool) -> Dict[str, Any]:
+    """生成归档 PDF，计算真实 file_sha256，更新 SQLite。"""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    safe_title = re.sub(r'[\\/:*?"<>|]', "_", str(record.get("agreement_title") or "协议"))
+    safe_client = re.sub(r'[\\/:*?"<>|]', "_", str(record.get("client_name") or "client"))
+    archived_pdf_name = f"已签署_{safe_title}_{safe_client}_{int(time.time())}.pdf"
+    archived_pdf_path = os.path.join(str(get_generated_dir()), archived_pdf_name)
+
+    demo_banner = "【演示·非真实签署】\n\n" if is_demo else ""
+    text_content = (
+        f"{demo_banner}"
+        f"{record.get('agreement_title', '')}\n\n"
+        f"委托人（甲方）：{record.get('client_name', '')} (联系电话: {record.get('client_phone', '')})\n"
+        f"受托人（乙方）：{record.get('law_firm', '')} (主办律师: {record.get('lawyer_name', '')})\n\n"
+        f"一、委托事项：甲方因【{record.get('case_summary', '')}】一案，特委托乙方担任诉讼代理人。\n"
+        f"二、代理费用：本案代理服务费为人民币 {float(record.get('service_fee') or 0):,.2f} 元"
+        f"（{record.get('service_fee_capital', '')}）。\n"
+        f"三、诉讼风险告知：甲方已知悉诉讼固有风险，并承诺据实陈述事实与提供真实证据。\n\n"
+        f"【签署记录】\n"
+        f"甲方签字标记：[{record.get('client_name', '')}]\n"
+        f"乙方签章标记：[{record.get('law_firm', '')}]\n"
+        f"签署时间：{now_str}\n"
+        f"{FILE_SHA256_LABEL}：见归档后计算值\n"
+    )
+    if is_demo:
+        text_content += f"\n{DEMO_SIGNING_NOTICE}\n"
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    rect = fitz.Rect(54, 72, 541, 780)
+    page.insert_textbox(rect, text_content, fontsize=12, fontname="china-s")
+    doc.save(archived_pdf_path)
+    doc.close()
+
+    with open(archived_pdf_path, "rb") as f:
+        file_sha256 = hashlib.sha256(f.read()).hexdigest()
+
+    # 将摘要写回 PDF 文本不便二次改写；摘要以字段与响应为准
+    audit_logs = list(record.get("audit_logs") or [])
+    audit_logs.append({
+        "time": now_str,
+        "action": "签署完成并归档 PDF（演示或回调）",
+        "file_sha256": file_sha256,
+        "signer": record.get("client_name"),
+    })
+
+    record["status"] = "completed"
+    record["completed_at"] = now_str
+    record["signed_at"] = now_str
+    record["file_path"] = archived_pdf_path
+    record["file_sha256"] = file_sha256
+    record["archived_pdf_url"] = f"/api/documents/download/{archived_pdf_name}"
+    record["audit_logs"] = audit_logs
+    record["file_sha256_label"] = FILE_SHA256_LABEL
+    _save_signing_envelope(record)
+
+    result = {
+        "status": "success",
+        "envelope_id": record["envelope_id"],
+        "envelope_status": "completed",
+        "message": "签署已完成并归档 PDF。" + (f" {DEMO_SIGNING_NOTICE}" if is_demo else ""),
+        "archived_pdf_url": record["archived_pdf_url"],
+        "file_sha256": file_sha256,
+        "file_sha256_label": FILE_SHA256_LABEL,
+    }
+    result.update(_demo_meta(is_demo))
+    return result
+
 
 @router.post("/api/v1/phase3/create-signing-link", summary="将委托合同与风险告知书推至 DocuSeal 发起微信端电子签署")
 @router.post("/api/sign/create-envelope", include_in_schema=False)
 async def create_signing_link(req: CreateSigningLinkReq):
     """
-    将《民事委托代理协议》与《诉讼风险告知书》推送至本地 DocuSeal 容器；
-    返回可供当事人手机微信端手写签名的安全链接。
+    将《民事委托代理协议》与《诉讼风险告知书》推送至本地 DocuSeal（若已配置且可用）；
+    否则返回工作台内置演示签署页链接（不具法律效力）。
     """
     envelope_id = f"ds-{uuid.uuid4().hex[:12]}"
-    timestamp = int(time.time())
+    view_token = secrets.token_urlsafe(32)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # 尝试连接 DocuSeal 容器 (端口 8082 / 3000)
-    docuseal_available = False
-    docuseal_url = None
-    try:
-        async with httpx.AsyncClient(timeout=1.5) as client:
-            resp = await client.get(f"{DOCUSEAL_BASE_URL}/api/health")
-            if resp.status_code == 200:
-                docuseal_available = True
-                docuseal_url = f"{DOCUSEAL_BASE_URL}/s/{envelope_id}"
-    except Exception:
-        docuseal_available = False
+    docuseal_available = await _probe_docuseal_available()
+    is_demo = not docuseal_available
+    base = _public_base_url()
 
-    # 若 DocuSeal 容器未单开，使用工作台内置微信端安全签名 H5 仿真页面
-    signing_url = docuseal_url if docuseal_available else f"http://127.0.0.1:8000/api/v1/phase3/sign-view/{envelope_id}"
+    if docuseal_available:
+        signing_url = f"{_docuseal_base_url()}/s/{envelope_id}"
+    else:
+        signing_url = (
+            f"{base}/api/v1/phase3/sign-view/{envelope_id}"
+            f"?view_token={view_token}"
+        )
 
-    envelope_record = {
+    envelope_record: Dict[str, Any] = {
         "envelope_id": envelope_id,
+        "matter_id": req.matter_id or "",
         "agreement_title": req.agreement_title,
         "client_name": req.client_name,
         "client_phone": req.client_phone,
@@ -353,102 +557,115 @@ async def create_signing_link(req: CreateSigningLinkReq):
         "service_fee_capital": rmb_to_capital(req.service_fee),
         "case_summary": req.case_summary,
         "created_at": now_str,
-        "status": "pending_signature",  # pending_signature -> signed -> completed -> archived
+        "completed_at": None,
+        "status": "pending_signature",
         "signing_url": signing_url,
+        "view_token": view_token,
+        "file_path": None,
+        "file_sha256": None,
         "docuseal_integrated": docuseal_available,
+        "is_demo": is_demo,
+        "mode": "demo" if is_demo else "docuseal",
         "audit_logs": [
-            {"time": now_str, "action": "签署任务创建并生成存证凭据", "operator": req.lawyer_name},
-            {"time": now_str, "action": "向当事人手机发送签约短信与微信手写链接", "target": req.client_phone}
-        ]
+            {"time": now_str, "action": "签署任务创建", "operator": req.lawyer_name},
+            {
+                "time": now_str,
+                "action": "生成签署链接（演示页或 DocuSeal）",
+                "target": req.client_phone,
+            },
+        ],
     }
+    _save_signing_envelope(envelope_record)
 
-    SIGNING_STORAGE[envelope_id] = envelope_record
-
-    return {
+    resp = {
         "status": "success",
         "envelope_id": envelope_id,
         "signing_url": signing_url,
         "docuseal_integrated": docuseal_available,
-        "envelope": envelope_record
+        "envelope": envelope_record,
+        **_demo_meta(is_demo),
     }
+    if is_demo:
+        resp["message"] = DEMO_SIGNING_NOTICE
+    return resp
 
 
 @router.post("/api/v1/phase3/signing-webhook", summary="DocuSeal 电子签约完成回调与文书自动归档")
 async def signing_webhook(request: Request):
     """
-    当事人签署完成后由 DocuSeal 或移动端触发回调，加盖数字证书防伪时间戳，自动归档 PDF
+    DocuSeal 或受控回调：校验 DOCUSEAL_WEBHOOK_SECRET 后归档 PDF，
+    并以归档文件字节计算 file_sha256（不等于第三方存证）。
     """
+    secret = _webhook_secret()
+    if not secret:
+        raise HTTPException(status_code=503, detail="webhook 未启用")
+
+    header_name = _webhook_header_name()
+    provided = request.headers.get(header_name) or request.headers.get(header_name.lower())
+    provided_s = str(provided or "")
+    if (
+        not provided_s
+        or len(provided_s) != len(secret)
+        or not hmac.compare_digest(provided_s, secret)
+    ):
+        raise HTTPException(status_code=401, detail="webhook 鉴权失败")
+
     try:
         body = await request.json()
     except Exception:
-        body = {}
+        raise HTTPException(status_code=400, detail="请求体不是合法 JSON")
+
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="请求体不是合法 JSON")
 
     envelope_id = body.get("envelope_id") or body.get("id")
-    if not envelope_id or envelope_id not in SIGNING_STORAGE:
-        # 如果未带 id，取最近一条
-        if SIGNING_STORAGE:
-            envelope_id = list(SIGNING_STORAGE.keys())[-1]
-        else:
-            return {"status": "ignored", "reason": "no active envelope"}
+    if not envelope_id:
+        raise HTTPException(status_code=404, detail="envelope 不存在")
 
-    record = SIGNING_STORAGE[envelope_id]
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    # 生成防伪 SHA256 存证哈希
-    cert_hash = f"SHA256:{uuid.uuid4().hex.upper()}"
-    record["status"] = "completed"
-    record["signed_at"] = now_str
-    record["cert_hash"] = cert_hash
-    record["audit_logs"].append({
-        "time": now_str,
-        "action": "当事人微信端实名核验与手写签字完成",
-        "cert_hash": cert_hash,
-        "signer": record["client_name"]
-    })
-
-    # 生成已归档的签署 PDF
-    archived_pdf_name = f"已签署_{record['agreement_title']}_{record['client_name']}_{int(time.time())}.pdf"
-    archived_pdf_path = os.path.join(str(get_generated_dir()), archived_pdf_name)
-
-    doc = fitz.open()
-    page = doc.new_page(width=595, height=842)
-    rect = fitz.Rect(54, 72, 541, 780)
-    text_content = (
-        f"{record['agreement_title']}\n\n"
-        f"委托人（甲方）：{record['client_name']} (联系电话: {record['client_phone']})\n"
-        f"受托人（乙方）：{record['law_firm']} (主办律师: {record['lawyer_name']})\n\n"
-        f"一、委托事项：甲方因【{record['case_summary']}】一案，特委托乙方担任诉讼代理人。\n"
-        f"二、代理费用：本案代理服务费为人民币 {record['service_fee']:,.2f} 元（{record['service_fee_capital']}）。\n"
-        f"三、诉讼风险告知：甲方已知悉诉讼固有风险，并承诺据实陈述事实与提供真实证据。\n\n"
-        f"【电子签名与存证认证】\n"
-        f"甲方签字：[已通过国家政务短信核验在线手写签名: {record['client_name']}]\n"
-        f"乙方签章：[{record['law_firm']} 电子合同专用章]\n"
-        f"签署时间：{now_str}\n"
-        f"存证凭证哈希：{cert_hash}\n"
-    )
-    page.insert_textbox(rect, text_content, fontsize=12, fontname="china-s")
-    doc.save(archived_pdf_path)
-    doc.close()
-
-    record["archived_pdf_url"] = f"/api/documents/download/{archived_pdf_name}"
-
-    return {
-        "status": "success",
-        "envelope_id": envelope_id,
-        "message": "签署已完成并生成防伪电子证书归档！",
-        "archived_pdf_url": record["archived_pdf_url"],
-        "cert_hash": cert_hash
-    }
-
-
-@router.get("/api/v1/phase3/sign-view/{envelope_id}", summary="当事人手机微信端手写签名仿真 H5")
-async def sign_view_h5(envelope_id: str):
-    from fastapi.responses import HTMLResponse
-    record = SIGNING_STORAGE.get(envelope_id)
+    record = get_signing_envelope(str(envelope_id))
     if not record:
-        return HTMLResponse("<h2>签署任务不存在或已失效</h2>")
+        raise HTTPException(status_code=404, detail="envelope 不存在")
 
-    html = f"""<!DOCTYPE html>
+    is_demo = not bool(record.get("docuseal_integrated"))
+    return _finalize_signing_record(record, is_demo=is_demo)
+
+
+@router.get("/api/v1/phase3/sign-view/{envelope_id}", summary="当事人手机端签署页（演示）")
+async def sign_view_h5(envelope_id: str, view_token: Optional[str] = None):
+    record = get_signing_envelope(envelope_id)
+    if not record:
+        return HTMLResponse("<h2>签署任务不存在或已失效</h2>", status_code=404)
+
+    expected = str(record.get("view_token") or "")
+    provided_tok = str(view_token or "")
+    if (
+        not provided_tok
+        or not expected
+        or len(provided_tok) != len(expected)
+        or not hmac.compare_digest(provided_tok, expected)
+    ):
+        return HTMLResponse("<h2>签署任务不存在或已失效</h2>", status_code=404)
+
+    is_demo = bool(record.get("is_demo", True)) or not bool(record.get("docuseal_integrated"))
+    title = html.escape(str(record.get("agreement_title") or ""))
+    client_name = html.escape(str(record.get("client_name") or ""))
+    client_phone = html.escape(str(record.get("client_phone") or ""))
+    law_firm = html.escape(str(record.get("law_firm") or ""))
+    lawyer_name = html.escape(str(record.get("lawyer_name") or ""))
+    case_summary = html.escape(str(record.get("case_summary") or ""))
+    fee = float(record.get("service_fee") or 0)
+    notice = html.escape(DEMO_SIGNING_NOTICE)
+    eid_js = html.escape(envelope_id, quote=True)
+
+    demo_banner = ""
+    if is_demo:
+        demo_banner = (
+            f'<div style="background:#7f1d1d;color:#fecaca;padding:12px 16px;'
+            f'border-radius:8px;margin-bottom:16px;font-size:13px;font-weight:700;">'
+            f"⚠ {notice}</div>"
+        )
+
+    page = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -466,34 +683,37 @@ async def sign_view_h5(envelope_id: str):
 </head>
 <body>
   <div class="card">
-    <h2>📄 {record['agreement_title']}</h2>
-    <p><strong>委托人：</strong>{record['client_name']} ({record['client_phone']})</p>
-    <p><strong>受托机构：</strong>{record['law_firm']} ({record['lawyer_name']})</p>
-    <p><strong>委托代理事由：</strong>{record['case_summary']}</p>
-    <p><strong>约定代理费用：</strong>￥{record['service_fee']:,.2f} 元</p>
+    {demo_banner}
+    <h2>{title}</h2>
+    <p><strong>委托人：</strong>{client_name} ({client_phone})</p>
+    <p><strong>受托机构：</strong>{law_firm} ({lawyer_name})</p>
+    <p><strong>委托代理事由：</strong>{case_summary}</p>
+    <p><strong>约定代理费用：</strong>￥{fee:,.2f} 元</p>
     <hr style="border-color: rgba(255,255,255,0.1); margin: 16px 0;" />
     <p style="font-size: 12px; color: #94a3b8;">
-      提示：点击下方按钮将通过政务短信实名身份认证，加盖司法防篡改时间戳。
+      提示：本页为工作台签署预览。完成签署需由已配置 webhook 密钥的回调触发；演示环境下请由律师在工作台模拟完成。
     </p>
-    <button class="btn" onclick="submitSign()">✍️ 确认无误，立即手写签名并签署</button>
+    <button class="btn" onclick="submitSign()">确认无误并提交签署请求</button>
     <div id="result" class="cert-box" style="display:none;"></div>
   </div>
   <script>
     async function submitSign() {{
-      const resp = await fetch('/api/v1/phase3/signing-webhook', {{
-        method: 'POST',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify({{ envelope_id: '{envelope_id}' }})
-      }});
-      const d = await resp.json();
-      document.getElementById('result').style.display = 'block';
-      document.getElementById('result').innerHTML = `
-        <strong>签署成功！</strong><br/>
-        存证证书: ${{d.cert_hash}}<br/>
-        <a href="${{d.archived_pdf_url}}" style="color: #60a5fa;" target="_blank">📥 查看已签署并归档的 PDF 合同</a>
-      `;
+      const box = document.getElementById('result');
+      box.style.display = 'block';
+      box.textContent = '演示页无法直接完成具有法律效力的签署。请返回律师工作台操作，或配置 DOCUSEAL_WEBHOOK_SECRET 后由受控回调完成。';
     }}
   </script>
 </body>
 </html>"""
-    return HTMLResponse(html)
+    # eid_js 保留供后续扩展；当前演示页不调用未鉴权 webhook
+    _ = eid_js
+
+    headers = {
+        "Content-Security-Policy": (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:;"
+        )
+    }
+    return HTMLResponse(page, headers=headers)

@@ -1,0 +1,37 @@
+{
+  "verified": false,
+  "source": "劳部发〔1994〕481号（原文需律师核实）",
+  "notes": "2008年1月1日《劳动合同法》施行前工龄经济补偿口径；仅到期终止不支付、不满一年按一年两条由律师确认，其余待律师人工核实",
+  "rules": {
+    "expiry_termination": {
+      "pays_compensation": false,
+      "rounding_rule": null,
+      "max_months_cap": null,
+      "note": "到期终止在 2008 年前不支付补偿"
+    },
+    "employer_dismissal_with_notice": {
+      "pays_compensation": true,
+      "rounding_rule": "less_than_1y_as_1y",
+      "max_months_cap": null,
+      "note": null
+    },
+    "mutual_agreement": {
+      "pays_compensation": true,
+      "rounding_rule": "less_than_1y_as_1y",
+      "max_months_cap": null,
+      "note": null
+    },
+    "employee_resign_employer_fault": {
+      "pays_compensation": true,
+      "rounding_rule": "less_than_1y_as_1y",
+      "max_months_cap": null,
+      "note": null
+    },
+    "unlawful_dismissal": {
+      "pays_compensation": true,
+      "rounding_rule": "less_than_1y_as_1y",
+      "max_months_cap": null,
+      "note": null
+    }
+  }
+}

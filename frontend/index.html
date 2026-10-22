@@ -2796,6 +2796,7 @@
               <button class="segmented-btn" id="seg-btn-preserv" onclick="switchCalcSegment('preserv')">保全续封红线</button>
               <button class="segmented-btn" id="seg-btn-validity" onclick="switchCalcSegment('validity')">法条时效核验</button>
               <button class="segmented-btn" id="seg-btn-settlement" onclick="switchCalcSegment('settlement')">商业和解与抵债</button>
+              <button class="segmented-btn" id="seg-btn-appeal" onclick="switchCalcSegment('appeal')">上诉期截止日</button>
             </div>
           </div>
 
@@ -3091,6 +3092,29 @@
             </div>
           </div>
 
+          <!-- 子表单 H: 上诉期截止日测算 (《民事诉讼法》第171条) -->
+          <div id="calc-pane-appeal" class="calc-sub-pane" style="display: none;">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">裁判文书送达日期</label>
+                <input type="date" id="appeal-service-date" value="2026-03-01">
+              </div>
+              <div class="form-group">
+                <label class="form-label">裁判文书类型</label>
+                <select id="appeal-judgment-type">
+                  <option value="judgment">一审判决书（15日，送达次日起算）</option>
+                  <option value="ruling">一审裁定书（10日，送达次日起算）</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top: 18px;">
+              <button class="btn" style="width: 100%;" onclick="runAppealCalc()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                测算上诉期截止日（法定节假日自动顺延）
+              </button>
+            </div>
+          </div>
+
         </div>
 
         <!-- 右栏：实时公文凭条预览纸 (带有微弱阴影和顶部琥珀金装订线的白纸卡片) -->
@@ -3235,6 +3259,28 @@
                 <span>律师案情笔记 (大模型将自动提炼事实并严谨引用实体法条)</span>
               </label>
               <textarea id="pkg-notes" rows="4">原告在2022年3月5日转给被告20万，约定年利率15%借期1年，被告出具了手写借条。借款到期后原告多次通过微信及电话向被告催要借款本金及利息，被告找借口推脱拒不还钱，至今分文未还，构成根本违约。</textarea>
+            </div>
+
+            <!-- 配套附属文书自选 (A-18) -->
+            <div style="border-top: 1px solid var(--border-hairline); padding-top: 10px; margin-bottom: 12px;">
+              <label class="form-label" style="margin-bottom: 6px;">配套附属公文（勾选生成）：</label>
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; font-size: 12px;">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="subdoc-poa" value="power_of_attorney" checked> 授权委托书
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="subdoc-addr" value="service_address" checked> 送达地址确认书
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="subdoc-legrep" value="legal_rep_certificate"> 法定代表人证明书
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="subdoc-preserv" value="property_preservation"> 财产保全申请书
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="subdoc-evcat" value="evidence_catalog"> 证据目录清单
+                </label>
+              </div>
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
@@ -5505,6 +5551,8 @@
       if (paneValidity) paneValidity.style.display = mode === 'validity' ? 'block' : 'none';
       const paneSettlement = document.getElementById('calc-pane-settlement');
       if (paneSettlement) paneSettlement.style.display = mode === 'settlement' ? 'block' : 'none';
+      const paneAppeal = document.getElementById('calc-pane-appeal');
+      if (paneAppeal) paneAppeal.style.display = mode === 'appeal' ? 'block' : 'none';
 
       // 调整右侧凭条类型徽章
       const typeBadge = document.getElementById('receipt-type-badge');
@@ -5529,6 +5577,54 @@
       } else if (mode === 'settlement') {
         typeBadge.innerText = "商业和解与以物抵债精算";
         runSettlementCalc();
+      } else if (mode === 'appeal') {
+        typeBadge.innerText = "上诉期截止日测算";
+        runAppealCalc();
+      }
+    }
+
+    
+    // 2.8 上诉期截止日测算
+    async function runAppealCalc() {
+      const sDateEl = document.getElementById('appeal-service-date');
+      const jTypeEl = document.getElementById('appeal-judgment-type');
+      const serviceDate = sDateEl ? sDateEl.value : '2026-03-01';
+      const judgmentType = jTypeEl ? jTypeEl.value : 'judgment';
+      if (!serviceDate) return;
+
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/phase1/calc/appeal-deadline`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ service_date: serviceDate, judgment_type: judgmentType })
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const rEl = document.getElementById('receipt-container');
+        if (!rEl) return;
+        rEl.innerHTML = `
+          <div style="padding: 16px; background: white; border-radius: 6px; border: 1px solid var(--border-hairline);">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid var(--primary-navy); padding-bottom: 8px;">
+              <h3 style="margin: 0; font-size: 15px; color: var(--primary-navy);">上诉期截止日测算凭条</h3>
+              <span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(data.legal_basis || '')}</span>
+            </div>
+            <div style="margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div style="background: #F8FAFC; padding: 10px; border-radius: 4px;">
+                <div style="font-size: 11px; color: var(--text-muted);">送达日期</div>
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-top: 4px;">${escapeHtml(data.service_date || '')}</div>
+              </div>
+              <div style="background: #EFF6FF; padding: 10px; border-radius: 4px; border: 1px solid #BFDBFE;">
+                <div style="font-size: 11px; color: #1E40AF;">上诉期届满截止日</div>
+                <div style="font-size: 15px; font-weight: 800; color: #1D4ED8; margin-top: 4px;">${escapeHtml(data.deadline || '')} ${data.extended_for_holiday_or_weekend ? '<span style="font-size:10.5px; background:#FEF3C7; color:#92400E; padding:1px 5px; border-radius:8px;">(节假日顺延)</span>' : escapeHtml('')}</div>
+              </div>
+            </div>
+            <div style="margin-top: 12px; font-size: 11.5px; line-height: 1.6; color: var(--text-secondary); background: #FAF9F6; padding: 10px; border-radius: 4px;">
+              ${(data.notes || []).map(n => '<div>• ' + escapeHtml(n) + '</div>').join('')}
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        console.error("runAppealCalc error:", err);
       }
     }
 
@@ -5975,7 +6071,16 @@
           phone: document.getElementById('pkg-d-phone').value,
           address: document.getElementById('pkg-d-addr').value
         },
-        auto_generate_sub_docs: true
+        auto_generate_sub_docs: true,
+        sub_documents: (() => {
+          const list = [];
+          if (document.getElementById('subdoc-poa')?.checked) list.push('power_of_attorney');
+          if (document.getElementById('subdoc-addr')?.checked) list.push('service_address');
+          if (document.getElementById('subdoc-legrep')?.checked) list.push('legal_rep_certificate');
+          if (document.getElementById('subdoc-preserv')?.checked) list.push('property_preservation');
+          if (document.getElementById('subdoc-evcat')?.checked) list.push('evidence_catalog');
+          return list;
+        })()
       };
 
       try {

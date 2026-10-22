@@ -343,7 +343,8 @@ def validate_and_parse_uscc(uscc: str) -> Dict[str, Any]:
 def calculate_court_fees(
     claim_amount: float | Decimal,
     case_type: str = "property",
-    is_summary_procedure: bool = False
+    is_summary_procedure: bool = False,
+    divorce_base_fee: float | Decimal = 100,
 ) -> Dict[str, Any]:
     """
     根据《诉讼费用交纳办法》（国务院令第481号）第十三条精确计算诉讼费用。
@@ -351,6 +352,10 @@ def calculate_court_fees(
     amount = Decimal(str(claim_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     if amount < 0:
         raise ValueError("诉讼标的额不能为负数")
+
+    div_base = Decimal(str(divorce_base_fee)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if div_base < Decimal("50") or div_base > Decimal("300"):
+        raise ValueError(f"离婚案件基础规费应在 50 至 300 元之间，当前为 {divorce_base_fee}")
 
     breakdown = []
     standard_fee = Decimal("0")
@@ -368,15 +373,16 @@ def calculate_court_fees(
         standard_fee = Decimal("10.00")
         breakdown.append({"tier": "劳动人事争议案件固定收费", "rate": "法定10元/件", "fee": 10.00})
     elif case_type == "divorce" or ct == "divorce":
-        base_fee = Decimal("100.00")
+        base_fee = div_base
+        rate_desc = f"每件 50—300 元，由各地确定，本次按 {float(base_fee):g} 元计算，以当地标准为准（《诉讼费用交纳办法》第十三条）"
         if amount <= Decimal("200000"):
             standard_fee = base_fee
-            breakdown.append({"tier": "不超过20万元财产分割", "rate": "基准100元", "fee": float(base_fee)})
+            breakdown.append({"tier": "不超过20万元财产分割", "rate": rate_desc, "fee": float(base_fee)})
         else:
             excess = amount - Decimal("200000")
             excess_fee = (excess * Decimal("0.005")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             standard_fee = base_fee + excess_fee
-            breakdown.append({"tier": "基础规费(20万以内)", "rate": "100元", "fee": 100.00})
+            breakdown.append({"tier": "基础规费(20万以内)", "rate": rate_desc, "fee": float(base_fee)})
             breakdown.append({"tier": f"超过20万部分({excess:.2f}元)", "rate": "0.5%", "fee": float(excess_fee)})
     else:
         if amount <= 0:
@@ -431,6 +437,7 @@ def calculate_court_fees(
         "case_type": case_type,
         "is_summary_procedure": is_summary_procedure,
         "standard_fee": float(standard_fee),
+        "court_fee": float(actual_fee),
         "actual_fee": float(actual_fee),
         "preservation_fee": float(preservation_fee),
         "tier_breakdown": breakdown,
@@ -830,13 +837,34 @@ def calculate_lpr_interest(
 
 # ==============================================================================
 # 6. 《劳动合同法》第47/87条经济补偿金与赔偿金精算
+
+VALID_TERMINATION_REASONS = {
+    "expiry_termination",
+    "employer_dismissal_with_notice",
+    "mutual_agreement",
+    "employee_resign_employer_fault",
+    "unlawful_dismissal",
+}
+
+
+def _load_labor_pre2008_rules() -> dict:
+    import json
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[2] / "data" / "legal" / "labor_pre2008_rules.json"
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
 # ==============================================================================
 def calculate_labor_compensation(
     monthly_salary: float | Decimal,
     hire_date: str,
     termination_date: str,
     local_avg_salary: Optional[float | Decimal] = None,
-    prior_30days_notice: bool = False
+    prior_30days_notice: bool = False,
+    termination_reason: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     根据《劳动合同法》第47条、第87条核算劳动争议补偿金与赔偿金。
@@ -846,11 +874,16 @@ def calculate_labor_compensation(
       - 2N（违法解除赔偿金）
     三档精确金额及社平3倍封顶核算明细。
     """
+    if termination_reason is not None and termination_reason not in VALID_TERMINATION_REASONS:
+        raise ValueError(f"未知的解除事由: {termination_reason}")
+
     d_hire = datetime.strptime(hire_date, "%Y-%m-%d").date()
     d_term = datetime.strptime(termination_date, "%Y-%m-%d").date()
 
     if d_term < d_hire:
         raise ValueError("解除劳动合同日期不能早于入职日期")
+
+    labor_warnings: List[str] = []
 
     salary_dec = Decimal(str(monthly_salary)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -921,6 +954,10 @@ def calculate_labor_compensation(
     # ==========================================================================
     segment_2008_info = None
     if d_hire < date(2008, 1, 1) and d_term >= date(2008, 1, 1):
+        labor_warnings.append("2008 年前工龄按劳部发〔1994〕481号计算，以当地口径为准（需律师核实）")
+        rules_cfg = _load_labor_pre2008_rules()
+        reason_rules = (rules_cfg.get("rules") or {}).get(termination_reason or "")
+
         # 2008年前工龄（至2007-12-31）
         d_cut = date(2007, 12, 31)
         y_pre = d_cut.year - d_hire.year
@@ -931,11 +968,18 @@ def calculate_labor_compensation(
         if m_pre < 0:
             y_pre -= 1
             m_pre += 12
-        comp_m_pre = Decimal(str(y_pre))
-        if m_pre >= 6:
-            comp_m_pre += Decimal("1.0")
-        elif m_pre > 0 or d_pre > 0:
-            comp_m_pre += Decimal("0.5")
+
+        # 依据 481 号与规则库判定
+        if reason_rules and reason_rules.get("pays_compensation") is False:
+            comp_m_pre = Decimal("0")
+        else:
+            # 满一年按一个月，不满一年按一年
+            comp_m_pre = Decimal(str(y_pre))
+            if m_pre > 0 or d_pre > 0:
+                comp_m_pre += Decimal("1.0")
+
+        if not termination_reason or (reason_rules and reason_rules.get("max_months_cap") is None):
+            labor_warnings.append("该情形 2008 年前口径待律师核实")
 
         amt_pre = (salary_dec * comp_m_pre).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -974,7 +1018,8 @@ def calculate_labor_compensation(
             "post_2008_amount": float(amt_post),
             "total_segmented_n": float(total_segmented_n),
             "total_segmented_2n": float(total_segmented_n * Decimal("2")),
-            "note": "跨2008年分段精算：2008年前工作年限月薪不予三倍社平封顶，2008年后工作年限适用三倍社平及12年双封顶。"
+            "note": "跨2008年分段精算：2008年前工龄按劳部发〔1994〕481号计算，以当地口径为准（需律师核实）；2008年后工作年限适用三倍社平及12年双封顶。",
+            "warnings": list(dict.fromkeys(labor_warnings))
         }
 
     return {
@@ -1010,7 +1055,8 @@ def calculate_labor_compensation(
                 "formula": f"经济补偿N({amount_n:,.2f}元) × 2倍"
             }
         },
-        "segment_2008": segment_2008_info
+        "segment_2008": segment_2008_info,
+        "warnings": list(dict.fromkeys(labor_warnings))
     }
 
 
@@ -1024,6 +1070,8 @@ def calculate_statute_of_limitations(
     suspension_events: Optional[List[Dict[str, str]]] = None,
     today_date: Optional[str] = None,
     act_date: Optional[str] = None,
+    damage_date: Optional[str] = None,
+    holidays: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     精确核算民事诉讼时效与除斥期间：
@@ -1116,8 +1164,13 @@ def calculate_statute_of_limitations(
     else:
         initial_expire = add_months_exact(d_start, rule["months"])
 
-    # 20年最长保护期
-    max_20y_expire = add_years_exact(d_start, 20)
+    # 20年最长保护期：从权利受到损害之日 damage_date 起算（《民法典》第188条第二款）
+    if damage_date:
+        d_damage = datetime.strptime(damage_date, "%Y-%m-%d").date()
+        max_20y_expire = add_years_exact(d_damage, 20)
+    else:
+        max_20y_expire = add_years_exact(d_start, 20)
+        warnings.append("未提供权利受到损害之日，20 年最长期间按知道或应当知道之日近似计算")
 
     timeline_log = [{
         "date": start_date,
@@ -1129,30 +1182,67 @@ def calculate_statute_of_limitations(
     current_expire = initial_expire
     effective_interruptions = []
 
+    INTERRUPTION_TYPE_MAP = {
+        "demand": "demand",
+        "催告": "demand",
+        "催告/主张": "demand",
+        "主张权利": "demand",
+        "acknowledgment": "acknowledgment",
+        "自认": "acknowledgment",
+        "自认/还款承诺": "acknowledgment",
+        "同意履行": "acknowledgment",
+        "义务人同意履行": "acknowledgment",
+        "lawsuit": "lawsuit",
+        "起诉": "lawsuit",
+        "提起诉讼": "lawsuit",
+        "arbitration": "arbitration",
+        "仲裁": "arbitration",
+        "申请仲裁": "arbitration",
+        "other_equivalent": "other_equivalent",
+        "同等效力情形": "other_equivalent",
+    }
+
     if not is_preclusive and interruption_events:
         # 按事件时间先后排序
         sorted_events = sorted(interruption_events, key=lambda x: x.get("date", ""))
         for ev in sorted_events:
             ev_date_str = ev.get("date", "")
             ev_desc = ev.get("description", "主张权利/提起仲裁/当事人承诺还款")
-            ev_type = ev.get("type", "催告/主张")
+            raw_type = ev.get("type", "demand")
+            norm_type = INTERRUPTION_TYPE_MAP.get(raw_type, raw_type)
             if not ev_date_str:
                 continue
             ev_d = datetime.strptime(ev_date_str, "%Y-%m-%d").date()
 
             # 只有在时效尚未届满前发生的行为才发生中断效力
             if ev_d <= current_expire:
-                # 中断并重新计算3年
-                new_expire = add_years_exact(ev_d, int(rule["years"]))
-                # 不得超过20年最长保护期
+                # 诉讼、仲裁、同等效力须提供 proceeding_end_date（程序终结日）
+                if norm_type in ("lawsuit", "arbitration", "other_equivalent"):
+                    proc_end_str = ev.get("proceeding_end_date")
+                    if not proc_end_str:
+                        warnings.append(f"{ev_desc}（{norm_type}）：程序未终结或终结日未知，时效暂不重新起算")
+                        timeline_log.append({
+                            "date": ev_date_str,
+                            "event": f"【时效暂不重新起算】{raw_type}: {ev_desc}（程序未终结或终结日未知，时效暂不重新起算）",
+                            "action": "程序未终结或终结日未知，时效暂不重新起算",
+                            "expire_date": current_expire.strftime("%Y-%m-%d")
+                        })
+                        continue
+                    recalc_start = datetime.strptime(proc_end_str, "%Y-%m-%d").date()
+                    action_note = f"诉讼/仲裁程序于 {proc_end_str} 终结，时效自此日重新起算{rule['years']}年"
+                else:
+                    recalc_start = ev_d
+                    action_note = f"时效中断并自事件发生日重新起算{rule['years']}年"
+
+                new_expire = add_years_exact(recalc_start, int(rule["years"]))
                 if new_expire > max_20y_expire:
                     new_expire = max_20y_expire
 
                 current_expire = new_expire
                 timeline_log.append({
                     "date": ev_date_str,
-                    "event": f"【时效中断】{ev_type}: {ev_desc}",
-                    "action": f"时效中断并自此日重新起算{rule['years']}年",
+                    "event": f"【时效中断】{raw_type}: {ev_desc}",
+                    "action": action_note,
                     "expire_date": current_expire.strftime("%Y-%m-%d")
                 })
                 effective_interruptions.append(ev)
@@ -1210,6 +1300,25 @@ def calculate_statute_of_limitations(
         else:
             warnings.append("未提供行为发生日，未校验 5 年最长期限")
 
+    # 最终届满日如为法定节假日，调用节假日数据顺延（《民法典》第二百零三条）
+    holiday_set = set(holidays) if holidays is not None else _load_cn_holidays_set(current_expire.year)
+    if holidays is None:
+        holiday_set |= _load_cn_holidays_set(current_expire.year + 1)
+
+    orig_final_date = current_expire
+    extended = False
+    while current_expire.strftime("%Y-%m-%d") in holiday_set:
+        current_expire = current_expire + timedelta(days=1)
+        extended = True
+
+    if extended:
+        timeline_log.append({
+            "date": orig_final_date.strftime("%Y-%m-%d"),
+            "event": f"期间最后一日（{orig_final_date.strftime('%Y-%m-%d')}）为法定节假日，顺延至 {current_expire.strftime('%Y-%m-%d')}（顺延）",
+            "action": "法定节假日顺延",
+            "expire_date": current_expire.strftime("%Y-%m-%d")
+        })
+
     days_remaining = (current_expire - d_today).days
     is_expired = days_remaining < 0
 
@@ -1244,6 +1353,7 @@ def calculate_statute_of_limitations(
         "final_expire_date": current_expire.strftime("%Y-%m-%d"),
         "five_year_cap_date": five_year_cap_date.strftime("%Y-%m-%d") if five_year_cap_date else None,
         "max_20y_deadline": max_20y_expire.strftime("%Y-%m-%d"),
+        "max_20y_expire": max_20y_expire.strftime("%Y-%m-%d"),
         "days_remaining": days_remaining,
         "is_expired": is_expired,
         "status_level": status_level,
@@ -1467,6 +1577,109 @@ def calculate_appeal_deadline(
 # 9. 规范性法律文件现行有效性与废止拦截核验引擎
 # 废止表/关键现行法名一律从 data/legal 统一加载（见 gateway.utils.legal_data）
 # ==============================================================================
+
+
+# ==============================================================================
+# 8c. 迟延履行期间加倍部分债务利息计算器 (《民事诉讼法》第264条、法释〔2014〕8号)
+# ==============================================================================
+def _load_delay_interest_rate() -> float:
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[2] / "data" / "legal" / "delay_interest.json"
+    try:
+        with open(p, encoding="utf-8") as f:
+            d = json.load(f)
+            return float(d.get("daily_rate", 0.000175))
+    except Exception:
+        return 0.000175
+
+
+def calculate_delayed_performance_interest(
+    principal_unpaid: float | Decimal,
+    start_date: str,
+    end_date: str,
+    daily_rate: Optional[float | Decimal] = None,
+) -> Dict[str, Any]:
+    """
+    根据《民事诉讼法》第二百六十四条及法释〔2014〕8号核算迟延履行期间加倍部分债务利息。
+    加倍部分债务利息 = 未清偿本金 × 日利率（默认日万分之一点七五）× 迟延天数。
+    注意：只计算加倍部分，一般债务利息另计。
+    """
+    p_dec = Decimal(str(principal_unpaid)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if p_dec <= 0:
+        raise ValueError("未清偿本金必须大于0")
+
+    d_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+    d_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    if d_end < d_start:
+        raise ValueError("截止日期不能早于起算日期")
+
+    days = (d_end - d_start).days
+    warnings = ["日利率依据需律师核实：法释〔2014〕8号规定日万分之一点七五（律师未在线核实）"]
+
+    if daily_rate is not None:
+        rate_val = Decimal(str(daily_rate))
+    else:
+        rate_val = Decimal(str(_load_delay_interest_rate()))
+
+    interest = (p_dec * rate_val * Decimal(days)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    return {
+        "principal_unpaid": float(p_dec),
+        "start_date": start_date,
+        "end_date": end_date,
+        "days": days,
+        "daily_rate": float(rate_val),
+        "interest": float(interest),
+        "interest_capital": rmb_to_capital(interest),
+        "legal_basis": "《中华人民共和国民事诉讼法》第二百六十四条；最高人民法院关于执行程序中计算迟延履行期间的债务利息适用法律若干问题的解释（法释〔2014〕8号）",
+        "scope_note": "本计算器仅核算迟延履行期间加倍部分债务利息，原生效法律文书确定的一般债务利息另行计付。",
+        "warnings": warnings,
+    }
+
+
+# ==============================================================================
+# 8d. 违约金调减测算参考 (《合同编通则解释》第65条)
+# ==============================================================================
+def calculate_penalty_adjustment_reference(
+    agreed_penalty: float | Decimal,
+    actual_loss: float | Decimal,
+) -> Dict[str, Any]:
+    """
+    违约金调减参考测算。
+    依据《最高人民法院关于适用〈中华人民共和国民法典〉合同编通则若干问题的解释》第六十五条（原文需律师核实）：
+    约定违约金超过造成损失的百分之三十的，一般可以认定为“过分高于造成的损失”。
+    30% 是认定“过分高于”的一般标准，不是调减后的上限；是否调减及调减幅度由法院综合衡量。
+    本计算器不输出“调减后金额”。
+    """
+    p_dec = Decimal(str(agreed_penalty)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    l_dec = Decimal(str(actual_loss)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if l_dec <= 0:
+        raise ValueError("实际损失必须大于0")
+    if p_dec < 0:
+        raise ValueError("约定违约金不能为负数")
+
+    ratio = (p_dec / l_dec) - Decimal("1.0")
+    exceeds_30 = ratio > Decimal("0.30")
+
+    note = (
+        "30% 是认定'过分高于'的一般标准，不是调减后的上限；"
+        "是否调减及调减幅度由法院综合衡量，不预设调减后固定金额。"
+    )
+
+    return {
+        "agreed_penalty": float(p_dec),
+        "actual_loss": float(l_dec),
+        "excess_amount": float(max(p_dec - l_dec, Decimal("0"))),
+        "ratio": float(ratio),
+        "ratio_percent": f"{float(ratio * 100):.2f}%",
+        "exceeds_30_percent": bool(exceeds_30),
+        "evaluation": "约定违约金超过造成损失的30%，一般可以认定为'过分高于造成的损失'" if exceeds_30 else "约定违约金未超过造成损失的30%，一般不认定为过分高于造成的损失",
+        "note": note,
+        "legal_basis": "《最高人民法院关于适用〈中华人民共和国民法典〉合同编通则若干问题的解释》第六十五条（原文需律师核实）",
+        "warnings": ["本参考测算仅供诉讼攻防参考，违约金司法酌减标准以法官裁量为准（需律师核实）"],
+    }
+
+
 def _load_abrogated_laws_db():
     """从统一数据文件加载废止法规（兼容旧字段形状）。"""
     from gateway.utils.legal_data import load_abrogated_laws, normalize_law_name

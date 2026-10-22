@@ -199,7 +199,8 @@ def test_generate_litigation_package(client):
     pkg_data = r.json()
     files_generated = pkg_data.get("generated_documents", [])
     assert pkg_data.get("status") == "success"
-    assert len(files_generated) >= 4
+    # A-18: 默认 auto_generate_sub_docs 不再包含财产保全申请书，因此自然人当事人生成 3 份（起诉状+委托书+送达地址）
+    assert len(files_generated) >= 3
 
 
 # ---------------------------------------------------------------------------

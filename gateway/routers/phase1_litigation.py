@@ -41,6 +41,8 @@ from gateway.utils.cn_legal_calc import (
     verify_statutory_validity,
     calculate_settlement_npv_and_recovery,
     calculate_appeal_deadline,
+    calculate_delayed_performance_interest,
+    calculate_penalty_adjustment_reference,
 )
 from gateway.utils.text_utils import (
     normalize_court_name,
@@ -438,6 +440,12 @@ class CourtFeeReq(BaseModel):
     claim_amount: float = Field(..., ge=0, example=250000.0)
     case_type: str = Field(default="property")
     is_summary_procedure: bool = Field(default=False)
+    divorce_base_fee: Optional[float] = Field(
+        default=100.0,
+        ge=50,
+        le=300,
+        description="离婚案件基础规费（50至300元之间）",
+    )
 
 class LPRInterestReq(BaseModel):
     principal: float = Field(..., example=100000.0)
@@ -497,6 +505,13 @@ class LaborCalcReq(BaseModel):
     hire_date: str = Field(..., example="2021-03-01")
     termination_date: str = Field(..., example="2024-05-15")
     local_avg_salary: Optional[float] = Field(default=None)
+    termination_reason: Optional[Literal[
+        "expiry_termination",
+        "employer_dismissal_with_notice",
+        "mutual_agreement",
+        "employee_resign_employer_fault",
+        "unlawful_dismissal",
+    ]] = Field(default=None, description="解除/终止事由")
 
 class PartyInfo(BaseModel):
     name: str = Field(..., example="张三")
@@ -548,6 +563,14 @@ class EvidenceItem(BaseModel):
     original_or_copy: Optional[str] = Field(default="复印件")
 
 
+SubDocType = Literal[
+    "power_of_attorney",
+    "service_address",
+    "legal_rep_certificate",
+    "property_preservation",
+    "evidence_catalog",
+]
+
 class GenerateLitigationPackageReq(BaseModel):
     cause_of_action: str = Field(
         default="民间借贷纠纷",
@@ -575,7 +598,11 @@ class GenerateLitigationPackageReq(BaseModel):
     law_firm: str = Field(default="北京市京师律师事务所", example="北京市京师律师事务所")
     lawyer_phone: str = Field(default="13900008888", example="13900008888")
     lawyer_license: str = Field(default="11101201510123456", example="11101201510123456")
-    auto_generate_sub_docs: bool = Field(default=True, description="是否一并生成授权委托书、送达地址确认书、身份证明或保全申请书")
+    auto_generate_sub_docs: bool = Field(default=True, description="是否一并生成授权委托书、送达地址确认书、身份证明或保全申请书（兼容参数）")
+    sub_documents: Optional[List[SubDocType]] = Field(
+        default=None,
+        description="选择生成的附属文书类型列表，可选：power_of_attorney, service_address, legal_rep_certificate, property_preservation, evidence_catalog",
+    )
     evidences: Optional[List[EvidenceItem]] = Field(default=None, description="证据和证据来源，证人姓名和住所")
     copies: Optional[int] = Field(default=None, description="起诉状副本份数，默认等于被告人数")
     agreed_annual_rate: Optional[float] = Field(default=None, description="约定年利率（百分数）")
@@ -635,18 +662,22 @@ async def api_lpr_interest(req: LPRInterestReq):
 @router.post("/api/v1/phase1/calc/labor-arbitration", summary="劳动争议经济补偿金精算 (N / N+1 / 2N)")
 @router.post("/api/calc/labor-arbitration", include_in_schema=False)
 async def api_labor_calc(req: LaborCalcReq):
-    return calculate_labor_compensation(
-        monthly_salary=req.monthly_salary,
-        hire_date=req.hire_date,
-        termination_date=req.termination_date,
-        local_avg_salary=req.local_avg_salary
-    )
+    try:
+        return calculate_labor_compensation(
+            monthly_salary=req.monthly_salary,
+            hire_date=req.hire_date,
+            termination_date=req.termination_date,
+            local_avg_salary=req.local_avg_salary,
+            termination_reason=req.termination_reason,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
 
 
 class StatuteLimitationsReq(BaseModel):
     start_date: str = Field(..., example="2023-01-01")
     cause_type: str = Field(default="general_3y", example="general_3y")
-    interruption_events: Optional[List[Dict[str, str]]] = Field(default=None)
+    interruption_events: Optional[List[Dict[str, Any]]] = Field(default=None)
     suspension_events: Optional[List[Dict[str, str]]] = Field(default=None)
     today_date: Optional[str] = Field(default=None)
     act_date: Optional[str] = Field(
@@ -654,6 +685,8 @@ class StatuteLimitationsReq(BaseModel):
         example="2021-06-01",
         description="民事法律行为发生日（撤销权校验 5 年最长期限）",
     )
+    damage_date: Optional[str] = Field(default=None, description="权利受到损害之日")
+    holidays: Optional[List[str]] = Field(default=None, description="额外法定节假日 YYYY-MM-DD 列表")
 
 class PreservationRenewalReq(BaseModel):
     preservation_type: Literal["bank_deposit", "movable_property", "real_estate_equity"] = Field(
@@ -680,6 +713,8 @@ async def api_statute_limitations(req: StatuteLimitationsReq):
             suspension_events=req.suspension_events,
             today_date=req.today_date,
             act_date=req.act_date,
+            damage_date=req.damage_date,
+            holidays=req.holidays,
         )
     except ValueError as e:
         raise _http_422(str(e)) from e
@@ -760,6 +795,46 @@ class AppealDeadlineReq(BaseModel):
         default=True,
         description="周六日是否顺延；口径 TODO(律师核实)，默认 True",
     )
+
+
+
+
+class DelayInterestReq(BaseModel):
+    principal_unpaid: float = Field(..., gt=0, example=100000.0, description="未清偿本金")
+    start_date: str = Field(..., example="2026-01-01", description="迟延履行起算日")
+    end_date: str = Field(..., example="2026-01-31", description="清偿日/测算截止日")
+    daily_rate: Optional[float] = Field(default=None, description="日利率（可选，默认法释〔2014〕8号日万分之一点七五）")
+
+
+class PenaltyAdjustmentReq(BaseModel):
+    agreed_penalty: float = Field(..., ge=0, example=140000.0, description="约定的违约金数额")
+    actual_loss: float = Field(..., gt=0, example=100000.0, description="造成的实际损失数额")
+
+
+@router.post("/api/v1/phase1/calc/delay-interest", summary="迟延履行期间加倍部分债务利息计算器 (《民事诉讼法》第264条)")
+@router.post("/api/calc/delay-interest", include_in_schema=False)
+async def api_delay_interest(req: DelayInterestReq):
+    try:
+        return calculate_delayed_performance_interest(
+            principal_unpaid=req.principal_unpaid,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            daily_rate=req.daily_rate,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
+
+
+@router.post("/api/v1/phase1/calc/penalty-adjustment", summary="违约金调减测算参考 (《合同编通则解释》第65条)")
+@router.post("/api/calc/penalty-adjustment", include_in_schema=False)
+async def api_penalty_adjustment(req: PenaltyAdjustmentReq):
+    try:
+        return calculate_penalty_adjustment_reference(
+            agreed_penalty=req.agreed_penalty,
+            actual_loss=req.actual_loss,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
 
 
 @router.post("/api/v1/phase1/calc/appeal-deadline", summary="上诉期截止日测算（《民事诉讼法》第171条）")
@@ -1034,7 +1109,17 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         "pdf_url": f"/api/documents/download/{main_pdf_name}" if pdf_ok else None,
     })
 
-    if req.auto_generate_sub_docs:
+    # 附属文书列表判定（A-18：保全申请书仅在显式勾选 property_preservation 时生成）
+    if req.sub_documents is not None:
+        target_sub_docs = set(req.sub_documents)
+    elif req.auto_generate_sub_docs:
+        target_sub_docs = {"power_of_attorney", "service_address"}
+        if plaintiff.get("party_type") == "legal":
+            target_sub_docs.add("legal_rep_certificate")
+    else:
+        target_sub_docs = set()
+
+    if "power_of_attorney" in target_sub_docs:
         poa_tpl = os.path.join(_templates_dir(), "power_of_attorney_template.docx")
         poa_docx_name = f"民事授权委托书_{safe_party_name}_{timestamp}.docx"
         poa_docx_path = os.path.join(str(get_generated_dir()), poa_docx_name)
@@ -1066,6 +1151,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "pdf_url": f"/api/documents/download/{poa_pdf_name}",
         })
 
+    if "service_address" in target_sub_docs:
         addr_tpl = os.path.join(_templates_dir(), "service_address_template.docx")
         addr_docx_name = f"送达地址确认书_{safe_party_name}_{timestamp}.docx"
         addr_docx_path = os.path.join(str(get_generated_dir()), addr_docx_name)
@@ -1091,65 +1177,108 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "docx_url": f"/api/documents/download/{addr_docx_name}",
         })
 
-        if "买卖" in req.cause_of_action or "借贷" in req.cause_of_action:
-            preserv_tpl = os.path.join(_templates_dir(), "property_preservation_template.docx")
-            preserv_docx_name = f"财产保全申请书_{safe_party_name}_{timestamp}.docx"
-            preserv_docx_path = os.path.join(str(get_generated_dir()), preserv_docx_name)
-            doc_preserv = DocxTemplate(preserv_tpl)
-            doc_preserv.render({
-                "applicant_name": plaintiff["name"],
-                "applicant_id": plaintiff["id_card_or_uscc"],
-                "applicant_phone": plaintiff.get("phone") or PLACEHOLDER,
-                "applicant_address": plaintiff["address"],
-                "applicant_legal_rep": plaintiff.get("legal_rep") or PLACEHOLDER,
-                "respondent_name": defendant["name"],
-                "respondent_id": defendant["id_card_or_uscc"],
-                "respondent_address": defendant["address"],
-                "preservation_amount": f"{req.claim_amount:,.2f}",
-                "preservation_amount_capital": rmb_to_capital(req.claim_amount),
+    if "legal_rep_certificate" in target_sub_docs:
+        rep_tpl = os.path.join(_templates_dir(), "legal_representative_template.docx")
+        if os.path.isfile(rep_tpl):
+            rep_docx_name = f"法定代表人身份证明书_{safe_party_name}_{timestamp}.docx"
+            rep_docx_path = os.path.join(str(get_generated_dir()), rep_docx_name)
+            doc_rep = DocxTemplate(rep_tpl)
+            doc_rep.render({
+                "legal_rep_name": plaintiff.get("legal_rep") or PLACEHOLDER,
+                "legal_rep_gender": plaintiff.get("gender") or PLACEHOLDER,
+                "legal_rep_id": PLACEHOLDER,
+                "legal_rep_position": plaintiff.get("rep_position") or "法定代表人",
+                "company_name": plaintiff["name"],
+                "company_uscc": plaintiff["id_card_or_uscc"] or PLACEHOLDER,
+                "opponent_name": defendant["name"],
                 "cause_of_action": req.cause_of_action,
-                "property_clues": f"1. 被申请人名下银行基本存款账户；\n2. 被申请人名下位于 {defendant['address']} 之不动产或经营设备。",
-                "guarantee_method": PLACEHOLDER,
-                "guarantee_institution": PLACEHOLDER,
-                "preservation_type_pre": "□",
-                "preservation_type_in": "□",
-                "case_number": PLACEHOLDER,
-                "court_name": court_full,
                 "sign_date": filing_date_str,
             })
-            doc_preserv.save(preserv_docx_path)
+            doc_rep.save(rep_docx_path)
             generated_docs.append({
-                "doc_type": "财产保全申请书",
-                "filename_docx": preserv_docx_name,
-                "docx_url": f"/api/documents/download/{preserv_docx_name}",
+                "doc_type": "法定代表人身份证明书",
+                "filename_docx": rep_docx_name,
+                "docx_url": f"/api/documents/download/{rep_docx_name}",
             })
 
-        if is_labor:
-            labor_tpl = os.path.join(_templates_dir(), "labor_compensation_calc_template.docx")
-            labor_docx_name = f"经济补偿金计算清单_{safe_party_name}_{timestamp}.docx"
-            labor_docx_path = os.path.join(str(get_generated_dir()), labor_docx_name)
-            labor_calc = calculate_labor_compensation(12000, "2021-03-01", datetime.now().strftime("%Y-%m-%d"))
-            doc_labor = DocxTemplate(labor_tpl)
-            doc_labor.render({
-                "applicant_name": plaintiff["name"],
-                "respondent_name": defendant["name"],
-                "hire_date": PLACEHOLDER,
-                "termination_date": filing_date_str,
-                "tenure_str": labor_calc["tenure_str"],
-                "monthly_salary": PLACEHOLDER,
-                "compensation_months": f"{labor_calc['compensation_months']}",
-                "amount_n": f"{labor_calc['tiers']['N']['amount']:,.2f}",
-                "amount_plus_1_notice": f"{labor_calc['tiers']['N+1']['notice_pay']:,.2f}",
-                "amount_2n": f"{labor_calc['tiers']['2N']['amount']:,.2f}",
-                "cap_reason": labor_calc["cap_reason"],
+    if "property_preservation" in target_sub_docs:
+        preserv_tpl = os.path.join(_templates_dir(), "property_preservation_template.docx")
+        preserv_docx_name = f"财产保全申请书_{safe_party_name}_{timestamp}.docx"
+        preserv_docx_path = os.path.join(str(get_generated_dir()), preserv_docx_name)
+        doc_preserv = DocxTemplate(preserv_tpl)
+        doc_preserv.render({
+            "applicant_name": plaintiff["name"],
+            "applicant_id": plaintiff["id_card_or_uscc"],
+            "applicant_phone": plaintiff.get("phone") or PLACEHOLDER,
+            "applicant_address": plaintiff["address"],
+            "applicant_legal_rep": plaintiff.get("legal_rep") or PLACEHOLDER,
+            "respondent_name": defendant["name"],
+            "respondent_id": defendant["id_card_or_uscc"],
+            "respondent_address": defendant["address"],
+            "preservation_amount": f"{req.claim_amount:,.2f}",
+            "preservation_amount_capital": rmb_to_capital(req.claim_amount),
+            "cause_of_action": req.cause_of_action,
+            "property_clues": f"1. 被申请人名下银行基本存款账户；\n2. 被申请人名下位于 {defendant['address']} 之不动产或经营设备。",
+            "guarantee_method": PLACEHOLDER,
+            "guarantee_institution": PLACEHOLDER,
+            "preservation_type_pre": "□",
+            "preservation_type_in": "□",
+            "case_number": PLACEHOLDER,
+            "court_name": court_full,
+            "sign_date": filing_date_str,
+        })
+        doc_preserv.save(preserv_docx_path)
+        generated_docs.append({
+            "doc_type": "财产保全申请书",
+            "filename_docx": preserv_docx_name,
+            "docx_url": f"/api/documents/download/{preserv_docx_name}",
+        })
+
+    if "evidence_catalog" in target_sub_docs:
+        ev_tpl = os.path.join(_templates_dir(), "evidence_catalog_template.docx")
+        if os.path.isfile(ev_tpl):
+            ev_docx_name = f"证据目录_{safe_party_name}_{timestamp}.docx"
+            ev_docx_path = os.path.join(str(get_generated_dir()), ev_docx_name)
+            doc_ev = DocxTemplate(ev_tpl)
+            doc_ev.render({
+                "cause_of_action": req.cause_of_action,
+                "plaintiff_name": plaintiff["name"],
                 "filing_date": filing_date_str,
+                "evidences": req.evidences or [],
             })
-            doc_labor.save(labor_docx_path)
+            doc_ev.save(ev_docx_path)
             generated_docs.append({
-                "doc_type": "经济补偿金计算清单",
-                "filename_docx": labor_docx_name,
-                "docx_url": f"/api/documents/download/{labor_docx_name}",
+                "doc_type": "证据目录",
+                "filename_docx": ev_docx_name,
+                "docx_url": f"/api/documents/download/{ev_docx_name}",
             })
+
+    if is_labor and (req.auto_generate_sub_docs or "labor_compensation_calc" in target_sub_docs):
+        labor_tpl = os.path.join(_templates_dir(), "labor_compensation_calc_template.docx")
+        labor_docx_name = f"经济补偿金计算清单_{safe_party_name}_{timestamp}.docx"
+        labor_docx_path = os.path.join(str(get_generated_dir()), labor_docx_name)
+        labor_calc = calculate_labor_compensation(12000, "2021-03-01", datetime.now().strftime("%Y-%m-%d"))
+        doc_labor = DocxTemplate(labor_tpl)
+        doc_labor.render({
+            "applicant_name": plaintiff["name"],
+            "respondent_name": defendant["name"],
+            "hire_date": PLACEHOLDER,
+            "termination_date": filing_date_str,
+            "tenure_str": labor_calc["tenure_str"],
+            "monthly_salary": PLACEHOLDER,
+            "compensation_months": f"{labor_calc['compensation_months']}",
+            "amount_n": f"{labor_calc['tiers']['N']['amount']:,.2f}",
+            "amount_plus_1_notice": f"{labor_calc['tiers']['N+1']['notice_pay']:,.2f}",
+            "amount_2n": f"{labor_calc['tiers']['2N']['amount']:,.2f}",
+            "cap_reason": labor_calc["cap_reason"],
+            "filing_date": filing_date_str,
+        })
+        doc_labor.save(labor_docx_path)
+        generated_docs.append({
+            "doc_type": "经济补偿金计算清单",
+            "filename_docx": labor_docx_name,
+            "docx_url": f"/api/documents/download/{labor_docx_name}",
+        })
 
     llm_mode = getattr(ollama_client, "last_llm_mode", "rule_fallback")
     pdf_engine = get_last_pdf_engine() if pdf_ok else "local_pymupdf"

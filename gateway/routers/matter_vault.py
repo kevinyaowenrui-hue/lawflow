@@ -8,6 +8,7 @@ LawFlow 智律工作台 - 案件独立空间与人机协同中枢路由 (Matter 
 """
 
 import os
+import re
 import shutil
 import time
 import logging
@@ -27,6 +28,10 @@ from gateway.core.security import (
 
 from gateway.core.paths import get_uploads_dir
 from gateway.utils.matter_vault_db import (
+    update_matter_status,
+    soft_delete_matter,
+    create_matter_deadline,
+    list_matter_deadlines,
     list_all_matters,
     get_matter_by_id,
     create_new_matter,
@@ -273,6 +278,39 @@ async def api_upload_mount_document(
         buffer.write(raw)
 
     file_size = os.path.getsize(saved_path)
+    is_image = ext in [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif", ".heic"]
+    from gateway.utils.ocr_engine import get_easyocr_reader
+    reader = get_easyocr_reader()
+    if is_image and reader is None:
+        doc_data = {
+            "doc_type": doc_type,
+            "title": file.filename,
+            "doc_title": file.filename,
+            "file_path": saved_path,
+            "file_size": file_size,
+            "text_content": "",
+            "content_text": "",
+            "metadata": {
+                "original_filename": file.filename,
+                "stored_name": stored,
+                "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "extracted_chars": 0,
+                "ocr_status": "ocr_unavailable",
+                "redact_on_ingest": bool(redact_on_ingest),
+                "redacted_count": 0,
+            }
+        }
+        doc = add_document_to_matter(matter_id, doc_data)
+        doc["doc_title"] = doc["title"]
+        doc["content_text"] = doc["text_content"]
+        return {
+            "status": "ocr_unavailable",
+            "message": "未安装 OCR 组件（easyocr），图片未识别文字，请安装 requirements-optional.txt 或手工录入",
+            "extracted_text": "",
+            "document": doc,
+            "redacted_count": 0,
+        }
+
     # 调用统一 OCR 与文档文本提取引擎（原文件按原样保存在存储目录）
     extracted_text = extract_evidence_text(saved_path)
 
@@ -626,3 +664,85 @@ async def api_get_workflow(workflow_id: str):
     if not wf:
         raise HTTPException(status_code=404, detail="工作流记录不存在")
     return format_workflow_response(wf)
+
+
+class MatterStatusPatchReq(BaseModel):
+    status: str = Field(..., description="目标状态: active 或 archived")
+
+
+class DeadlineCreateReq(BaseModel):
+    matter_id: Optional[str] = None
+    kind: str = Field(..., description="期限种类: statute_limitation/appeal/preservation_renewal/enforcement_application/hearing/custom")
+    due_date: str = Field(..., description="截止日期 ISO 格式 (YYYY-MM-DD 或带时间)")
+    source: Optional[str] = Field("", description="计算器名称及输入摘要")
+    note: Optional[str] = Field("", description="律师备忘与提醒要点")
+    done: Optional[bool] = False
+
+
+_ISO_DATE_PATTERN = re.compile(r'^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2})?)?$')
+
+
+@router.patch("/matters/{matter_id}/status", summary="案件状态流转 (active <-> archived, draft -> active)")
+async def api_patch_matter_status(matter_id: str, req: MatterStatusPatchReq):
+    matter = get_matter_by_id(matter_id)
+    if not matter:
+        raise HTTPException(status_code=404, detail="案件空间不存在")
+    try:
+        updated = update_matter_status(matter_id, req.status)
+        if not updated:
+            raise HTTPException(status_code=404, detail="案件空间不存在")
+        return {
+            "status": "success",
+            "message": f"案件状态已成功更新为 {req.status}",
+            "matter": updated
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.delete("/matters/{matter_id}", summary="案件软删除 (需要 ?confirm=true)")
+async def api_delete_matter(matter_id: str, confirm: bool = Query(False, description="必须传 confirm=true 才能执行软删除")):
+    if not confirm:
+        raise HTTPException(status_code=422, detail="软删除需要 ?confirm=true 确认")
+    matter = get_matter_by_id(matter_id)
+    if not matter:
+        raise HTTPException(status_code=404, detail="案件空间不存在")
+    ok = soft_delete_matter(matter_id)
+    return {
+        "status": "success",
+        "message": f"案件【{matter['title']}】已成功软删除",
+        "deleted": ok
+    }
+
+
+@router.post("/deadlines", summary="新增案件期限")
+async def api_create_deadline(req: DeadlineCreateReq):
+    allowed_kinds = [
+        "statute_limitation", "appeal", "preservation_renewal",
+        "enforcement_application", "hearing", "custom"
+    ]
+    if req.kind not in allowed_kinds:
+        raise HTTPException(status_code=422, detail=f"不支持的期限种类: {req.kind}，允许值: {allowed_kinds}")
+    if not _ISO_DATE_PATTERN.match(req.due_date.strip()):
+        raise HTTPException(status_code=422, detail=f"due_date 必须是 ISO 格式日期 (YYYY-MM-DD 或带时间)，非法值: {req.due_date}")
+
+    dl = create_matter_deadline(req.model_dump())
+    return {
+        "status": "success",
+        "message": "期限记录已成功加入日历",
+        "deadline": dl
+    }
+
+
+@router.get("/deadlines", summary="查询案件期限日历")
+async def api_get_deadlines(
+    from_date: Optional[str] = Query(None, alias="from"),
+    to_date: Optional[str] = Query(None, alias="to"),
+    matter_id: Optional[str] = None
+):
+    deadlines = list_matter_deadlines(from_date=from_date, to_date=to_date, matter_id=matter_id)
+    return {
+        "status": "success",
+        "count": len(deadlines),
+        "deadlines": deadlines
+    }

@@ -97,6 +97,20 @@ def init_matter_vault_db():
         """)
 
         cursor.execute("""
+        CREATE TABLE IF NOT EXISTS matter_deadlines (
+            id TEXT PRIMARY KEY,
+            matter_id TEXT,
+            kind TEXT NOT NULL,
+            due_date TEXT NOT NULL,
+            source TEXT,
+            note TEXT,
+            done INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (matter_id) REFERENCES matters (matter_id) ON DELETE CASCADE
+        );
+        """)
+
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS signing_envelopes (
             envelope_id TEXT PRIMARY KEY,
             matter_id TEXT,
@@ -242,8 +256,11 @@ def list_all_matters(status: Optional[str] = None, search: Optional[str] = None)
         sql = "SELECT * FROM matters WHERE 1=1"
         params: List[Any] = []
         if status:
-            sql += " AND status = ?"
-            params.append(status)
+            if status != "all":
+                sql += " AND status = ?"
+                params.append(status)
+        else:
+            sql += " AND status != 'deleted'"
         if search:
             sql += " AND (title LIKE ? OR cause_of_action LIKE ? OR case_number LIKE ?)"
             wild = f"%{search}%"
@@ -451,3 +468,103 @@ def add_document_to_matter(matter_id: str, doc_data: Dict[str, Any]) -> Dict[str
     doc_data["matter_id"] = matter_id
     doc_data["created_at"] = now_str
     return doc_data
+
+
+def update_matter_status(matter_id: str, target_status: str) -> Optional[Dict[str, Any]]:
+    """
+    流转案件状态：
+    合法流转：active <-> archived, draft -> active
+    非法流转：抛出 ValueError
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM matters WHERE matter_id = ?", (matter_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        curr = row["status"] or "active"
+        valid = (
+            (curr == "active" and target_status == "archived") or
+            (curr == "archived" and target_status == "active") or
+            (curr == "draft" and target_status == "active")
+        )
+        if not valid:
+            raise ValueError(f"非法状态流转：不支持从 {curr} 流转至 {target_status}")
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("UPDATE matters SET status = ?, updated_at = ? WHERE matter_id = ?", (target_status, now_str, matter_id))
+        conn.commit()
+
+    return get_matter_by_id(matter_id)
+
+
+def soft_delete_matter(matter_id: str) -> bool:
+    """软删除案件：status='deleted'"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("UPDATE matters SET status = 'deleted', updated_at = ? WHERE matter_id = ?", (now_str, matter_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def create_matter_deadline(data: Dict[str, Any]) -> Dict[str, Any]:
+    """新增案件期限记录"""
+    dl_id = data.get("id") or f"DL-{uuid.uuid4().hex[:8]}"
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO matter_deadlines (id, matter_id, kind, due_date, source, note, done, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            dl_id,
+            data.get("matter_id"),
+            data.get("kind"),
+            data.get("due_date"),
+            data.get("source", ""),
+            data.get("note", ""),
+            1 if data.get("done") else 0,
+            now_str
+        ))
+        conn.commit()
+    return {
+        "id": dl_id,
+        "matter_id": data.get("matter_id"),
+        "kind": data.get("kind"),
+        "due_date": data.get("due_date"),
+        "source": data.get("source", ""),
+        "note": data.get("note", ""),
+        "done": bool(data.get("done")),
+        "created_at": now_str
+    }
+
+
+def list_matter_deadlines(
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    matter_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """查询期限日历列表"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        sql = "SELECT d.*, m.title AS matter_title FROM matter_deadlines d LEFT JOIN matters m ON d.matter_id = m.matter_id WHERE 1=1"
+        params = []
+        if from_date:
+            sql += " AND d.due_date >= ?"
+            params.append(from_date)
+        if to_date:
+            sql += " AND d.due_date <= ?"
+            params.append(to_date if len(to_date) > 10 else f"{to_date} 23:59:59")
+        if matter_id:
+            sql += " AND d.matter_id = ?"
+            params.append(matter_id)
+        sql += " ORDER BY d.due_date ASC"
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            d["done"] = bool(d["done"])
+            results.append(d)
+        return results

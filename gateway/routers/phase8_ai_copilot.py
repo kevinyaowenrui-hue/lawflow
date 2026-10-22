@@ -18,7 +18,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 import cn2an
 from gateway.core.ollama_client import ollama_client
@@ -132,13 +132,30 @@ class CopilotConverseReq(BaseModel):
     mode: Optional[str] = Field("voice", description="语音模式 voice 或文字模式 text")
 
 
+_TASK_ISO_DATE_PATTERN = re.compile(r'^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2})?)?$')
+
+def _check_task_due_date_iso(val: Optional[str]) -> Optional[str]:
+    if not val:
+        return None
+    val = val.strip()
+    if not val or val in ("待定", "none", "null"):
+        return None
+    if not _TASK_ISO_DATE_PATTERN.match(val):
+        raise ValueError(f"任务截止时间必须是 ISO 格式日期 (YYYY-MM-DD 或带时间)，非法值: '{val}'")
+    return val
+
 class TaskCreateReq(BaseModel):
     title: str = Field(..., description="任务名称")
     description: Optional[str] = Field("", description="任务详情与办案备注")
     stage: Optional[str] = Field("立案", description="办案阶段")
     priority: Optional[str] = Field("medium", description="优先级 high/medium/low")
     status: Optional[str] = Field("todo", description="状态 todo/in_progress/done")
-    due_date: Optional[str] = Field("待定", description="截止时限")
+    due_date: Optional[str] = Field(None, description="截止时限 (ISO 格式)")
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date(cls, v):
+        return _check_task_due_date_iso(v)
     linked_module: Optional[str] = Field("phase1_litigation", description="联动模块标识")
     action_payload: Optional[Dict[str, Any]] = Field(default_factory=dict, description="预填或动作载荷")
     matter_id: Optional[str] = Field("default", description="关联案件ID")
@@ -151,6 +168,11 @@ class TaskUpdateReq(BaseModel):
     priority: Optional[str] = None
     status: Optional[str] = None
     due_date: Optional[str] = None
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date(cls, v):
+        return _check_task_due_date_iso(v)
     linked_module: Optional[str] = None
     action_payload: Optional[Dict[str, Any]] = None
 

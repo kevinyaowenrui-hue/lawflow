@@ -137,7 +137,14 @@ def get_converter_status() -> Dict[str, Any]:
     if has_pydub:
         presets.append({"id": "audio_to_court_mp3", "label": "谈话录音(M4A/AMR) -> 司法标准MP3", "target": "mp3"})
 
+    try:
+        from gateway.utils.ocr_engine import get_easyocr_reader
+        ocr_available = get_easyocr_reader() is not None
+    except Exception:
+        ocr_available = False
+
     return {
+        "ocr_available": ocr_available,
         "filee_installed": has_filee,
         "filee_path": filee_exe,
         "engine_mode": "filee_accelerated" if has_filee else "native_legal",

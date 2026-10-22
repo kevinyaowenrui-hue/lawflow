@@ -3105,6 +3105,9 @@
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                 复制公文段落
               </button>
+              <button class="btn btn-secondary btn-sm" id="btn-calc-add-deadline" onclick="addCurrentCalcDeadlineToVault()" style="display:none;" title="将计算结果的法定到期日加入案件期限日历">
+                📅 加入案件期限
+              </button>
               <button class="btn btn-amber btn-sm" onclick="syncCurrentCalcToCaseContext()" title="将本笔本金、利息与公文段落同步至全局在办案件上下文">
                 📥 同步至在办案件
               </button>
@@ -3568,6 +3571,18 @@
                 <!-- 动态加载红线规则 -->
               </div>
 
+              <!-- 上传原合同源文件 (.docx) 控件 -->
+              <div style="margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; background: #FAF9F6; border: 1px dashed var(--border-hairline); border-radius: var(--radius-sm); padding: 8px 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 11.5px; font-weight: 600; color: var(--primary-navy);">原合同源文件 (.docx)：</span>
+                  <span id="cr-source-file-badge" style="font-size: 11px; color: var(--text-muted);">未上传（未上传时导出为新生成文档，非原位修订）</span>
+                </div>
+                <input type="file" id="cr-source-file-input" accept=".docx" style="display:none;" onchange="handleContractSourceFileSelect(event)">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('cr-source-file-input').click()" style="font-size: 11px; padding: 2px 8px;">
+                  📄 上传原合同 (.docx)
+                </button>
+              </div>
+
               <div class="form-group" style="margin-bottom: 10px;">
                 <label class="form-label">待审合同条文正文</label>
                 <textarea id="cr-contract-text" rows="3">第七条 违约责任：乙方如延期交付超过3日，每日应向甲方支付合同总价款5%的惩罚性违约金；甲方有权随时单方解除合同且无需退还首期款项。发生争议由甲方所在地人民法院管辖。</textarea>
@@ -3632,6 +3647,96 @@
               </div>
             </div>
           </div>
+
+          <!-- 折叠卡片 C: 证据目录自动提炼、三性质证意见与对方红队攻击 -->
+          <div style="border-top: 1px solid var(--border-hairline); padding-top: 12px; margin-top: 12px;">
+            <div style="font-size: 13px; font-weight: 700; color: var(--primary-navy); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+              <span>AI 证据目录、三性质证意见与红队攻击</span>
+              <span class="badge" style="background:#EFF6FF; color:#1D4ED8; font-size:10.5px;">法庭质证实务</span>
+            </div>
+
+            <!-- 子工具切换 -->
+            <div style="display: flex; gap: 4px; background: #EEF2F6; padding: 2px; border-radius: 6px; margin-bottom: 10px;">
+              <button type="button" class="tab-pill-btn active" id="btn-evtool-catalog" onclick="switchEvidenceSubTool('catalog')" style="flex:1; text-align:center; padding: 4px 6px;">
+                ① 证据目录
+              </button>
+              <button type="button" class="tab-pill-btn" id="btn-evtool-cross" onclick="switchEvidenceSubTool('cross')" style="flex:1; text-align:center; padding: 4px 6px;">
+                ② 质证意见 (三性)
+              </button>
+              <button type="button" class="tab-pill-btn" id="btn-evtool-attack" onclick="switchEvidenceSubTool('attack')" style="flex:1; text-align:center; padding: 4px 6px;">
+                ③ 红队攻击
+              </button>
+            </div>
+
+            <!-- 子工具 1：证据目录提炼 -->
+            <div id="evtool-pane-catalog">
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label class="form-label">案由与举证人</label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="ev-catalog-cause" placeholder="案由" value="民间借贷纠纷" style="flex: 1;" class="quick-input" />
+                  <input type="text" id="ev-catalog-plaintiff" placeholder="举证人" value="原告" style="flex: 1;" class="quick-input" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label class="form-label">原始证据碎片清单 / 提取文本</label>
+                <textarea id="ev-catalog-notes" rows="3" class="quick-input">1. 《借款协议及转账凭证》：证明借款本金交付及利息约定事实；
+2. 《催款微信聊天记录与通话录音》：证明原告多次催要、借款人认可借贷事实且时效中断；
+3. 《连带责任保证承诺函》：证明丙方自愿承担不可撤销连带保证责任。</textarea>
+              </div>
+              <button class="btn btn-sm" style="width: 100%; background: var(--primary-navy);" onclick="runAutoEvidenceCatalogUI()">
+                ⚡ 生成证据目录
+              </button>
+            </div>
+
+            <!-- 子工具 2：证据三性质证 -->
+            <div id="evtool-pane-cross" style="display: none;">
+              <div class="form-row" style="margin-bottom: 8px;">
+                <div class="form-group" style="flex: 1.5; margin-bottom: 0;">
+                  <label class="form-label">对方出示证据名称</label>
+                  <input type="text" id="ev-cross-name" value="被告提交的手写收据复印件" class="quick-input" />
+                </div>
+                <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                  <label class="form-label">证据种类</label>
+                  <select id="ev-cross-category" class="quick-input">
+                    <option value="书证" selected>书证</option>
+                    <option value="电子数据">电子数据</option>
+                    <option value="证人证言">证人证言</option>
+                    <option value="视听资料">视听资料</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label class="form-label">对方证明目的</label>
+                <input type="text" id="ev-cross-purpose" value="证明原告已收取10万元货款并结清争议标的" class="quick-input" />
+              </div>
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label class="form-label">我方当事人真实情况与反驳事实</label>
+                <textarea id="ev-cross-facts" rows="2" class="quick-input">原告从未收到该款项，收据签名不是原告字迹，被告拒不出示原件，系伪造凭据。</textarea>
+              </div>
+              <button class="btn btn-sm" style="width: 100%; background: var(--primary-navy);" onclick="runCrossExaminationUI()">
+                ⚡ 生成质证意见
+              </button>
+            </div>
+
+            <!-- 子工具 3：对方红队质证攻击 -->
+            <div id="evtool-pane-attack" style="display: none;">
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label class="form-label">我方关键证据名称</label>
+                <input type="text" id="ev-attack-name" value="银行电子转账回执单（附言为往来款）" class="quick-input" />
+              </div>
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label class="form-label">我方证明目的</label>
+                <input type="text" id="ev-attack-purpose" value="证明原告已向被告全额出借款项50万元" class="quick-input" />
+              </div>
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label class="form-label">证据原始文本或瑕疵摘录</label>
+                <textarea id="ev-attack-snippet" rows="2" class="quick-input">回单转账附言备注为『往来款』而非『借款』，且收款账户为第三方个人。</textarea>
+              </div>
+              <button class="btn btn-sm" style="width: 100%; background: #991B1B;" onclick="runAdversarialAttackUI()">
+                ⚡ 红队攻击
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- 右侧阅读器输出 (多视图联动：庭审提纲 / 合同三栏修订 / 多版本比对) -->
@@ -3646,6 +3751,9 @@
               </button>
               <button type="button" class="tab-pill-btn" id="btn-p2-tab-diff" onclick="switchPhase2RightTab('diff')">
                 📑 多版本/模板偏离度比对
+              </button>
+              <button type="button" class="tab-pill-btn" id="btn-p2-tab-tools" onclick="switchPhase2RightTab('tools')">
+                ⚖️ 证据目录与质证攻防
               </button>
             </div>
 
@@ -3701,6 +3809,18 @@
               </div>
             </div>
           </div>
+
+          <!-- 视图 D：证据目录与质证攻防结果展示 -->
+          <div id="p2-pane-tools" style="display: none; min-height: 480px; max-height: 580px; overflow-y: auto; padding: 6px 0;">
+            <div id="ev-tools-result-container">
+              <div style="padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 13px;">
+                <div style="font-weight: 600; color: var(--primary-navy); margin-bottom: 4px;">法庭证据目录、质证意见与红队攻击工作台</div>
+                <div style="font-size: 12px; color: var(--text-secondary); max-width: 480px; margin: 0 auto; line-height: 1.6;">
+                  在左侧选择对应工具并点击生成，此处将展示提炼出的证据四要素表格、真实性合法性关联性三性质证意见，或对方模拟质证攻击要点，并支持直接导出 Word (.docx)。
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -3738,6 +3858,9 @@
               【待填写】案由
             </div>
             <div style="font-size: 10.5px; color: var(--accent-amber); margin-top: 2px;" id="appeal-metric-deadline">上诉期截止日：【待填写】</div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-appeal-add-deadline" style="display:none; font-size:10.5px; padding:2px 6px; margin-top:3px;" onclick="addAppealDeadlineToVault()">
+              📅 加入案件期限
+            </button>
           </div>
           <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
             <div style="font-size: 11px; color: var(--text-muted);">一审裁决漏洞诊断</div>
@@ -4633,6 +4756,9 @@
           <button type="button" class="tab-pill-btn" id="btn-vault-tab-grid" onclick="switchVaultGraphTab('grid')">
             📊 矩阵式批量阅卷表 (Review Grid)
           </button>
+          <button type="button" class="tab-pill-btn" id="btn-vault-tab-deadlines" onclick="switchVaultGraphTab('deadlines')">
+            📅 案件期限日历 (Deadlines)
+          </button>
         </div>
         <div style="font-size: 11.5px; color: var(--text-muted);">
           与 01精算、02立案、03审查、05要件推演实时上下文隔离与共享
@@ -4771,6 +4897,22 @@
               ＋ 挂载新材料
             </button>
           </div>
+
+          <!-- 批量上传与拖拽区域 -->
+          <div class="surface-card" style="margin-bottom: 14px; border: 2px dashed var(--border-hairline); border-radius: var(--radius-md); padding: 18px; text-align: center; background: #FAF9F6;" id="vault-dnd-upload-box">
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--primary-navy); margin-bottom: 5px;">
+              📁 拖拽卷宗文件至此 或 点击选择文件上传
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 10px;">
+              支持多选批量上传 PDF / Word (.docx, .doc) / 图片 (PNG, JPG) / CSV 等卷宗材料，自动解析文本并挂载至本案
+            </div>
+            <input type="file" id="vault-batch-file-input" multiple accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.heic,.csv,.xlsx,.txt" style="display: none;" onchange="handleVaultBatchFilesSelect(event)">
+            <button type="button" class="btn btn-amber btn-sm" onclick="document.getElementById('vault-batch-file-input').click()">
+              选择文件上传 (可多选)
+            </button>
+            <div id="vault-upload-progress-list" style="margin-top: 12px; text-align: left; display: flex; flex-direction: column; gap: 6px;"></div>
+          </div>
+
           <div id="vault-docs-list" style="display: flex; flex-direction: column; gap: 10px;">
             <!-- 动态渲染案卷材料 -->
           </div>
@@ -4798,6 +4940,9 @@
               <button type="button" class="btn btn-secondary btn-sm" onclick="runAllReviewTableUI()" id="btn-run-all-grid">
                 ⚡ 全表并发提取重跑
               </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="exportReviewTableXlsxUI()">
+                📥 导出为 Excel (.xlsx)
+              </button>
               <button type="button" class="btn btn-amber btn-sm" onclick="exportReviewTableCsvUI()">
                 📥 导出阅卷表为 CSV
               </button>
@@ -4807,6 +4952,35 @@
           <!-- DataGrid 表格容器 -->
           <div class="review-grid-container" id="vault-review-datagrid">
             <!-- 动态渲染数据网格 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 面板 F: 案件期限日历 (Deadlines Calendar) -->
+      <div id="pane-vault-deadlines" class="vault-graph-pane" style="display: none;">
+        <div class="surface-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <div style="font-size: 13.5px; font-weight: 700; color: var(--primary-navy); display: flex; align-items: center; gap: 6px;">
+                <span>《案件法定诉讼期限与执业红线监控日历》</span>
+                <span class="badge" style="background: rgba(197, 133, 50, 0.1); color: var(--accent-amber); font-size: 10.5px;">≤7日到期警示</span>
+              </div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                实时汇总诉讼时效、上诉期、续行保全、执行申请与开庭节点 · 支持自动高亮紧急期限
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="openAddDeadlineModal()">
+                ＋ 手工录入期限
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="fetchAndRenderVaultDeadlines()">
+                🔄 刷新期限
+              </button>
+            </div>
+          </div>
+
+          <div id="vault-deadlines-list" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- 动态渲染期限条目 -->
           </div>
         </div>
       </div>
@@ -5564,6 +5738,14 @@
         }
 
         document.getElementById('legal-statement-text').innerText = statement;
+        lastCalcDeadline = {
+          kind: 'statute_limitation',
+          dueDate: d.final_expire_date,
+          source: '诉讼时效与除斥期间计算器',
+          note: `适用规则: ${d.rule_name} · ${d.legal_basis}`
+        };
+        const dlBtn = document.getElementById('btn-calc-add-deadline');
+        if (dlBtn && d.final_expire_date) dlBtn.style.display = 'inline-flex';
         showToast("诉讼时效推演与风险公文已更新");
       } catch (e) {
         showToast("诉讼时效核算失败: " + e);
@@ -5607,6 +5789,14 @@
         statement += `三、执业风险提示：\n${d.alert_message}\n`;
 
         document.getElementById('legal-statement-text').innerText = statement;
+        lastCalcDeadline = {
+          kind: 'preservation_renewal',
+          dueDate: d.renewal_application_deadline,
+          source: '财产保全续行期限计算器',
+          note: `标的: ${d.type_name} · ${d.statute_basis}`
+        };
+        const dlBtn = document.getElementById('btn-calc-add-deadline');
+        if (dlBtn && d.renewal_application_deadline) dlBtn.style.display = 'inline-flex';
         showToast("保全续封红线公文已更新");
       } catch (e) {
         showToast("保全续封核算失败: " + e);
@@ -5992,17 +6182,30 @@
       const btnOutline = document.getElementById('btn-p2-tab-outline');
       const btnRedline = document.getElementById('btn-p2-tab-redline');
       const btnDiff = document.getElementById('btn-p2-tab-diff');
+      const btnTools = document.getElementById('btn-p2-tab-tools');
       const paneOutline = document.getElementById('p2-pane-outline');
       const paneRedline = document.getElementById('p2-pane-redline');
       const paneDiff = document.getElementById('p2-pane-diff');
+      const paneTools = document.getElementById('p2-pane-tools');
 
       btnOutline?.classList.toggle('active', tab === 'outline');
       btnRedline?.classList.toggle('active', tab === 'redline');
       btnDiff?.classList.toggle('active', tab === 'diff');
+      btnTools?.classList.toggle('active', tab === 'tools');
 
       if (paneOutline) paneOutline.style.display = (tab === 'outline') ? 'block' : 'none';
       if (paneRedline) paneRedline.style.display = (tab === 'redline') ? 'block' : 'none';
       if (paneDiff) paneDiff.style.display = (tab === 'diff') ? 'block' : 'none';
+      if (paneTools) paneTools.style.display = (tab === 'tools') ? 'block' : 'none';
+    }
+
+    function switchEvidenceSubTool(sub) {
+      ['catalog', 'cross', 'attack'].forEach(k => {
+        const btn = document.getElementById(`btn-evtool-${k}`);
+        const pane = document.getElementById(`evtool-pane-${k}`);
+        if (btn) btn.classList.toggle('active', k === sub);
+        if (pane) pane.style.display = (k === sub) ? 'block' : 'none';
+      });
     }
 
     async function loadPlaybooksIfNeeded() {
@@ -6207,6 +6410,37 @@
       }
     }
 
+    let contractSourceFileId = null;
+
+    async function handleContractSourceFileSelect(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      showToast("正在上传并解析原合同 (.docx)...");
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const resp = await fetch(`${API_BASE}/api/v1/phase2/contract-review/upload-source`, {
+          method: 'POST',
+          body: formData
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => null);
+          throw new Error(err?.detail || ('HTTP ' + resp.status));
+        }
+        const data = await resp.json();
+        contractSourceFileId = data.source_file_id;
+        const badge = document.getElementById('cr-source-file-badge');
+        if (badge) {
+          badge.innerText = `已挂载原合同: ${file.name} (原位修订已就绪)`;
+          badge.style.color = '#059669';
+          badge.style.fontWeight = '600';
+        }
+        showToast("原合同上传成功，导出审查文档时将执行原位修订！");
+      } catch (e) {
+        showToast("原合同上传失败: " + e.message);
+      }
+    }
+
     async function exportRedlineDocx() {
       const title = document.getElementById('cr-contract-title').value.trim() || "商业技术开发与采购合同";
       const perspective = document.getElementById('cr-perspective').value;
@@ -6228,6 +6462,7 @@
           contract_text: contractText,
           perspective: perspective,
           playbook_preset: playbookKey,
+          source_file_id: contractSourceFileId || null,
           clause_reviews: lastContractReviewData ? (lastContractReviewData.review || {}).clause_reviews : null,
           overall_risk_level: lastContractReviewData ? (lastContractReviewData.review || {}).overall_risk_level : "中",
           review_summary: lastContractReviewData ? (lastContractReviewData.review || {}).review_summary : "",
@@ -6239,6 +6474,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+        if (!resp.ok) {
+          const errJson = await resp.json().catch(() => null);
+          throw new Error(errJson?.detail || ('HTTP ' + resp.status));
+        }
         const d = await resp.json();
         if (btn) {
           btn.innerHTML = origText;
@@ -6252,7 +6491,13 @@
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          showToast(`已成功导出 ${d.filename}，支持在 Word 中直接接受修订！`);
+          if (contractSourceFileId) {
+            const revCount = d.revisions_count !== undefined ? d.revisions_count : 0;
+            const unmatchCount = (d.unmatched_clauses || []).length;
+            showToast(`已在原文中插入 ${revCount} 处修订，${unmatchCount} 条未定位`);
+          } else {
+            showToast("未上传原文档，导出为新生成文档，非原位修订");
+          }
         } else {
           showToast("导出失败: " + (d.message || "未知错误"));
         }
@@ -6261,7 +6506,7 @@
           btn.innerHTML = origText;
           btn.disabled = false;
         }
-        showToast("导出请求异常: " + e);
+        showToast("导出请求异常: " + e.message);
       }
     }
 
@@ -6656,6 +6901,9 @@
         if (metricDeadline) {
           if (data.appeal_deadline) {
             metricDeadline.innerText = `上诉期截止日：${data.appeal_deadline}`;
+            lastAppealDeadline = data.appeal_deadline;
+            const aBtn = document.getElementById('btn-appeal-add-deadline');
+            if (aBtn) aBtn.style.display = 'inline-flex';
           } else if (serviceDate) {
             try {
               const dlResp = await fetch(`${API_BASE}/api/v1/phase1/calc/appeal-deadline`, {
@@ -6666,6 +6914,9 @@
               if (dlResp.ok) {
                 const dl = await dlResp.json();
                 metricDeadline.innerText = `上诉期截止日：${dl.deadline}`;
+                lastAppealDeadline = dl.deadline;
+                const aBtn = document.getElementById('btn-appeal-add-deadline');
+                if (aBtn) aBtn.style.display = 'inline-flex';
               } else {
                 metricDeadline.innerText = '上诉期截止日：【待填写】';
               }
@@ -7129,6 +7380,9 @@
       } else if (mode === 'ollama') {
         document.getElementById('btn-mode-ollama').classList.add('active');
         document.getElementById('pane-ollama').classList.add('active');
+      } else if (mode === 'pii') {
+        document.getElementById('btn-mode-pii').classList.add('active');
+        document.getElementById('pane-pii').classList.add('active');
       } else {
         document.getElementById('btn-mode-rule').classList.add('active');
         document.getElementById('pane-rule').classList.add('active');
@@ -9021,11 +9275,12 @@
     }
 
     function switchCitationGuardTab(tab) {
-      const isItems = tab === 'items';
-      document.getElementById('tab-btn-cg-items').classList.toggle('active', isItems);
-      document.getElementById('tab-btn-cg-tester').classList.toggle('active', !isItems);
-      document.getElementById('view-cg-items').style.display = isItems ? 'block' : 'none';
-      document.getElementById('view-cg-tester').style.display = isItems ? 'none' : 'block';
+      document.getElementById('tab-btn-cg-items')?.classList.toggle('active', tab === 'items');
+      document.getElementById('tab-btn-cg-tester')?.classList.toggle('active', tab === 'tester');
+      document.getElementById('tab-btn-cg-single')?.classList.toggle('active', tab === 'single');
+      if (document.getElementById('view-cg-items')) document.getElementById('view-cg-items').style.display = tab === 'items' ? 'block' : 'none';
+      if (document.getElementById('view-cg-tester')) document.getElementById('view-cg-tester').style.display = tab === 'tester' ? 'block' : 'none';
+      if (document.getElementById('view-cg-single')) document.getElementById('view-cg-single').style.display = tab === 'single' ? 'block' : 'none';
     }
 
     function renderCitationAuditReport(audit) {
@@ -9330,17 +9585,20 @@
 
     function filterMattersList() {
       const q = (document.getElementById('vault-search-input')?.value || '').trim().toLowerCase();
-      if (!q) {
-        renderMattersGrid(allVaultMatters);
-        return;
+      const statusFilter = document.getElementById('vault-status-filter')?.value || 'all';
+      let filtered = allVaultMatters;
+      if (statusFilter !== 'all') {
+        filtered = filtered.filter(m => (m.status || 'active') === statusFilter);
       }
-      const filtered = allVaultMatters.filter(m => 
-        (m.title && m.title.toLowerCase().includes(q)) ||
-        (m.cause_of_action && m.cause_of_action.toLowerCase().includes(q)) ||
-        (m.case_number && m.case_number.toLowerCase().includes(q)) ||
-        (m.plaintiff_name && m.plaintiff_name.toLowerCase().includes(q)) ||
-        (m.defendant_name && m.defendant_name.toLowerCase().includes(q))
-      );
+      if (q) {
+        filtered = filtered.filter(m => 
+          (m.title && m.title.toLowerCase().includes(q)) ||
+          (m.cause_of_action && m.cause_of_action.toLowerCase().includes(q)) ||
+          (m.case_number && m.case_number.toLowerCase().includes(q)) ||
+          (m.plaintiff_name && m.plaintiff_name.toLowerCase().includes(q)) ||
+          (m.defendant_name && m.defendant_name.toLowerCase().includes(q))
+        );
+      }
       renderMattersGrid(filtered);
     }
 
@@ -9351,20 +9609,28 @@
         grid.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">未匹配到相关案件空间</div>`;
         return;
       }
-      grid.innerHTML = matters.map(m => { // safe-html: demo/active badges are static HTML; user fields escaped
+      grid.innerHTML = matters.map(m => { // safe-html: demo/active/status badges are static HTML; user fields escaped
         const isActive = m.matter_id === activeMatterId;
+        const isArchived = m.status === 'archived';
         const demoBadge = (m.title || '').includes('【演示】')
           ? '<span class="badge" style="background:#FFEBEE; color:#D32F2F; font-size:11px; font-weight:700;">演示数据</span>'
           : '';
+        const statusBadge = isArchived
+          ? '<span class="badge" style="background:#F3F4F6; color:#6B7280; font-size:11px;">已归档 (Archived)</span>'
+          : '<span class="badge" style="background:#E8F5E9; color:#2E7D32; font-size:11px;">在办 (Active)</span>';
         const activeBadge = isActive
           ? '<span class="badge" style="background: #E8F5E9; color: #2E7D32; font-weight:700;">● 当前激活空间</span>'
           : '';
         const summaryHtml = m.summary
           ? `<div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">${escapeHtml(m.summary.substring(0, 100))}${escapeHtml(m.summary.length > 100 ? '...' : '')}</div>`
           : '';
+        const statusToggleBtn = isArchived
+          ? `<button type="button" class="btn btn-secondary btn-sm" onclick="updateMatterStatusUI('${escapeHtml(m.matter_id)}', 'active')" title="恢复为在办">恢复在办</button>`
+          : `<button type="button" class="btn btn-secondary btn-sm" onclick="updateMatterStatusUI('${escapeHtml(m.matter_id)}', 'archived')" title="归档该案件">归档</button>`;
+        const deleteBtn = `<button type="button" class="btn btn-secondary btn-sm" style="color:#DC2626; border-color:#FECACA;" onclick="deleteMatterUI('${escapeHtml(m.matter_id)}', '${escapeHtml(m.title)}')" title="软删除该案件">删除</button>`;
         const actionHtml = isActive
-          ? `<button type="button" class="btn btn-secondary btn-sm" disabled style="opacity: 0.7;">当前空间</button>`
-          : `<button type="button" class="btn btn-sm" onclick="switchActiveMatter('${escapeHtml(m.matter_id)}', true)" style="background: var(--primary-navy);">切换至此空间</button>`;
+          ? `<button type="button" class="btn btn-secondary btn-sm" disabled style="opacity: 0.7;">当前空间</button> ${statusToggleBtn} ${deleteBtn}`
+          : `<button type="button" class="btn btn-sm" onclick="switchActiveMatter('${escapeHtml(m.matter_id)}', true)" style="background: var(--primary-navy);">切换至此空间</button> ${statusToggleBtn} ${deleteBtn}`;
         return `
           <div class="surface-card" style="padding: 12px 14px; border-left: 4px solid ${escapeHtml(isActive ? 'var(--accent-amber)' : 'var(--primary-navy)')}; background: ${escapeHtml(isActive ? 'rgba(197, 133, 50, 0.04)' : '#FFFFFF')};">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
@@ -9373,6 +9639,7 @@
                   <strong style="font-size: 13.5px; color: var(--primary-navy);">${escapeHtml(m.title)}</strong>
                   ${escapeHtml(demoBadge)}
                   <span class="badge" style="background: rgba(20, 35, 60, 0.08); color: var(--primary-navy); font-size: 11px;">${escapeHtml(m.cause_of_action)}</span>
+                  ${escapeHtml(statusBadge)}
                   ${escapeHtml(activeBadge)}
                 </div>
                 <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 5px; display: flex; gap: 12px; flex-wrap: wrap;">
@@ -9383,7 +9650,7 @@
                 </div>
                 ${summaryHtml} // safe-html: static or pre-escaped HTML fragment
               </div>
-              <div style="display: flex; gap: 6px; align-items: center;">
+              <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
                 ${actionHtml} // safe-html: static or pre-escaped HTML fragment
               </div>
             </div>
@@ -9604,6 +9871,10 @@
 
       if (tabKey === 'grid') {
         fetchAndRenderReviewTables(activeMatterId);
+      } else if (tabKey === 'deadlines') {
+        fetchAndRenderVaultDeadlines();
+      } else if (tabKey === 'docs') {
+        fetchAndRenderMatterDocs(activeMatterId);
       }
     }
 
@@ -12466,10 +12737,724 @@
     }
 
     // =========================================================================
+    // 批次 15 新增：案件状态流转、软删除、期限日历、PII扫描、证据三性质证与红队攻击
+    // =========================================================================
+    async function updateMatterStatusUI(matterId, newStatus) {
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/vault/matters/${matterId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => null);
+          throw new Error(err?.detail || ('HTTP ' + resp.status));
+        }
+        const res = await resp.json();
+        showToast(res.message || `案件已切换为 ${newStatus}`);
+        await fetchAndRenderMattersList(true);
+        if (activeMatterId === matterId) {
+          await switchActiveMatter(matterId, false);
+        }
+      } catch (e) {
+        showToast("更新案件状态失败: " + e.message);
+      }
+    }
+
+    async function deleteMatterUI(matterId, matterTitle) {
+      if (!confirm(`确认软删除案件【${matterTitle || ''}】？软删除后该案件不会显示在默认列表中。`)) return;
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/vault/matters/${matterId}?confirm=true`, {
+          method: 'DELETE'
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => null);
+          throw new Error(err?.detail || ('HTTP ' + resp.status));
+        }
+        const res = await resp.json();
+        showToast(res.message || "案件已软删除");
+        if (activeMatterId === matterId) {
+          activeMatterId = null;
+          activeMatterData = null;
+        }
+        await fetchAndRenderMattersList(true);
+        if (!activeMatterId && allVaultMatters.length > 0) {
+          await switchActiveMatter(allVaultMatters[0].matter_id, false);
+        }
+      } catch (e) {
+        showToast("删除案件失败: " + e.message);
+      }
+    }
+
+    async function exportReviewTableXlsxUI() {
+      if (!activeReviewTableId) {
+        showToast("当前无激活阅卷表，无法导出！");
+        return;
+      }
+      showToast("正在导出阅卷表 Excel (.xlsx)...");
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/vault/review-tables/${activeReviewTableId}/export/xlsx`);
+        if (!resp.ok) {
+          const errJson = await resp.json().catch(() => null);
+          throw new Error(errJson?.detail || ('HTTP ' + resp.status));
+        }
+        const blob = await resp.blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `review_table_${activeReviewTableId}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        showToast("Excel (.xlsx) 文件已下载");
+      } catch (e) {
+        showToast("Excel 导出失败: " + e.message);
+      }
+    }
+
+    async function uploadVaultDocumentFile(file, matterId) {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('doc_type', 'evidence');
+      formData.append('redact_on_ingest', 'true');
+      const resp = await fetch(`${API_BASE}/api/v1/vault/matters/${matterId}/upload-document`, {
+        method: 'POST',
+        body: formData
+      });
+      if (!resp.ok) {
+        const errJson = await resp.json().catch(() => null);
+        throw new Error(errJson?.detail || ('HTTP ' + resp.status));
+      }
+      return await resp.json();
+    }
+
+    function handleVaultBatchFilesSelect(event) {
+      const files = event.target.files;
+      if (files && files.length) {
+        handleVaultBatchFiles(files);
+      }
+    }
+
+    async function handleVaultBatchFiles(files) {
+      if (!activeMatterId) {
+        showToast("请先在上方切换或选择一个在办案件空间！");
+        return;
+      }
+      if (!files || !files.length) return;
+      const progressList = document.getElementById('vault-upload-progress-list');
+      if (progressList) progressList.innerHTML = '';
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const rowId = `v-up-row-${i}`;
+        if (progressList) {
+          const rowDiv = document.createElement('div');
+          rowDiv.id = rowId;
+          rowDiv.style.cssText = "padding: 8px 12px; border-radius: 4px; font-size: 12px; border: 1px solid var(--border-hairline); background: #FFF;";
+          rowDiv.innerHTML = ` // safe-html: escaped file name and status
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:600; color:var(--primary-navy);">${escapeHtml(file.name)}</span>
+              <span class="status-msg" style="color:var(--text-muted);">正在上传并解析文本...</span>
+            </div>
+          `;
+          progressList.appendChild(rowDiv);
+        }
+
+        try {
+          const res = await uploadVaultDocumentFile(file, activeMatterId);
+          const rowEl = document.getElementById(rowId);
+          if (rowEl) {
+            if (res.status === 'ocr_unavailable') {
+              rowEl.style.borderColor = '#F59E0B';
+              rowEl.style.backgroundColor = '#FFFBEB';
+              rowEl.innerHTML = ` // safe-html: yellow warning for ocr_unavailable, user filename escaped
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-weight:600; color:#B45309;">${escapeHtml(file.name)}</span>
+                  <span class="badge" style="background:#FEF3C7; color:#B45309; font-weight:700;">⚠️ OCR 不可用</span>
+                </div>
+                <div style="font-size:11px; color:#B45309; margin-top:4px;">
+                  ${escapeHtml(res.message || '未安装 OCR 组件（easyocr），图片未识别文字，请安装 requirements-optional.txt 或手工录入')}
+                </div>
+              `;
+            } else {
+              rowEl.style.borderColor = '#10B981';
+              rowEl.style.backgroundColor = '#ECFDF5';
+              rowEl.innerHTML = ` // safe-html: success info, all fields escaped
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-weight:600; color:#065F46;">${escapeHtml(file.name)}</span>
+                  <span class="badge" style="background:#D1FAE5; color:#065F46; font-weight:700;">✓ 解析成功</span>
+                </div>
+                <div style="font-size:11px; color:#047857; margin-top:4px;">
+                  抽取字符: ${escapeHtml(String(res.extracted_chars || 0))} · 页数: ${escapeHtml(String(res.page_count || 1))} · OCR: ${escapeHtml(res.ocr_used ? '是' : '否')} · 脱敏实体: ${escapeHtml(String(res.redacted_count || 0))}
+                </div>
+              `;
+            }
+          }
+        } catch (err) {
+          const rowEl = document.getElementById(rowId);
+          if (rowEl) {
+            rowEl.style.borderColor = '#EF4444';
+            rowEl.style.backgroundColor = '#FEF2F2';
+            rowEl.innerHTML = ` // safe-html: failure info, error escaped
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:600; color:#991B1B;">${escapeHtml(file.name)}</span>
+                <span class="badge" style="background:#FEE2E2; color:#991B1B; font-weight:700;">❌ 解析失败</span>
+              </div>
+              <div style="font-size:11px; color:#DC2626; margin-top:4px;">
+                失败原因：${escapeHtml(err.message || '未知错误')}
+              </div>
+            `;
+          }
+        }
+      }
+      await fetchAndRenderMatterDocs(activeMatterId);
+    }
+
+    function setupVaultDnD() {
+      const box = document.getElementById('vault-dnd-upload-box');
+      if (!box) return;
+      ['dragenter', 'dragover'].forEach(name => {
+        box.addEventListener(name, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          box.style.borderColor = 'var(--accent-amber)';
+          box.style.backgroundColor = 'rgba(197, 133, 50, 0.05)';
+        });
+      });
+      ['dragleave', 'drop'].forEach(name => {
+        box.addEventListener(name, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          box.style.borderColor = 'var(--border-hairline)';
+          box.style.backgroundColor = '#FAF9F6';
+        });
+      });
+      box.addEventListener('drop', (e) => {
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length) {
+          handleVaultBatchFiles(files);
+        }
+      });
+    }
+
+    async function runAutoEvidenceCatalogUI() {
+      const cause = document.getElementById('ev-catalog-cause')?.value.trim() || ((activeMatterData && activeMatterData.cause_of_action) || "民间借贷纠纷");
+      const plaintiff = document.getElementById('ev-catalog-plaintiff')?.value.trim() || ((activeMatterData && activeMatterData.plaintiff_name) || "原告");
+      const notes = document.getElementById('ev-catalog-notes')?.value.trim() || "";
+      if (!notes) {
+        showToast("请填写原始证据碎片清单或卷宗提取文字！");
+        return;
+      }
+      showToast("正在提炼四要素并生成《证据目录.docx》...");
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/phase2/auto-catalog`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cause_of_action: cause,
+            plaintiff_name: plaintiff,
+            evidence_notes: notes
+          })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => null);
+          throw new Error(err?.detail || ('HTTP ' + resp.status));
+        }
+        const data = await resp.json();
+        renderEvidenceCatalogResult(data);
+        switchPhase2RightTab('tools');
+        showToast("《证据目录.docx》已生成完毕");
+      } catch (e) {
+        showToast("生成证据目录失败: " + e.message);
+      }
+    }
+
+    function renderEvidenceCatalogResult(data) {
+      const container = document.getElementById('ev-tools-result-container');
+      if (!container) return;
+      const items = data.extracted_items || [];
+      const rowsHtml = items.map((it, idx) => `
+        <tr style="border-bottom: 1px solid var(--border-hairline);">
+          <td style="padding: 6px 8px; font-weight: 600;">${escapeHtml(String(idx + 1))}</td>
+          <td style="padding: 6px 8px; font-weight: 700; color: var(--primary-navy);">${escapeHtml(it.name || '')}</td>
+          <td style="padding: 6px 8px;"><span class="badge" style="background:#E0F2FE; color:#0369A1; font-size:11px;">${escapeHtml(it.category || '')}</span></td>
+          <td style="padding: 6px 8px; font-size: 11.5px;">${escapeHtml(it.source || '')}</td>
+          <td style="padding: 6px 8px; font-size: 11.5px; color: var(--text-secondary);">${escapeHtml(it.purpose || '')}</td>
+          <td style="padding: 6px 8px; font-family: var(--font-mono); font-size: 11px;">${escapeHtml(it.pages || '')}</td>
+        </tr>
+      `).join('');
+      const downloadBtn = data.download_url
+        ? `<a href="${withDownloadToken(data.download_url)}" download="${escapeHtml(data.catalog_filename || '证据目录.docx')}" class="btn btn-amber btn-sm" style="text-decoration:none;">📥 下载《证据目录.docx》</a>`
+        : '';
+      container.innerHTML = ` // safe-html: catalog summary table and download link
+        <div style="padding: 12px 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <strong style="font-size: 14px; color: var(--primary-navy);">《法庭规范证据目录（共 ${escapeHtml(String(items.length))} 项）》</strong>
+              <div style="font-size: 11.5px; color: var(--text-muted); margin-top:2px;">依据《民事诉讼法》证据规则自动提炼并按规范四要素排版</div>
+            </div>
+            <div>${downloadBtn}</div>
+          </div>
+          <table style="width:100%; border-collapse: collapse; font-size:12px;">
+            <thead>
+              <tr style="background:#F1F5F9; border-bottom: 1px solid #CBD5E1; text-align:left;">
+                <th style="padding: 6px 8px; width:36px;">序号</th>
+                <th style="padding: 6px 8px;">证据名称</th>
+                <th style="padding: 6px 8px; width:70px;">证据种类</th>
+                <th style="padding: 6px 8px; width:90px;">证据来源</th>
+                <th style="padding: 6px 8px;">证明目的</th>
+                <th style="padding: 6px 8px; width:70px;">页码</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    async function runCrossExaminationUI() {
+      const evName = document.getElementById('ev-cross-name')?.value.trim() || "借款证据";
+      const evCat = document.getElementById('ev-cross-category')?.value || "书证";
+      const oppPurpose = document.getElementById('ev-cross-purpose')?.value.trim() || "";
+      const clientFacts = document.getElementById('ev-cross-facts')?.value.trim() || "";
+      showToast("正在生成证据三性审查与反驳意见...");
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/phase2/cross-examination`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            evidence_name: evName,
+            evidence_category: evCat,
+            opponent_purpose: oppPurpose,
+            client_facts: clientFacts
+          })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => null);
+          throw new Error(err?.detail || ('HTTP ' + resp.status));
+        }
+        const data = await resp.json();
+        renderCrossExaminationResult(data);
+        switchPhase2RightTab('tools');
+        showToast("质证意见已生成");
+      } catch (e) {
+        showToast("质证意见生成失败: " + e.message);
+      }
+    }
+
+    function renderCrossExaminationResult(data) {
+      const container = document.getElementById('ev-tools-result-container');
+      if (!container) return;
+      const parsed = data.cross_examination || {};
+      const auth = parsed.authenticity || parsed.真实性 || '对真实性不予认可（对方未出示原件且存在涂改存疑）';
+      const leg = parsed.legality || parsed.合法性 || '对合法性提出异议（取证形式不合法或违反强制性规定）';
+      const rel = parsed.relevance || parsed.关联性 || '对关联性与证明目的不予认可（证据内容无法达到对方证明主张）';
+      const conc = parsed.conclusion || parsed.综合质证结论 || '综上所述，该证据不具备证据三性，依法不能作为定案依据。';
+      container.innerHTML = ` // safe-html: cross examination cards and text
+        <div style="padding: 12px 14px;">
+          <div style="margin-bottom: 12px;">
+            <strong style="font-size: 14px; color: var(--primary-navy);">《证据三性法庭质证意见与反驳论点》</strong>
+            <div style="font-size: 11.5px; color: var(--text-muted); margin-top:2px;">真实性 (Authenticity) · 合法性 (Legality) · 关联性 (Relevance)</div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="border-left: 3px solid #EF4444; background: #FEF2F2; padding: 8px 12px; border-radius: 4px;">
+              <strong style="font-size:12px; color:#991B1B;">1. 真实性异议要点：</strong>
+              <div style="font-size:11.5px; color:#7F1D1D; margin-top:3px; line-height:1.5;">${escapeHtml(String(auth))}</div>
+            </div>
+            <div style="border-left: 3px solid #F59E0B; background: #FFFBEB; padding: 8px 12px; border-radius: 4px;">
+              <strong style="font-size:12px; color:#B45309;">2. 合法性审查要点：</strong>
+              <div style="font-size:11.5px; color:#92400E; margin-top:3px; line-height:1.5;">${escapeHtml(String(leg))}</div>
+            </div>
+            <div style="border-left: 3px solid #3B82F6; background: #EFF6FF; padding: 8px 12px; border-radius: 4px;">
+              <strong style="font-size:12px; color:#1D4ED8;">3. 关联性与证明力穿透：</strong>
+              <div style="font-size:11.5px; color:#1E40AF; margin-top:3px; line-height:1.5;">${escapeHtml(String(rel))}</div>
+            </div>
+            <div style="border: 1px solid #CBD5E1; background: #F8FAFC; padding: 10px 12px; border-radius: 4px; margin-top: 4px;">
+              <strong style="font-size:12px; color:var(--primary-navy);">⚖️ 法庭口头质证标准陈述意见：</strong>
+              <div style="font-size:12px; color:var(--text-primary); margin-top:4px; line-height:1.6; font-family:var(--font-serif);">${escapeHtml(String(conc))}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function runAdversarialAttackUI() {
+      const evName = document.getElementById('ev-attack-name')?.value.trim() || "关键书证";
+      const plaintiffPurpose = document.getElementById('ev-attack-purpose')?.value.trim() || "";
+      const rawSnippet = document.getElementById('ev-attack-snippet')?.value.trim() || "";
+      showToast("正在模拟对方资深争议解决律师发动红队质证攻击...");
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/deep-matrix/adversarial-attack`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            evidence_name: evName,
+            plaintiff_purpose: plaintiffPurpose,
+            raw_snippet: rawSnippet
+          })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => null);
+          throw new Error(err?.detail || ('HTTP ' + resp.status));
+        }
+        const data = await resp.json();
+        renderAdversarialAttackResult(data);
+        switchPhase2RightTab('tools');
+        showToast("红队质证攻击预案已生成");
+      } catch (e) {
+        showToast("红队攻击模拟失败: " + e.message);
+      }
+    }
+
+    function renderAdversarialAttackResult(data) {
+      const container = document.getElementById('ev-tools-result-container');
+      if (!container) return;
+      const attacks = data.attacks || [];
+      const attackCards = attacks.map((atk, idx) => {
+        const qHtml = (atk.drill_questions || []).map(q => `<li style="margin-bottom:3px;">${escapeHtml(q)}</li>`).join('');
+        return `
+          <div style="border: 1px solid #FECACA; background: #FEF2F2; border-radius: 4px; padding: 10px 12px; margin-bottom: 8px;">
+            <strong style="font-size: 12px; color: #991B1B;">${escapeHtml(String(idx + 1))}. ${escapeHtml(atk.dimension || '')}</strong>
+            <div style="font-size: 11.5px; color: #7F1D1D; margin: 4px 0 6px 0; line-height: 1.4;">${escapeHtml(atk.attack_angle || '')}</div>
+            <div style="font-size: 11px; color: #991B1B; font-weight: 600;">对方当庭可能发问提纲：</div>
+            <ul style="padding-left: 18px; font-size: 11.5px; color: #7F1D1D; margin-top: 2px;">${qHtml}</ul>
+          </div>
+        `;
+      }).join('');
+      const remedies = (data.remedy_checklist || []).map(r => `<div style="font-size: 11.5px; color: #065F46; line-height: 1.5;">${escapeHtml(r)}</div>`).join('');
+      container.innerHTML = ` // safe-html: adversarial attack cards and remedy checklist
+        <div style="padding: 12px 14px;">
+          <div style="margin-bottom: 12px;">
+            <strong style="font-size: 14px; color: #991B1B;">《对方代理律师红队攻击预警与防御预案》</strong>
+            <div style="font-size: 11.5px; color: var(--text-muted); margin-top:2px;">提前识别我方核心证据潜在破绽与对方针对性发问要点</div>
+          </div>
+          <div>${attackCards}</div>
+          <div style="border: 1px solid #A7F3D0; background: #ECFDF5; border-radius: 4px; padding: 10px 12px; margin-top: 8px;">
+            <strong style="font-size: 12px; color: #065F46;">🛡️ 我方出庭前补强与防御清单：</strong>
+            <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 3px;">${remedies}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function runPiiScanUI() {
+      const text = document.getElementById('pii-scan-input')?.value.trim();
+      if (!text) {
+        showToast("请输入待扫描脱敏的文本！");
+        return;
+      }
+      showToast("正在执行本地 PII 敏感信息扫描...");
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/settings/pii/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => null);
+          throw new Error(err?.detail || ('HTTP ' + resp.status));
+        }
+        const data = await resp.json();
+        renderPiiScanResult(data);
+        showToast("PII 扫描脱敏完成");
+      } catch (e) {
+        showToast("PII 扫描失败: " + e.message);
+      }
+    }
+
+    function renderPiiScanResult(data) {
+      const box = document.getElementById('pii-scan-result');
+      if (!box) return;
+      box.style.display = 'block';
+      const entities = data.detected_entities || [];
+      const badgeList = entities.map(e => `
+        <span class="badge" style="background:#FEF3C7; color:#B45309; font-size:11px; margin-right:4px; margin-bottom:4px; display:inline-block;">
+          ${escapeHtml(e.entity_type || e.type || 'PII')}: ${escapeHtml(e.text || e.raw || '')}
+        </span>
+      `).join('');
+      box.innerHTML = ` // safe-html: pii scan results, escaped
+        <div style="font-weight: 700; font-size: 12px; color: var(--primary-navy); margin-bottom: 6px;">
+          识别到的敏感实体 (共 ${escapeHtml(String(entities.length))} 处)：
+        </div>
+        <div style="margin-bottom: 10px;">${badgeList || '<span style="color:var(--text-muted); font-size:11px;">未检测到高风险个人隐私实体</span>'}</div>
+        <div style="font-weight: 700; font-size: 12px; color: var(--primary-navy); margin-bottom: 4px;">
+          脱敏后文本 (安全占位符已替换)：
+        </div>
+        <div style="background:#FFF; border:1px solid #E2DFD7; border-radius:4px; padding:8px 10px; font-size:11.5px; font-family:var(--font-mono); white-space:pre-wrap; max-height:140px; overflow-y:auto; line-height:1.5;">${escapeHtml(data.masked_text || '')}</div>
+      `;
+    }
+
+    async function runSingleCitationVerifyUI() {
+      const lawName = (document.getElementById('cg-single-law')?.value || '民法典').trim();
+      const artNum = parseInt(document.getElementById('cg-single-article')?.value || '585', 10);
+      showToast("正在核验单条法条有效性与现行地位...");
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/guard/verify-single`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            law_name: lawName,
+            article_num: isNaN(artNum) ? 1 : artNum
+          })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => null);
+          throw new Error(err?.detail || ('HTTP ' + resp.status));
+        }
+        const data = await resp.json();
+        renderSingleCitationResult(data, 'law');
+        showToast("单条法条核验完成");
+      } catch (e) {
+        showToast("法条核验失败: " + e.message);
+      }
+    }
+
+    async function runSingleCaseNumberVerifyUI() {
+      const caseNo = (document.getElementById('cg-single-caseno')?.value || '').trim();
+      if (!caseNo) {
+        showToast("请输入待核验的裁判案号！");
+        return;
+      }
+      showToast("正在核验裁判案号规范性与真伪...");
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/guard/verify-case-number`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ case_number: caseNo })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => null);
+          throw new Error(err?.detail || ('HTTP ' + resp.status));
+        }
+        const data = await resp.json();
+        renderSingleCitationResult(data, 'case');
+        showToast("案号核验完成");
+      } catch (e) {
+        showToast("案号核验失败: " + e.message);
+      }
+    }
+
+    function renderSingleCitationResult(data, kind) {
+      const box = document.getElementById('cg-single-result');
+      if (!box) return;
+      box.style.display = 'block';
+      if (kind === 'case') {
+        const isValid = data.is_valid || data.is_recognized;
+        const color = isValid ? '#059669' : '#DC2626';
+        const bg = isValid ? '#ECFDF5' : '#FEF2F2';
+        box.innerHTML = ` // safe-html: case number verification details
+          <div style="border-left: 4px solid ${escapeHtml(color)}; background: ${escapeHtml(bg)}; padding: 10px 12px; border-radius: 4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong style="font-size:13px; color:var(--primary-navy);">${escapeHtml(data.case_number || '')}</strong>
+              <span class="badge" style="background:${escapeHtml(bg)}; color:${escapeHtml(color)}; font-weight:700;">${escapeHtml(isValid ? '✓ 案号结构规范' : '⚠️ 格式或审级瑕疵')}</span>
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary); margin-top:6px; line-height:1.5;">
+              审判法院：${escapeHtml(data.court || '未指定')} · 审级类型：${escapeHtml(data.case_type || '民事')} · 年份：${escapeHtml(String(data.year || ''))}
+            </div>
+            ${data.risk_tip ? `<div style="font-size:11.5px; color:#DC2626; margin-top:4px;">风险提示：${escapeHtml(data.risk_tip)}</div>` : ''}
+          </div>
+        `;
+      } else {
+        const isValid = data.is_valid;
+        const color = isValid ? '#059669' : '#DC2626';
+        const bg = isValid ? '#ECFDF5' : '#FEF2F2';
+        box.innerHTML = ` // safe-html: statute citation verification details
+          <div style="border-left: 4px solid ${escapeHtml(color)}; background: ${escapeHtml(bg)}; padding: 10px 12px; border-radius: 4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong style="font-size:13px; color:var(--primary-navy);">《${escapeHtml(data.statute_full_name || data.law_name || '')}》第${escapeHtml(String(data.article_num || ''))}条 (${escapeHtml(data.article_no_cn || '')})</strong>
+              <span class="badge" style="background:${escapeHtml(bg)}; color:${escapeHtml(color)}; font-weight:700;">${escapeHtml(isValid ? '✓ 现行有效法典条文' : '⚠️ 废止旧法或条号越界')}</span>
+            </div>
+            <div style="font-size:11.5px; color:var(--text-primary); margin-top:6px; line-height:1.6; background:#FFF; padding:8px 10px; border-radius:4px; border:1px solid #E2DFD7;">
+              ${escapeHtml(data.article_content || '未检索到法条正文')}
+            </div>
+            ${data.risk_tip ? `<div style="font-size:11.5px; color:#DC2626; margin-top:6px;">执业风险防范：${escapeHtml(data.risk_tip)}</div>` : ''}
+            ${data.replacement_suggestion ? `<div style="font-size:11.5px; color:#059669; margin-top:4px;">民法典现行替代条文：${escapeHtml(data.replacement_suggestion)}</div>` : ''}
+          </div>
+        `;
+      }
+    }
+
+    async function fetchAndRenderVaultDeadlines() {
+      const container = document.getElementById('vault-deadlines-list');
+      if (!container) return;
+      container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:12px;">正在加载案件期限日历...</div>`;
+      try {
+        const url = activeMatterId
+          ? `${API_BASE}/api/v1/vault/deadlines?matter_id=${activeMatterId}`
+          : `${API_BASE}/api/v1/vault/deadlines`;
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          throw new Error('HTTP ' + resp.status);
+        }
+        const res = await resp.json();
+        const list = res.deadlines || [];
+        renderVaultDeadlinesList(list);
+      } catch (e) {
+        container.innerHTML = ` // safe-html: error display
+          <div style="text-align:center; padding:20px; color:var(--status-warn); font-size:12px;">加载期限日历失败: ${escapeHtml(e.message)}</div>
+        `;
+      }
+    }
+
+    function renderVaultDeadlinesList(list) {
+      const container = document.getElementById('vault-deadlines-list');
+      if (!container) return;
+      if (!list.length) {
+        container.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:12px;">当前案件空间暂无期限记录。可在实务精算各计算器中点击【加入案件期限】或点击右上角【手工录入期限】。</div>`;
+        return;
+      }
+      const today = new Date().toISOString().substring(0, 10);
+      const kindMap = {
+        'statute_limitation': { label: '诉讼时效', bg: '#FEF3C7', color: '#B45309' },
+        'appeal': { label: '上诉期', bg: '#DBEAFE', color: '#1E40AF' },
+        'preservation_renewal': { label: '续行保全', bg: '#FEE2E2', color: '#991B1B' },
+        'enforcement_application': { label: '执行申请', bg: '#E0E7FF', color: '#3730A3' },
+        'hearing': { label: '开庭审理', bg: '#F3E8FF', color: '#6B21A8' },
+        'custom': { label: '其他期限', bg: '#F3F4F6', color: '#374151' }
+      };
+      container.innerHTML = list.map(item => { // safe-html: deadline card with escaped properties
+        const kInfo = kindMap[item.kind] || { label: item.kind, bg: '#F3F4F6', color: '#374151' };
+        const due = (item.due_date || '').substring(0, 10);
+        let daysLeft = null;
+        let isUrgent = false;
+        if (due) {
+          const diffMs = new Date(due).getTime() - new Date(today).getTime();
+          daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+          if (daysLeft <= 7) isUrgent = true;
+        }
+        const daysLabel = daysLeft !== null
+          ? (daysLeft < 0 ? `已逾期 ${Math.abs(daysLeft)} 天` : `剩余 ${daysLeft} 天`)
+          : '';
+        const borderStyle = isUrgent
+          ? 'border-left: 4px solid #EF4444; background: #FEF2F2;'
+          : 'border-left: 4px solid var(--primary-navy); background: #FAF9F6;';
+        const countdownBadge = isUrgent
+          ? `<span class="badge" style="background: #FEE2E2; color: #DC2626; font-weight: 700; border: 1px solid #FCA5A5;">⚠️ ${escapeHtml(daysLabel)}</span>`
+          : `<span class="badge" style="background: #E0E7FF; color: #3730A3; font-weight: 600;">${escapeHtml(daysLabel)}</span>`;
+        return `
+          <div style="border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 10px 14px; ${borderStyle}">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge" style="background: ${escapeHtml(kInfo.bg)}; color: ${escapeHtml(kInfo.color)}; font-weight: 600; font-size: 11px;">${escapeHtml(kInfo.label)}</span>
+                <strong style="font-size: 13px; color: var(--primary-navy); font-family: var(--font-mono);">${escapeHtml(item.due_date)}</strong>
+                ${countdownBadge}
+              </div>
+              <span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(item.created_at ? item.created_at.substring(0, 10) : '')}</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
+              ${escapeHtml(item.source ? '来源：' + item.source : '')}
+              ${escapeHtml(item.note ? ' · 备忘：' + item.note : '')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+
+    let lastCalcDeadline = null;
+    let lastAppealDeadline = null;
+
+    function addCurrentCalcDeadlineToVault() {
+      if (!lastCalcDeadline) {
+        showToast("暂无计算完成的期限结果！");
+        return;
+      }
+      addCalculatorDeadlineToVault(
+        lastCalcDeadline.kind,
+        lastCalcDeadline.dueDate,
+        lastCalcDeadline.source,
+        lastCalcDeadline.note
+      );
+    }
+
+    function addAppealDeadlineToVault() {
+      if (!lastAppealDeadline) {
+        showToast("上诉期截止日未计算，请先输入送达日期！");
+        return;
+      }
+      addCalculatorDeadlineToVault('appeal', lastAppealDeadline, '上诉期计算器', '一审判决送达后上诉期');
+    }
+
+    async function addCalculatorDeadlineToVault(kind, dueDate, sourceName, note) {
+      if (!activeMatterId) {
+        showToast("请先在 07 案件空间选择或激活一个案件！");
+        return;
+      }
+      if (!dueDate || dueDate.includes("待填写")) {
+        showToast("截止日期尚未计算生成，无法加入期限！");
+        return;
+      }
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/vault/deadlines`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            matter_id: activeMatterId,
+            kind: kind,
+            due_date: dueDate,
+            source: sourceName,
+            note: note || ""
+          })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => null);
+          throw new Error(err?.detail || ('HTTP ' + resp.status));
+        }
+        const res = await resp.json();
+        showToast(`已成功将【${sourceName}】(${dueDate}) 加入当前案件期限日历！`);
+      } catch (e) {
+        showToast("加入案件期限失败: " + e.message);
+      }
+    }
+
+    function openAddDeadlineModal() {
+      const modal = document.getElementById('modal-add-deadline');
+      if (modal) modal.classList.add('active');
+    }
+
+    function closeAddDeadlineModal() {
+      const modal = document.getElementById('modal-add-deadline');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function handleAddDeadlineBackdropClick(e) {
+      if (e.target.id === 'modal-add-deadline') closeAddDeadlineModal();
+    }
+
+    function onDeadlineKindChange() {
+      const kind = document.getElementById('new-deadline-kind')?.value;
+      const tip = document.getElementById('deadline-kind-tip');
+      if (tip) {
+        tip.style.display = (kind === 'enforcement_application') ? 'block' : 'none';
+      }
+    }
+
+    async function submitManualDeadline() {
+      if (!activeMatterId) {
+        showToast("请先在上方切换或选择一个案件空间！");
+        return;
+      }
+      const kind = document.getElementById('new-deadline-kind')?.value || 'custom';
+      const date = document.getElementById('new-deadline-date')?.value;
+      const source = document.getElementById('new-deadline-source')?.value.trim() || '律师手工录入';
+      const note = document.getElementById('new-deadline-note')?.value.trim() || '';
+      if (!date) {
+        showToast("请选择截止日期！");
+        return;
+      }
+      await addCalculatorDeadlineToVault(kind, date, source, note);
+      closeAddDeadlineModal();
+      await fetchAndRenderVaultDeadlines();
+    }
+
+    // =========================================================================
     // 初始化运行
     // =========================================================================
     window.addEventListener('DOMContentLoaded', () => {
       initDate();
+      setupVaultDnD();
       if (typeof renderGlobalCaseBar === 'function') renderGlobalCaseBar();
       if (typeof updateTabContextDisplays === 'function') updateTabContextDisplays();
       if (typeof initMatterVault === 'function') initMatterVault();
@@ -12647,6 +13632,9 @@
           <button type="button" class="segmented-btn" id="btn-mode-rule" onclick="selectEngineMode('rule_engine')">
             专家规则兜底 (无AI依赖)
           </button>
+          <button type="button" class="segmented-btn" id="btn-mode-pii" onclick="selectEngineMode('pii')">
+            PII 隐私脱敏扫描
+          </button>
         </div>
 
         <!-- 选项 A：云端配置面板 -->
@@ -12728,6 +13716,23 @@
             • 诉讼费、保全费、LPR 历期多段分段计息、劳动仲裁 N/N+1/2N 均通过内置精确数学公式计算；<br/>
             • 起诉状、证据目录、委托协议根据内置司法规范模板生成，百分之百确定性、零法条幻觉。
           </div>
+        </div>
+
+        <!-- 选项 D：PII 隐私敏感信息扫描与脱敏测试面板 -->
+        <div class="cfg-pane" id="pane-pii">
+          <div class="cfg-tip-box">
+            <strong>本地 PII 隐私脱敏与还原网关：</strong>依据《个人信息保护法》与律师执业规范，在本地通过正则与实体分析识别姓名、身份证、手机号、银行卡号并安全脱敏。
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label">待扫描与脱敏文本</label>
+            <textarea id="pii-scan-input" rows="4" class="quick-input" placeholder="输入含敏感信息的文书草稿，例：原告张三（身份证110101199003072375，手机13800138000）向被告李四转账至工行卡6222021000123456789..."></textarea>
+          </div>
+          <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+            <button type="button" class="btn btn-amber btn-sm" onclick="runPiiScanUI()">
+              🔍 执行 PII 本地扫描与脱敏
+            </button>
+          </div>
+          <div id="pii-scan-result" style="display:none; background:#FAF9F6; border:1px solid #EAE6DD; border-radius:4px; padding:10px;"></div>
         </div>
 
         <!-- 测试连通性结果反馈区 -->
@@ -12951,10 +13956,11 @@
           </div>
         </div>
 
-        <!-- 切换视图：体检报告明细清单 vs 自由文本即时反查 -->
-        <div class="segmented-control" style="max-width: 360px; margin-bottom: 14px;">
+        <!-- 切换视图：体检报告明细清单 vs 自由文本即时反查 vs 单条核验 -->
+        <div class="segmented-control" style="max-width: 520px; margin-bottom: 14px;">
           <button type="button" class="seg-btn active" id="tab-btn-cg-items" onclick="switchCitationGuardTab('items')">📋 当前文书引注体检条目</button>
           <button type="button" class="seg-btn" id="tab-btn-cg-tester" onclick="switchCitationGuardTab('tester')">⚡ 自由文书防幻觉检测器</button>
+          <button type="button" class="seg-btn" id="tab-btn-cg-single" onclick="switchCitationGuardTab('single')">🔍 单条法条/案号核验</button>
         </div>
 
         <!-- 视图 1：体检条目列表 -->
@@ -12989,6 +13995,47 @@
             <!-- 渲染检测反馈 -->
           </div>
         </div>
+
+        <!-- 视图 3：单条法条与案号即时核验 -->
+        <div id="view-cg-single" style="display: none;">
+          <div class="surface-card" style="margin-bottom: 12px; background: #FAF9F6;">
+            <div style="font-weight: 700; font-size: 12.5px; color: var(--primary-navy); margin-bottom: 8px;">
+              法条真实性与现行有效性探测 (verify-single)
+            </div>
+            <div class="form-row" style="margin-bottom: 8px;">
+              <div class="form-group" style="flex: 2; margin-bottom: 0;">
+                <label class="form-label">法律名称</label>
+                <input type="text" id="cg-single-law" class="quick-input" placeholder="例: 民法典 或 中华人民共和国民法典" value="民法典" />
+              </div>
+              <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label class="form-label">条号 (数字)</label>
+                <input type="number" id="cg-single-article" class="quick-input" placeholder="例: 585" value="585" />
+              </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end;">
+              <button type="button" class="btn btn-sm" onclick="runSingleCitationVerifyUI()" style="background: var(--primary-navy);">
+                核验单个法条
+              </button>
+            </div>
+          </div>
+
+          <div class="surface-card" style="margin-bottom: 12px; background: #FAF9F6;">
+            <div style="font-weight: 700; font-size: 12.5px; color: var(--primary-navy); margin-bottom: 8px;">
+              裁判文书案号真伪与标准规范核验
+            </div>
+            <div class="form-group" style="margin-bottom: 8px;">
+              <label class="form-label">裁判文书案号</label>
+              <input type="text" id="cg-single-caseno" class="quick-input" placeholder="例: （2023）最高法民终123号 或 (2021)京0108民初1892号" value="（2023）最高法民终123号" />
+            </div>
+            <div style="display: flex; justify-content: flex-end;">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="runSingleCaseNumberVerifyUI()">
+                核验裁判案号
+              </button>
+            </div>
+          </div>
+
+          <div id="cg-single-result" style="display: none; background: #FFF; border: 1px solid #EAE6DD; border-radius: 4px; padding: 12px;"></div>
+        </div>
       </div>
 
       <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
@@ -13019,9 +14066,14 @@
       </div>
 
       <div class="modal-body" style="max-height: 75vh; overflow-y: auto; padding: 18px 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-          <div style="display: flex; gap: 8px; align-items: center; flex: 1; max-width: 480px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; gap: 8px; align-items: center; flex: 1; max-width: 520px;">
             <input type="text" id="vault-search-input" class="quick-input" placeholder="搜索案件名称、案号或法定案由..." oninput="filterMattersList()">
+            <select id="vault-status-filter" class="quick-input" style="width: 130px;" onchange="filterMattersList()">
+              <option value="all">全部状态</option>
+              <option value="active" selected>在办 (Active)</option>
+              <option value="archived">已归档 (Archived)</option>
+            </select>
           </div>
           <div style="display: flex; gap: 8px; align-items: center;">
             <button type="button" class="btn btn-secondary btn-sm" id="btn-clear-demo-data" onclick="clearVaultDemoData()" style="display:none; color:#D32F2F; border-color:#FFCDD2;">
@@ -13126,6 +14178,55 @@
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
           <button type="button" class="btn btn-secondary btn-sm" onclick="closeMountDocModal()">取消</button>
           <button type="button" class="btn btn-sm" onclick="submitMountDocument()">确认挂载入空间</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       手工录入案件期限模态框 (Add Deadline Modal)
+       ======================================================================== -->
+  <div class="modal-overlay" id="modal-add-deadline" onclick="handleAddDeadlineBackdropClick(event)">
+    <div class="modal-dialog" style="max-width: 540px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-title">＋ 录入案件诉讼期限与执业红线</div>
+          <div class="modal-subtitle">记录诉讼时效、上诉期、续行保全、执行申请、开庭日期等重要节点</div>
+        </div>
+        <button type="button" class="modal-close-btn" onclick="closeAddDeadlineModal()" title="关闭">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body" style="padding: 18px 20px;">
+        <div class="form-group">
+          <label class="form-label">期限种类 *</label>
+          <select id="new-deadline-kind" class="quick-input" onchange="onDeadlineKindChange()">
+            <option value="statute_limitation">诉讼时效届满日 (statute_limitation)</option>
+            <option value="appeal">上诉期截止日 (appeal)</option>
+            <option value="preservation_renewal">续行财产保全申请截止日 (preservation_renewal)</option>
+            <option value="enforcement_application">执行申请期限截止日 (enforcement_application)</option>
+            <option value="hearing">开庭审理日 (hearing)</option>
+            <option value="custom">其他执业备忘期限 (custom)</option>
+          </select>
+          <div id="deadline-kind-tip" style="font-size: 11px; color: var(--accent-amber); margin-top: 4px; display: none;">
+            提示：执行申请期限的计算口径 TODO(律师核实)，当前仅支持手工录入，不提供自动计算。
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">截止日期 (ISO 格式 YYYY-MM-DD) *</label>
+          <input type="date" id="new-deadline-date" class="quick-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">来源 / 依据说明</label>
+          <input type="text" id="new-deadline-source" class="quick-input" placeholder="例: 一审民事判决书送达后第15日、保全裁定书等">
+        </div>
+        <div class="form-group">
+          <label class="form-label">律师备忘与提醒要点</label>
+          <textarea id="new-deadline-note" rows="3" class="quick-input" placeholder="备注顺延规则、需要提前提交的文件等..."></textarea>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeAddDeadlineModal()">取消</button>
+          <button type="button" class="btn btn-sm" onclick="submitManualDeadline()" style="background: var(--primary-navy);">确认加入期限日历</button>
         </div>
       </div>
     </div>

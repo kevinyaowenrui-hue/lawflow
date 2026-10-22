@@ -11,6 +11,7 @@ import os
 import re
 import time
 import difflib
+import copy
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -138,8 +139,9 @@ def find_best_matching_span(full_text: str, target_clause: str) -> Optional[Tupl
     1. 精确子串包含
     2. 大小写不敏感包含
     3. 空白与标点符号正则柔性匹配 (忽略中英文引号、连字符差异及不换行空格)
-    4. 全段 Levenshtein 模糊比对 (ratio >= 0.72)
+    4. 剥离条款前缀编号或末尾标点匹配
     5. 句子级滑动窗口局部比对
+    6. 全段 Levenshtein 模糊比对
     """
     if not full_text or not target_clause:
         return None
@@ -162,24 +164,36 @@ def find_best_matching_span(full_text: str, target_clause: str) -> Optional[Tupl
     try:
         collapsed_target = re.sub(r'\s+', ' ', clean_target)
         escaped = re.escape(collapsed_target)
-        pattern_str = re.sub(r'\\ ', r'\\s+', escaped)
-        pattern_str = re.sub(r'\\-', r'[\-—–―]', pattern_str)
+        pattern_str = re.sub(r'\\ ', r'\s*', escaped)
+        pattern_str = re.sub(r'\\-', r'[\-—–―_]', pattern_str)
         pattern_str = re.sub(r'\\"', r'["“”„«»]', pattern_str)
         pattern_str = re.sub(r"\\'", r"['‘’`]", pattern_str)
+        pattern_str = re.sub(r'\\\(|\\（', r'[\(（]', pattern_str)
+        pattern_str = re.sub(r'\\\)|\\）', r'[\)）]', pattern_str)
+        pattern_str = re.sub(r'\\:|\\：', r'[:：]', pattern_str)
+        pattern_str = re.sub(r'\\,|\\，|\\、', r'[,，、]', pattern_str)
+        pattern_str = re.sub(r'\\\.|\\。', r'[\.。]', pattern_str)
         m = re.search(pattern_str, full_text, flags=re.IGNORECASE)
         if m:
             return (m.start(), m.end())
     except Exception:
         pass
 
-    # 4. 句子级滑动窗口 (处理多句大段中嵌套子条款)
+    # 4. 剥离条款可能带有的前缀编号（如第X条、1.、（1）等）或末尾句号后匹配
+    sub_clean = re.sub(r'^(?:第[0-9一二三四五六七八九十百]+条|\d+[\.\、\s]|\([0-9一二三四五六七八九十]+\)|（[0-9一二三四五六七八九十]+）)\s*', '', clean_target).strip()
+    if sub_clean and len(sub_clean) >= 4:
+        idx_sub = full_text.find(sub_clean)
+        if idx_sub != -1:
+            return (idx_sub, idx_sub + len(sub_clean))
+
+    # 5. 句子级滑动窗口 (处理多句大段中嵌套子条款)
     sentence_spans = []
     for m in re.finditer(r'[^。；;\.\n]+[。；;\.\n]?', full_text):
         if m.group().strip():
             sentence_spans.append((m.start(), m.end(), m.group()))
     
     norm_target = normalize_text_for_matching(clean_target)
-    if len(sentence_spans) > 1:
+    if len(sentence_spans) >= 1:
         best_ratio = 0.0
         best_span = None
         for w_len in range(1, min(len(sentence_spans) + 1, 6)):
@@ -189,20 +203,21 @@ def find_best_matching_span(full_text: str, target_clause: str) -> Optional[Tupl
                 sub_str = full_text[s_start:s_end]
                 norm_sub = normalize_text_for_matching(sub_str)
                 r = difflib.SequenceMatcher(None, norm_sub.lower(), norm_target.lower()).ratio()
-                if r > best_ratio and r >= 0.72:
+                if r > best_ratio and r >= 0.70:
                     best_ratio = r
                     best_span = (s_start, s_end)
         if best_span:
             return best_span
 
-    # 5. 全段极高相似度比对 (仅当整段与目标条款长度相当且相似度极高时)
+    # 6. 全段极高相似度比对
     norm_full = normalize_text_for_matching(full_text)
     len_diff = abs(len(norm_full) - len(norm_target))
     ratio = difflib.SequenceMatcher(None, norm_full.lower(), norm_target.lower()).ratio()
-    if ratio >= 0.88 or (ratio >= 0.75 and len_diff < 30):
+    if ratio >= 0.85 or (ratio >= 0.70 and len_diff < 30):
         return (0, len(full_text))
 
     return None
+
 
 
 def add_diff_to_docx_paragraph(paragraph, orig_text: str, rev_text: str, author: str = "LawFlow 智能审查建议"):
@@ -551,6 +566,94 @@ def build_redline_contract_docx(
     return output_path
 
 
+def refine_diff_opcodes(opcodes, a: str, b: str):
+    """
+    后处理 SequenceMatcher opcodes：
+    避免出现 "~~三~~十五" 这种将 "三十" 与 "十五" 中间字 "十" 当作不变而导致的残缺交错，
+    当短字符 (<= 2 字) 夹在修改操作之间时，合并为整词替换。
+    """
+    merged = []
+    i = 0
+    while i < len(opcodes):
+        tag, i1, i2, j1, j2 = opcodes[i]
+        if tag == 'equal':
+            eq_len = i2 - i1
+            if eq_len <= 2 and i > 0 and i + 1 < len(opcodes):
+                prev_tag = merged[-1][0]
+                next_tag = opcodes[i + 1][0]
+                if prev_tag in ('delete', 'replace', 'insert') and next_tag in ('delete', 'replace', 'insert'):
+                    p_tag, p_i1, p_i2, p_j1, p_j2 = merged.pop()
+                    n_tag, n_i1, n_i2, n_j1, n_j2 = opcodes[i + 1]
+                    merged.append(('replace', p_i1, n_i2, p_j1, n_j2))
+                    i += 2
+                    continue
+        merged.append((tag, i1, i2, j1, j2))
+        i += 1
+    return merged
+
+def _make_del_element(text: str, author: str, run_id: int, rPr_template=None) -> OxmlElement:
+    dell = OxmlElement('w:del')
+    dell.set(qn('w:id'), str(run_id))
+    dell.set(qn('w:author'), author)
+    dell.set(qn('w:date'), datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
+    r_del = OxmlElement('w:r')
+    if rPr_template is not None:
+        rPr = copy.deepcopy(rPr_template)
+    else:
+        rPr = OxmlElement('w:rPr')
+    strike = OxmlElement('w:strike')
+    color = OxmlElement('w:color')
+    color.set(qn('w:val'), 'E11D48')
+    rPr.append(strike)
+    rPr.append(color)
+    r_del.append(rPr)
+    t_del = OxmlElement('w:delText')
+    t_del.text = text
+    if text.startswith(" ") or text.endswith(" "):
+        t_del.set(qn('xml:space'), 'preserve')
+    r_del.append(t_del)
+    dell.append(r_del)
+    return dell
+
+
+def _make_ins_element(text: str, author: str, run_id: int, rPr_template=None) -> OxmlElement:
+    ins = OxmlElement('w:ins')
+    ins.set(qn('w:id'), str(run_id))
+    ins.set(qn('w:author'), author)
+    ins.set(qn('w:date'), datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
+    r_ins = OxmlElement('w:r')
+    if rPr_template is not None:
+        rPr = copy.deepcopy(rPr_template)
+    else:
+        rPr = OxmlElement('w:rPr')
+    u = OxmlElement('w:u')
+    u.set(qn('w:val'), 'single')
+    color = OxmlElement('w:color')
+    color.set(qn('w:val'), '0284C7')
+    rPr.append(u)
+    rPr.append(color)
+    r_ins.append(rPr)
+    t_ins = OxmlElement('w:t')
+    t_ins.text = text
+    if text.startswith(" ") or text.endswith(" "):
+        t_ins.set(qn('xml:space'), 'preserve')
+    r_ins.append(t_ins)
+    ins.append(r_ins)
+    return ins
+
+
+def _make_run_element(text: str, rPr_template=None) -> OxmlElement:
+    r = OxmlElement('w:r')
+    if rPr_template is not None:
+        r.append(copy.deepcopy(rPr_template))
+    t = OxmlElement('w:t')
+    t.text = text
+    if text.startswith(" ") or text.endswith(" "):
+        t.set(qn('xml:space'), 'preserve')
+    r.append(t)
+    return r
+
+
 def apply_in_place_docx_redline(
     source_docx_path: str,
     clause_reviews: List[Dict[str, Any]],
@@ -559,18 +662,41 @@ def apply_in_place_docx_redline(
     """
     非诉律师实务级：直接在客户发来的原始 .docx 合同中原位注入 <w:ins> 和 <w:del> 修订模式，
     100% 完整保留客户合同原件的排版、页眉页脚、封面、样式与表格结构。
-    采用模糊匹配与非破坏性局部切片切入，充分杜绝误删段落其余条款或因连字符空格流产。
+    按段落合并 run 后的文本进行匹配，匹配成功后在对应 run 位置插入 <w:del>/<w:ins>；
+    匹配不到的条款放入 unmatched_clauses 返回，不静默忽略。
     """
     doc = docx.Document(source_docx_path)
     enable_track_revisions_in_doc(doc)
 
     injected_indices = set()
     unmatched_clauses = []
+    total_revisions_count = 0
+    run_id_counter = int(time.time() % 1000000)
 
     def process_p(p):
-        raw_text = p.text
+        nonlocal total_revisions_count, run_id_counter
+        if not p.runs and p.text:
+            p.add_run(p.text)
+
+        raw_text = "".join(r.text for r in p.runs)
         if not raw_text.strip():
             return
+
+        run_ranges = []
+        curr = 0
+        for r in p.runs:
+            rlen = len(r.text)
+            rPr = r._r.rPr if hasattr(r._r, "rPr") else None
+            run_ranges.append((curr, curr + rlen, rPr))
+            curr += rlen
+
+        def get_rPr_at_pos(pos: int):
+            for r_start, r_end, rPr in run_ranges:
+                if r_start <= pos < r_end:
+                    return rPr
+            if run_ranges:
+                return run_ranges[-1][2]
+            return None
 
         for idx, item in enumerate(clause_reviews):
             if idx in injected_indices:
@@ -581,28 +707,97 @@ def apply_in_place_docx_redline(
                 continue
 
             span = find_best_matching_span(raw_text, orig)
-            if span:
-                start_i, end_i = span
-                is_en = is_predominantly_english(raw_text)
-                font_name = "Times New Roman" if is_en else "仿宋"
+            if not span:
+                continue
 
-                # 清空原纯文字，精准重构段落切片
-                p.text = ""
-                # 1. 前置未受影响文字
-                if start_i > 0:
-                    r_pre = p.add_run(raw_text[:start_i])
-                    r_pre.font.size = Pt(10.5)
-                    r_pre.font.name = font_name
-                # 2. 目标条款局部注入修订
-                add_diff_to_docx_paragraph(p, raw_text[start_i:end_i], sugg)
-                # 3. 后置未受影响文字
-                if end_i < len(raw_text):
-                    r_post = p.add_run(raw_text[end_i:])
-                    r_post.font.size = Pt(10.5)
-                    r_post.font.name = font_name
+            start_i, end_i = span
+            matched_orig = raw_text[start_i:end_i]
 
-                injected_indices.add(idx)
-                break
+            sm = difflib.SequenceMatcher(None, matched_orig, sugg)
+            author = "LawFlow 智能审查建议"
+            new_elements = []
+            local_revisions = 0
+
+            # 1. 前置未受影响文字
+            if start_i > 0:
+                for r_start, r_end, rPr in run_ranges:
+                    s_a = max(0, r_start)
+                    s_b = min(start_i, r_end)
+                    if s_b > s_a:
+                        new_elements.append(_make_run_element(raw_text[s_a:s_b], rPr))
+
+            # 2. 目标条款局部注入修订
+            for tag, i1, i2, j1, j2 in refine_diff_opcodes(sm.get_opcodes(), matched_orig, sugg):
+                if tag == 'equal':
+                    chunk_start = start_i + i1
+                    chunk_end = start_i + i2
+                    for r_start, r_end, rPr in run_ranges:
+                        s_a = max(chunk_start, r_start)
+                        s_b = min(chunk_end, r_end)
+                        if s_b > s_a:
+                            new_elements.append(_make_run_element(raw_text[s_a:s_b], rPr))
+                elif tag == 'delete':
+                    chunk_start = start_i + i1
+                    chunk_end = start_i + i2
+                    for r_start, r_end, rPr in run_ranges:
+                        s_a = max(chunk_start, r_start)
+                        s_b = min(chunk_end, r_end)
+                        if s_b > s_a:
+                            new_elements.append(_make_del_element(raw_text[s_a:s_b], author, run_id_counter, rPr))
+                            run_id_counter += 1
+                            local_revisions += 1
+                elif tag == 'insert':
+                    ins_sub = sugg[j1:j2]
+                    pos = start_i + i1
+                    rPr = get_rPr_at_pos(pos)
+                    new_elements.append(_make_ins_element(ins_sub, author, run_id_counter, rPr))
+                    run_id_counter += 1
+                    local_revisions += 1
+                elif tag == 'replace':
+                    chunk_start = start_i + i1
+                    chunk_end = start_i + i2
+                    for r_start, r_end, rPr in run_ranges:
+                        s_a = max(chunk_start, r_start)
+                        s_b = min(chunk_end, r_end)
+                        if s_b > s_a:
+                            new_elements.append(_make_del_element(raw_text[s_a:s_b], author, run_id_counter, rPr))
+                            run_id_counter += 1
+                            local_revisions += 1
+                    ins_sub = sugg[j1:j2]
+                    pos = start_i + i1
+                    rPr = get_rPr_at_pos(pos)
+                    new_elements.append(_make_ins_element(ins_sub, author, run_id_counter, rPr))
+                    run_id_counter += 1
+                    local_revisions += 1
+
+            # 3. 后置未受影响文字
+            if end_i < len(raw_text):
+                for r_start, r_end, rPr in run_ranges:
+                    s_a = max(end_i, r_start)
+                    s_b = min(len(raw_text), r_end)
+                    if s_b > s_a:
+                        new_elements.append(_make_run_element(raw_text[s_a:s_b], rPr))
+
+            # 替换 p._p 中的 runs，同时完整保留 <w:pPr> 与样式
+            first_r = None
+            for child in list(p._p):
+                if child.tag.endswith('}r') or child.tag.endswith('}del') or child.tag.endswith('}ins'):
+                    first_r = child
+                    break
+
+            if first_r is not None:
+                for elem in new_elements:
+                    first_r.addprevious(elem)
+                for child in list(p._p):
+                    if (child.tag.endswith('}r') or child.tag.endswith('}del') or child.tag.endswith('}ins')) and child not in new_elements:
+                        p._p.remove(child)
+            else:
+                for elem in new_elements:
+                    p._p.append(elem)
+
+            injected_indices.add(idx)
+            total_revisions_count += local_revisions
+            break
 
     for p in doc.paragraphs:
         process_p(p)
@@ -623,7 +818,7 @@ def apply_in_place_docx_redline(
         "output_path": output_path,
         "total_clauses": len(clause_reviews),
         "injected_clauses": len(injected_indices),
+        "revisions_count": total_revisions_count,
         "unmatched_clauses": unmatched_clauses
     }
     return RedlineResult(output_path, stats=stats)
-

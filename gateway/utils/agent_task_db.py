@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -64,6 +65,19 @@ def init_agent_task_db():
         );
         """)
 
+        # 迁移自由文本 due_date：非 ISO 日期保留在 description/note 中并把 due_date 置空
+        cursor.execute("SELECT task_id, due_date, description FROM agent_tasks WHERE due_date IS NOT NULL AND due_date != ''")
+        rows = cursor.fetchall()
+        iso_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2})?)?$')
+        for r in rows:
+            ddate = r["due_date"]
+            if not iso_pattern.match(ddate):
+                tid = r["task_id"]
+                desc = r["description"] or ""
+                new_desc = f"{desc} [原截止时间: {ddate}]".strip() if desc else f"[原截止时间: {ddate}]"
+                cursor.execute("UPDATE agent_tasks SET due_date = NULL, description = ? WHERE task_id = ?", (new_desc, tid))
+        conn.commit()
+
     if _should_seed_demo():
         seed_demo_agent_tasks()
 
@@ -83,35 +97,35 @@ def seed_demo_agent_tasks() -> int:
                 f"task_seed_{uuid.uuid4().hex[:8]}", "default",
                 "【演示】在 02 模块生成起诉状、保全申请书与委托手续全套公文",
                 "【演示】案由为民间借贷纠纷示意。细节 TODO(律师核实)。",
-                "立案", "high", "in_progress", "今日 18:00", "phase1_litigation",
+                "立案", "high", "in_progress", "2026-10-22 18:00:00", "phase1_litigation",
                 json.dumps({"target_tab": "tab-litigation"}), now_str, now_str
             ),
             (
                 f"task_seed_{uuid.uuid4().hex[:8]}", "default",
                 "【演示】核算逾期 LPR 利息并锁定证据链",
                 "【演示】按一年期 LPR 示意计算。细节 TODO(律师核实)。",
-                "精算", "high", "done", "已完成", "phase1_calc",
+                "精算", "high", "done", "2026-10-21 17:00:00", "phase1_calc",
                 json.dumps({"target_tab": "tab-calc"}), now_str, now_str
             ),
             (
                 f"task_seed_{uuid.uuid4().hex[:8]}", "default",
                 "【演示】清洗借条与网银电子转账凭证并生成带三性核验的证据清单",
                 "【演示】核对转账回单示意。细节 TODO(律师核实)。",
-                "证据", "medium", "todo", "明日 12:00", "phase2_evidence",
+                "证据", "medium", "todo", "2026-10-23 12:00:00", "phase2_evidence",
                 json.dumps({"target_tab": "tab-evidence"}), now_str, now_str
             ),
             (
                 f"task_seed_{uuid.uuid4().hex[:8]}", "default",
                 "【演示】穿透检索《民法典》第667条及民间借贷司法解释关于借期利息口径",
                 "【演示】排查约定利息与逾期利息口径示意。细节 TODO(律师核实)。",
-                "检索", "medium", "todo", "本周内", "phase5_statutes",
+                "检索", "medium", "todo", "2026-10-25 23:59:59", "phase5_statutes",
                 json.dumps({"target_tab": "tab-statutes"}), now_str, now_str
             ),
             (
                 f"task_seed_{uuid.uuid4().hex[:8]}", "default",
                 "【演示】在 05 模块进行七维深度要件推演与被告抗辩质证预案编制",
                 "【演示】推演抗辩示意。细节 TODO(律师核实)。",
-                "庭审", "low", "todo", "开庭前3日", "phase4_deep_matrix",
+                "庭审", "low", "todo", "2026-11-10 09:00:00", "phase4_deep_matrix",
                 json.dumps({"target_tab": "tab-deep-matrix"}), now_str, now_str
             )
         ]
@@ -195,7 +209,7 @@ def create_agent_task(task_data: Dict[str, Any]) -> Dict[str, Any]:
             task_data.get("stage", "立案"),
             task_data.get("priority", "medium"),
             task_data.get("status", "todo"),
-            task_data.get("due_date", "待定"),
+            task_data.get("due_date"),
             task_data.get("linked_module", "phase1_litigation"),
             action_payload,
             now_str,

@@ -280,9 +280,16 @@ async def health_check():
     model_ready = bool(health.get("model_ready"))
     if llm_mode == "rule_fallback":
         model_ready = False
+    try:
+        from gateway.utils.ocr_engine import get_easyocr_reader
+        ocr_available = get_easyocr_reader() is not None
+    except Exception:
+        ocr_available = False
+
     return {
         "status": "healthy",
         "app": "LawFlow",
+        "ocr_available": ocr_available,
         "llm_mode": llm_mode,
         "model_ready": model_ready,
     }

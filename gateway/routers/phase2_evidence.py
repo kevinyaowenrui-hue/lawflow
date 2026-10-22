@@ -788,17 +788,22 @@ async def export_redline_contract_docx(req: ExportRedlineReq):
             clause_reviews=clause_reviews,
             output_path=output_path
         )
+        stats = getattr(redline_res, "stats", {})
+        revisions_count = stats.get("revisions_count", stats.get("injected_clauses", 0))
+        unmatched_clauses = stats.get("unmatched_clauses", [])
         return {
             "status": "success",
-            "message": "已成功在客户原始 Word 文档中原位注入 Track Changes 修订标记与红线建议！",
+            "message": f"已在原文中插入 {revisions_count} 处修订，{len(unmatched_clauses)} 条未定位",
             "filename": filename,
             "download_url": f"/api/documents/download/{filename}",
             "clause_count": len(clause_reviews),
+            "revisions_count": revisions_count,
+            "unmatched_clauses": unmatched_clauses,
             "perspective": req.perspective,
             "playbook_name": playbook_name,
             "has_native_track_changes": True,
             "in_place_mode": True,
-            "stats": getattr(redline_res, "stats", {})
+            "stats": stats
         }
 
     build_redline_contract_docx(

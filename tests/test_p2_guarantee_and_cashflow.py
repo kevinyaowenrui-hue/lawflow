@@ -1,4 +1,4 @@
-﻿import os
+import os
 os.environ.setdefault("LAWFLOW_SEED_DEMO", "1")
 # -*- coding: utf-8 -*-
 """

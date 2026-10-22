@@ -47,15 +47,29 @@ def test_every_system_prompt_has_anti_fabrication():
 def test_trial_outline_injects_wu_when_no_verified_cases(client, monkeypatch):
     """无已核验判例时，发给 Ollama 的 system prompt 类案块为「无」。"""
     from gateway.core import ollama_client as oc_mod
+    import gateway.routers.phase2_evidence as phase2_mod
 
     captured = {}
 
-    async def fake_generate(prompt, system_prompt="", temperature=0.3, **kwargs):
-        captured["system_prompt"] = system_prompt
-        captured["prompt"] = prompt
+    async def fake_generate(*args, **kwargs):
+        # 兼容 bound/unbound 与仅关键字调用
+        system_prompt = kwargs.get("system_prompt")
+        prompt = kwargs.get("prompt")
+        if system_prompt is None and len(args) >= 2:
+            # (self, prompt, system_prompt) or (prompt, system_prompt)
+            if hasattr(args[0], "settings"):
+                prompt = args[1] if len(args) > 1 else prompt
+                system_prompt = args[2] if len(args) > 2 else ""
+            else:
+                prompt = args[0]
+                system_prompt = args[1] if len(args) > 1 else ""
+        captured["system_prompt"] = system_prompt or ""
+        captured["prompt"] = prompt or ""
+        captured["called"] = True
         return "### 一、案件核心概览\n测试提纲"
 
     monkeypatch.setattr(oc_mod.ollama_client, "generate", fake_generate)
+    monkeypatch.setattr(phase2_mod.ollama_client, "generate", fake_generate)
 
     resp = client.post(
         "/api/v1/phase2/trial-outline",
@@ -67,11 +81,13 @@ def test_trial_outline_injects_wu_when_no_verified_cases(client, monkeypatch):
         },
     )
     assert resp.status_code == 200, resp.text
+    assert captured.get("called") is True, "generate 未被调用（可能落入未 mock 的兜底路径）"
     sp = captured.get("system_prompt") or ""
     assert "【已核验类案】" in sp
     # 类案块为「无」
     assert "【已核验类案】\n无" in sp or "【已核验类案】\r\n无" in sp
     assert "不得编造" in sp
+    assert "测试提纲" in (resp.json().get("trial_outline_markdown") or "")
 
 
 def test_role_is_writing_assistant():

@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11"]
+    runs-on: ${{ matrix.os }}
+    env:
+      # CI 不调用外部 LLM；无密钥。
+      LAWFLOW_API_TOKEN: test-token
+      LAWFLOW_ALLOWED_HOSTS: 127.0.0.1,localhost,testserver
+      LAWFLOW_SEED_DEMO: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pytest with coverage
+        shell: bash
+        run: |
+          mkdir -p .ci-home/.lawflow
+          export HOME="${PWD}/.ci-home"
+          export USERPROFILE="${PWD}/.ci-home"
+          export LAWFLOW_SETTINGS_FILE="${PWD}/.ci-home/.lawflow/llm_settings.json"
+          python -m pytest \
+            --ignore=tests/test_coverage_gate.py \
+            --cov=gateway \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term \
+            --cov-fail-under=60 \
+            -q --disable-warnings
+
+      - name: Three-module coverage gate (>=80%)
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          cov = Path("coverage.xml")
+          if not cov.is_file():
+              print("coverage.xml missing", file=sys.stderr)
+              sys.exit(1)
+          root = ET.parse(cov).getroot()
+          want = {
+              "cn_legal_calc.py": 80.0,
+              "citation_guard.py": 80.0,
+              "guarantee_and_cashflow_engine.py": 80.0,
+          }
+          found = {}
+          for cls in root.iter("class"):
+              filename = (cls.attrib.get("filename") or "").replace("\\", "/")
+              name = filename.rsplit("/", 1)[-1]
+              if name in want:
+                  # prefer lines-valid / lines-covered on class; fallback rate
+                  valid = float(cls.attrib.get("lines-valid") or 0)
+                  covered = float(cls.attrib.get("lines-covered") or 0)
+                  if valid > 0:
+                      pct = 100.0 * covered / valid
+                  else:
+                      pct = float(cls.attrib.get("line-rate") or 0) * 100.0
+                  found[name] = pct
+          missing = [k for k in want if k not in found]
+          if missing:
+              print("missing modules in coverage.xml:", missing, file=sys.stderr)
+              sys.exit(1)
+          failed = {k: found[k] for k, thr in want.items() if found[k] < thr}
+          print("three-module coverage:", {k: round(found[k], 2) for k in want})
+          if failed:
+              print("below 80%:", {k: round(v, 2) for k, v in failed.items()}, file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            coverage.xml
+          if-no-files-found: warn

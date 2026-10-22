@@ -58,3 +58,8 @@ Thumbs.db
 .idea/
 
 *.bak
+
+# coverage reports
+coverage.xml
+coverage*.json
+htmlcov/

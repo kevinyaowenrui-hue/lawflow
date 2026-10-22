@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Zero-Jank](https://img.shields.io/badge/Frontend-Zero--Jank%20Vanilla%20SPA-orange.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-28%2F28%20Passed%20(100%25)-brightgreen.svg)]()
+[![CI](https://github.com/kevinyaowenrui-hue/lawflow/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinyaowenrui-hue/lawflow/actions/workflows/ci.yml)
 
 ---
 
@@ -118,9 +118,9 @@ python -m uvicorn gateway.main:app --host 127.0.0.1 --port 5221 --reload
 
 ### 3. 运行全量实证自动化测试套件
 ```bash
-python -m pytest test_top5_refactor.py test_p0_english_redline.py test_p1_visual_and_settlement.py tests/test_p2_guarantee_and_cashflow.py tests/test_p3_appeal_and_precedent.py tests/test_p4_enforcement_and_asset_penetration.py --disable-warnings -v
+python -m pytest
 ```
-> 全部 28 项核心实证测试用例 100% 通过。
+> 测试统一位于 `tests/`；覆盖率与 CI 见 `.github/workflows/ci.yml`。
 
 ---
 

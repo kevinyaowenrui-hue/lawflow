@@ -1,0 +1,5 @@
+# LawFlow 智律工作台 — 开发/测试依赖（最小可用；批次12可再完善）
+-r requirements.txt
+pytest>=8.0.0
+pytest-cov>=5.0.0
+pytest-randomly>=3.15.0

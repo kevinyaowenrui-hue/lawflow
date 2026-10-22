@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 # 必须在任何 gateway 导入之前设置
@@ -23,6 +25,36 @@ from fastapi.testclient import TestClient
 
 
 AUTH_HEADERS = {"X-LawFlow-Token": os.environ["LAWFLOW_API_TOKEN"]}
+
+
+def _ollama_available(timeout: float = 1.5) -> bool:
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=timeout) as resp:
+            return getattr(resp, "status", 200) == 200
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
+
+
+def _soffice_available() -> bool:
+    try:
+        from gateway.routers.phase1_litigation import _find_soffice
+
+        return _find_soffice() is not None
+    except Exception:
+        return False
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "requires_ollama: needs local Ollama at 127.0.0.1:11434")
+    config.addinivalue_line("markers", "requires_soffice: needs LibreOffice soffice on PATH or install dir")
+    config.addinivalue_line("markers", "slow: long-running coverage gate / integration checks")
+
+
+def pytest_runtest_setup(item):
+    if item.get_closest_marker("requires_ollama") and not _ollama_available():
+        pytest.skip("Ollama unavailable at http://127.0.0.1:11434")
+    if item.get_closest_marker("requires_soffice") and not _soffice_available():
+        pytest.skip("LibreOffice soffice unavailable")
 
 
 @pytest.fixture

@@ -96,8 +96,9 @@ def stamp_disclaimer_on_pdf(pdf_path: str) -> None:
             )
         doc.saveIncr()
         doc.close()
-    except Exception:
+    except Exception as doc_err:
+        logger.warning(f"添加 PDF 免责声明水印失败: {doc_err}")
         try:
             doc.close()
-        except Exception:
-            pass
+        except Exception as close_err:
+            logger.debug(f"关闭 PDF 失败: {close_err}")

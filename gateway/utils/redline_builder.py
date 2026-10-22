@@ -14,6 +14,9 @@ import difflib
 import copy
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
 
 import docx
 from docx.shared import Inches, Pt, RGBColor
@@ -164,7 +167,7 @@ def find_best_matching_span(full_text: str, target_clause: str) -> Optional[Tupl
     try:
         collapsed_target = re.sub(r'\s+', ' ', clean_target)
         escaped = re.escape(collapsed_target)
-        pattern_str = re.sub(r'\\ ', r'\s*', escaped)
+        pattern_str = re.sub(r'\\ ', r'\\s*', escaped)
         pattern_str = re.sub(r'\\-', r'[\-—–―_]', pattern_str)
         pattern_str = re.sub(r'\\"', r'["“”„«»]', pattern_str)
         pattern_str = re.sub(r"\\'", r"['‘’`]", pattern_str)
@@ -176,8 +179,8 @@ def find_best_matching_span(full_text: str, target_clause: str) -> Optional[Tupl
         m = re.search(pattern_str, full_text, flags=re.IGNORECASE)
         if m:
             return (m.start(), m.end())
-    except Exception:
-        pass
+    except re.error as reg_err:
+        logger.debug(f"正则匹配异常: {reg_err}")
 
     # 4. 剥离条款可能带有的前缀编号（如第X条、1.、（1）等）或末尾句号后匹配
     sub_clean = re.sub(r'^(?:第[0-9一二三四五六七八九十百]+条|\d+[\.\、\s]|\([0-9一二三四五六七八九十]+\)|（[0-9一二三四五六七八九十]+）)\s*', '', clean_target).strip()
@@ -307,8 +310,8 @@ def enable_track_revisions_in_doc(doc: docx.Document):
         track = OxmlElement('w:trackRevisions')
         track.set(qn('w:val'), 'true')
         settings.append(track)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"激活 Track Changes 模式异常: {e}")
 
 
 def set_cell_background(cell, hex_color: str):

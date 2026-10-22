@@ -61,8 +61,8 @@ def rmb_to_capital(amount: float | Decimal | str) -> str:
                 capital += "整"
             prefix = "人民币负" if is_negative else "人民币"
             return prefix + capital
-        except Exception:
-            pass
+        except Exception as conv_err:
+            logger.debug(f"cn2an 大写金额转换失败，启动原生算法: {conv_err}")
 
     # 原生算法兜底
     digits = "零壹贰叁肆伍陆柒捌玖"

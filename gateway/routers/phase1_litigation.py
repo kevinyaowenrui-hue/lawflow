@@ -22,7 +22,7 @@ import uuid
 import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Literal, Tuple
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from docxtpl import DocxTemplate
@@ -427,17 +427,17 @@ def _build_claims_for_cause(
 # Pydantic 模型定义
 # ==============================================================================
 class RMBCapitalReq(BaseModel):
-    amount: float = Field(..., example=123000.50)
+    amount: float = Field(..., examples=[123000.50])
 
 class IDCardReq(BaseModel):
-    id_card: str = Field(..., example="110101199003072375")
+    id_card: str = Field(..., examples=["110101199003072375"])
     is_cadre: bool = Field(default=False, description="针对女性，是否为管理/干部岗位（干部55岁退休，工人50岁）")
 
 class USCCReq(BaseModel):
-    uscc: str = Field(..., example="91440300708461136T")
+    uscc: str = Field(..., examples=["91440300708461136T"])
 
 class CourtFeeReq(BaseModel):
-    claim_amount: float = Field(..., ge=0, example=250000.0)
+    claim_amount: float = Field(..., ge=0, examples=[250000.0])
     case_type: str = Field(default="property")
     is_summary_procedure: bool = Field(default=False)
     divorce_base_fee: Optional[float] = Field(
@@ -448,9 +448,9 @@ class CourtFeeReq(BaseModel):
     )
 
 class LPRInterestReq(BaseModel):
-    principal: float = Field(..., example=100000.0)
-    start_date: str = Field(..., example="2023-01-01")
-    end_date: str = Field(..., example="2024-01-01")
+    principal: float = Field(..., examples=[100000.0])
+    start_date: str = Field(..., examples=["2023-01-01"])
+    end_date: str = Field(..., examples=["2024-01-01"])
     multiplier: float = Field(default=1.0)
     term: Literal["1Y", "5Y"] = Field(default="1Y")
     fixed_annual_rate: Optional[float] = Field(
@@ -459,11 +459,11 @@ class LPRInterestReq(BaseModel):
         le=100,
         description="年利率，单位为百分数，例如 12 表示年利率 12%",
     )
-    rule_mode: str = Field(default="commercial_floating", example="commercial_floating")
-    contract_date: Optional[str] = Field(default=None, example="2022-03-01")
+    rule_mode: str = Field(default="commercial_floating", examples=["commercial_floating"])
+    contract_date: Optional[str] = Field(default=None, examples=["2022-03-01"])
     filing_date: Optional[str] = Field(
         default=None,
-        example="2021-12-01",
+        examples=["2021-12-01"],
         description="起诉日期（2020-08-20 前成立的民间借贷合同必填）",
     )
     markup_ratio: Optional[float] = Field(
@@ -501,9 +501,9 @@ class LPRInterestReq(BaseModel):
         return self
 
 class LaborCalcReq(BaseModel):
-    monthly_salary: float = Field(..., example=12000.0)
-    hire_date: str = Field(..., example="2021-03-01")
-    termination_date: str = Field(..., example="2024-05-15")
+    monthly_salary: float = Field(..., examples=[12000.0])
+    hire_date: str = Field(..., examples=["2021-03-01"])
+    termination_date: str = Field(..., examples=["2024-05-15"])
     local_avg_salary: Optional[float] = Field(default=None)
     termination_reason: Optional[Literal[
         "expiry_termination",
@@ -514,15 +514,15 @@ class LaborCalcReq(BaseModel):
     ]] = Field(default=None, description="解除/终止事由")
 
 class PartyInfo(BaseModel):
-    name: str = Field(..., example="张三")
-    id_card_or_uscc: str = Field(default="", example="110101199003072375")
-    gender: Optional[str] = Field(default=None, example="男")
-    birth: Optional[str] = Field(default=None, example="1990年3月7日")
-    ethnicity: Optional[str] = Field(default="汉族", example="汉族")
-    address: str = Field(default="", example="北京市朝阳区建国门外大街1号")
-    phone: Optional[str] = Field(default=None, example="13800000000")
-    legal_rep: Optional[str] = Field(default=None, example="李某某")
-    rep_position: Optional[str] = Field(default=None, example="执行董事")
+    name: str = Field(..., examples=["张三"])
+    id_card_or_uscc: str = Field(default="", examples=["110101199003072375"])
+    gender: Optional[str] = Field(default=None, examples=["男"])
+    birth: Optional[str] = Field(default=None, examples=["1990年3月7日"])
+    ethnicity: Optional[str] = Field(default="汉族", examples=["汉族"])
+    address: str = Field(default="", examples=["北京市朝阳区建国门外大街1号"])
+    phone: Optional[str] = Field(default=None, examples=["13800000000"])
+    legal_rep: Optional[str] = Field(default=None, examples=["李某某"])
+    rep_position: Optional[str] = Field(default=None, examples=["执行董事"])
     party_type: Optional[Literal["natural", "legal"]] = Field(
         default=None,
         description="natural=自然人 / legal=法人或非法人组织；未传时自动判断",
@@ -575,8 +575,7 @@ class GenerateLitigationPackageReq(BaseModel):
     cause_of_action: str = Field(
         default="民间借贷纠纷",
         description="案由：民间借贷纠纷 / 劳动人事争议 / 买卖合同纠纷 / 通用民事纠纷",
-        example="民间借贷纠纷"
-    )
+        examples=["民间借贷纠纷"]    )
     plaintiff: PartyInfo
     defendant: PartyInfo
     claims: List[str] = Field(
@@ -587,17 +586,16 @@ class GenerateLitigationPackageReq(BaseModel):
     raw_case_notes: str = Field(
         ...,
         description="律师碎片化案情笔记（AI将自动提炼并引用民法典或劳动合同法法条）",
-        example="2022年3月5日，被告李四因公司资金周转，向原告借款20万元，原告当天通过招商银行网银全额转入被告账户。被告出具借条承诺1年内还清，年化利率15%。借款到期后原告多次通过微信及电话催促还款，被告拒不偿还本金和利息。"
-    )
-    court_name: str = Field(default="北京市朝阳区人民法院", example="北京市朝阳区人民法院")
+        examples=["2022年3月5日，被告李四因公司资金周转，向原告借款20万元，原告当天通过招商银行网银全额转入被告账户。被告出具借条承诺1年内还清，年化利率15%。借款到期后原告多次通过微信及电话催促还款，被告拒不偿还本金和利息。"]    )
+    court_name: str = Field(default="北京市朝阳区人民法院", examples=["北京市朝阳区人民法院"])
     arbitration_committee: Optional[str] = Field(
         default=None,
         description="劳动争议致送机关全称；未填时按地区补全为××劳动人事争议仲裁委员会",
     )
-    lawyer_name: str = Field(default="王律师", example="王律师")
-    law_firm: str = Field(default="北京市京师律师事务所", example="北京市京师律师事务所")
-    lawyer_phone: str = Field(default="13900008888", example="13900008888")
-    lawyer_license: str = Field(default="11101201510123456", example="11101201510123456")
+    lawyer_name: str = Field(default="王律师", examples=["王律师"])
+    law_firm: str = Field(default="北京市京师律师事务所", examples=["北京市京师律师事务所"])
+    lawyer_phone: str = Field(default="13900008888", examples=["13900008888"])
+    lawyer_license: str = Field(default="11101201510123456", examples=["11101201510123456"])
     auto_generate_sub_docs: bool = Field(default=True, description="是否一并生成授权委托书、送达地址确认书、身份证明或保全申请书（兼容参数）")
     sub_documents: Optional[List[SubDocType]] = Field(
         default=None,
@@ -675,14 +673,14 @@ async def api_labor_calc(req: LaborCalcReq):
 
 
 class StatuteLimitationsReq(BaseModel):
-    start_date: str = Field(..., example="2023-01-01")
-    cause_type: str = Field(default="general_3y", example="general_3y")
+    start_date: str = Field(..., examples=["2023-01-01"])
+    cause_type: str = Field(default="general_3y", examples=["general_3y"])
     interruption_events: Optional[List[Dict[str, Any]]] = Field(default=None)
     suspension_events: Optional[List[Dict[str, str]]] = Field(default=None)
     today_date: Optional[str] = Field(default=None)
     act_date: Optional[str] = Field(
         default=None,
-        example="2021-06-01",
+        examples=["2021-06-01"],
         description="民事法律行为发生日（撤销权校验 5 年最长期限）",
     )
     damage_date: Optional[str] = Field(default=None, description="权利受到损害之日")
@@ -690,16 +688,15 @@ class StatuteLimitationsReq(BaseModel):
 
 class PreservationRenewalReq(BaseModel):
     preservation_type: Literal["bank_deposit", "movable_property", "real_estate_equity"] = Field(
-        default="bank_deposit", example="bank_deposit"
-    )
-    start_date: str = Field(..., example="2023-05-10")
+        default="bank_deposit", examples=["bank_deposit"]    )
+    start_date: str = Field(..., examples=["2023-05-10"])
     custom_years: Optional[float] = Field(default=None)
     today_date: Optional[str] = Field(default=None)
     internal_reminder_days: int = Field(default=30, ge=1)
 
 class StatuteValidityReq(BaseModel):
-    citation_text: str = Field(..., example="《中华人民共和国合同法》第一百零七条")
-    incident_date: Optional[str] = Field(default=None, example="2023-05-01")
+    citation_text: str = Field(..., examples=["《中华人民共和国合同法》第一百零七条"])
+    incident_date: Optional[str] = Field(default=None, examples=["2023-05-01"])
 
 
 @router.post("/api/v1/phase1/calc/statute-limitations", summary="诉讼时效与除斥期间精确核算器 (《民法典》第188、194、195、199条)")
@@ -745,27 +742,27 @@ async def api_statute_validity(req: StatuteValidityReq):
 
 
 class InstallmentItem(BaseModel):
-    months: int = Field(..., example=3, description="到期时间距今月数")
-    amount: float = Field(..., example=500000.0, description="本期计划还款金额")
+    months: int = Field(..., examples=[3], description="到期时间距今月数")
+    amount: float = Field(..., examples=[500000.0], description="本期计划还款金额")
     note: Optional[str] = Field(default="", description="分期说明")
 
 class AssetPlanInput(BaseModel):
-    asset_name: str = Field(default="抵债不动产/商办房产", example="朝阳区商办写字楼3套")
-    nominal_asset_valuation: float = Field(..., example=4500000.0, description="名义评估值或抵债作价")
-    prior_liens: float = Field(default=0.0, example=1500000.0, description="在先优先受偿权（工程款优先权、第一顺位银行抵押等）")
-    auction_discount_rate: float = Field(default=0.70, example=0.70, description="司法拍卖/变现折价率（一拍7折/二拍56折）")
-    liquidation_costs_rate: float = Field(default=0.12, example=0.12, description="过户税费与持有清算成本率")
-    time_to_liquidate_months: int = Field(default=18, example=18, description="处置变现周期月数")
-    encumbrance_status: Optional[str] = Field(default="", example="在先银行抵押150万元")
+    asset_name: str = Field(default="抵债不动产/商办房产", examples=["朝阳区商办写字楼3套"])
+    nominal_asset_valuation: float = Field(..., examples=[4500000.0], description="名义评估值或抵债作价")
+    prior_liens: float = Field(default=0.0, examples=[1500000.0], description="在先优先受偿权（工程款优先权、第一顺位银行抵押等）")
+    auction_discount_rate: float = Field(default=0.70, examples=[0.70], description="司法拍卖/变现折价率（一拍7折/二拍56折）")
+    liquidation_costs_rate: float = Field(default=0.12, examples=[0.12], description="过户税费与持有清算成本率")
+    time_to_liquidate_months: int = Field(default=18, examples=[18], description="处置变现周期月数")
+    encumbrance_status: Optional[str] = Field(default="", examples=["在先银行抵押150万元"])
 
 class SettlementSimulationReq(BaseModel):
-    total_claim_nominal: float = Field(..., gt=0, example=5000000.0, description="债权标的名义总额")
+    total_claim_nominal: float = Field(..., gt=0, examples=[5000000.0], description="债权标的名义总额")
     plan_type: Literal["cash_installments", "debt_for_asset", "hybrid"] = Field(
         default="hybrid",
-        example="hybrid",
+        examples=["hybrid"],
         description="和解方案类型: cash_installments / debt_for_asset / hybrid",
     )
-    annual_discount_rate: float = Field(default=0.08, ge=0, example=0.08, description="年化资金折现率/资本成本")
+    annual_discount_rate: float = Field(default=0.08, ge=0, examples=[0.08], description="年化资金折现率/资本成本")
     installments: Optional[List[InstallmentItem]] = Field(default=None, description="分期还款计划")
     asset_plan: Optional[AssetPlanInput] = Field(default=None, description="以物抵债方案")
 
@@ -788,7 +785,7 @@ async def api_settlement_simulation(req: SettlementSimulationReq):
 
 
 class AppealDeadlineReq(BaseModel):
-    service_date: str = Field(..., example="2026-11-02", description="一审裁判送达日期 YYYY-MM-DD")
+    service_date: str = Field(..., examples=["2026-11-02"], description="一审裁判送达日期 YYYY-MM-DD")
     judgment_type: Literal["judgment", "ruling"] = Field(..., description="judgment=判决 / ruling=裁定")
     holidays: Optional[List[str]] = Field(default=None, description="额外法定节假日 YYYY-MM-DD 列表；默认读 data/legal/holidays_cn.json")
     treat_weekend_as_holiday: bool = Field(
@@ -800,15 +797,15 @@ class AppealDeadlineReq(BaseModel):
 
 
 class DelayInterestReq(BaseModel):
-    principal_unpaid: float = Field(..., gt=0, example=100000.0, description="未清偿本金")
-    start_date: str = Field(..., example="2026-01-01", description="迟延履行起算日")
-    end_date: str = Field(..., example="2026-01-31", description="清偿日/测算截止日")
+    principal_unpaid: float = Field(..., gt=0, examples=[100000.0], description="未清偿本金")
+    start_date: str = Field(..., examples=["2026-01-01"], description="迟延履行起算日")
+    end_date: str = Field(..., examples=["2026-01-31"], description="清偿日/测算截止日")
     daily_rate: Optional[float] = Field(default=None, description="日利率（可选，默认法释〔2014〕8号日万分之一点七五）")
 
 
 class PenaltyAdjustmentReq(BaseModel):
-    agreed_penalty: float = Field(..., ge=0, example=140000.0, description="约定的违约金数额")
-    actual_loss: float = Field(..., gt=0, example=100000.0, description="造成的实际损失数额")
+    agreed_penalty: float = Field(..., ge=0, examples=[140000.0], description="约定的违约金数额")
+    actual_loss: float = Field(..., gt=0, examples=[100000.0], description="造成的实际损失数额")
 
 
 @router.post("/api/v1/phase1/calc/delay-interest", summary="迟延履行期间加倍部分债务利息计算器 (《民事诉讼法》第264条)")
@@ -1286,6 +1283,17 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         "pdf": pdf_engine,
         "llm": llm_mode if llm_mode in ("ollama", "cloud", "rule_fallback") else "rule_fallback",
     }
+    try:
+        from gateway.utils.matter_vault_db import record_audit_log
+        record_audit_log(
+            action="document_generate",
+            matter_id=getattr(req, "matter_id", None),
+            target=main_docx_name,
+            result="success"
+        )
+    except Exception as audit_err:
+        logger.warning(f"记录文书生成审计日志失败: {audit_err}")
+
     return {
         "status": "success",
         "package_id": package_id,
@@ -1308,7 +1316,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
 # 兼容旧版路由与下载接口
 # ==============================================================================
 @router.get("/api/documents/download/{filename}", summary="文书下载接口")
-async def download_doc(filename: str):
+async def download_doc(filename: str, request: Request = None):
     safe_name = validate_download_filename(filename)
     try:
         file_path = safe_join(str(get_generated_dir()), safe_name)
@@ -1316,6 +1324,17 @@ async def download_doc(filename: str):
         raise
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="文件不存在")
+    try:
+        from gateway.utils.matter_vault_db import record_audit_log
+        client_ip = request.client.host if request and request.client else None
+        record_audit_log(
+            action="document_download",
+            target=safe_name,
+            client_ip=client_ip,
+            result="success"
+        )
+    except Exception as audit_err:
+        logger.warning(f"记录文书下载审计日志失败: {audit_err}")
     media = "application/pdf" if safe_name.endswith(".pdf") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     return FileResponse(path=file_path, filename=os.path.basename(safe_name), media_type=media)
 

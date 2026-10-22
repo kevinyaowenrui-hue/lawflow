@@ -136,27 +136,27 @@ def _private_cases_corpus():
 # ==============================================================================
 class ChunkLawReq(BaseModel):
     raw_law_text: str = Field(..., description="法律法规原始文本")
-    law_name: str = Field(default="中华人民共和国民法典", example="中华人民共和国民法典")
+    law_name: str = Field(default="中华人民共和国民法典", examples=["中华人民共和国民法典"])
 
 class RAGSearchReq(BaseModel):
-    query: str = Field(..., example="借条丢失 微信聊天记录 借贷合意")
+    query: str = Field(..., examples=["借条丢失 微信聊天记录 借贷合意"])
     corpus_type: str = Field(default="all", description="检索库范围：all (双库融合) / public_statutes (公共法规库) / private_cases (律所胜诉案例库)")
     top_k: int = Field(default=3)
 
 class RAGConsultReq(BaseModel):
-    question: str = Field(..., example="当事人只有微信转账记录没有借条，对方微信答应了会还，但现在不认账，应该如何起诉，如何引用法条？")
+    question: str = Field(..., examples=["当事人只有微信转账记录没有借条，对方微信答应了会还，但现在不认账，应该如何起诉，如何引用法条？"])
     selected_statute_ids: Optional[List[str]] = Field(default=None)
 
 class CreateSigningLinkReq(BaseModel):
-    client_name: str = Field(..., example="张三")
-    client_phone: str = Field(..., example="13800000000")
-    client_email: str = Field(default="client@example.com", example="client@example.com")
-    lawyer_name: str = Field(default="李四律师", example="李四律师")
-    law_firm: str = Field(default="北京市京师律师事务所", example="北京市京师律师事务所")
-    service_fee: float = Field(default=20000.0, example=20000.0)
-    agreement_title: str = Field(default="民事委托代理协议及诉讼风险告知书", example="民事委托代理协议及诉讼风险告知书")
-    case_summary: str = Field(default="代理原告张三诉北京某公司技术合同纠纷一审诉讼", example="代理原告张三诉北京某公司技术合同纠纷一审诉讼")
-    matter_id: str = Field(default="", example="")
+    client_name: str = Field(..., examples=["张三"])
+    client_phone: str = Field(..., examples=["13800000000"])
+    client_email: str = Field(default="client@example.com", examples=["client@example.com"])
+    lawyer_name: str = Field(default="李四律师", examples=["李四律师"])
+    law_firm: str = Field(default="北京市京师律师事务所", examples=["北京市京师律师事务所"])
+    service_fee: float = Field(default=20000.0, examples=[20000.0])
+    agreement_title: str = Field(default="民事委托代理协议及诉讼风险告知书", examples=["民事委托代理协议及诉讼风险告知书"])
+    case_summary: str = Field(default="代理原告张三诉北京某公司技术合同纠纷一审诉讼", examples=["代理原告张三诉北京某公司技术合同纠纷一审诉讼"])
+    matter_id: str = Field(default="", examples=[""])
 
 
 # ==============================================================================

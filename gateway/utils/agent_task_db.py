@@ -179,8 +179,8 @@ def get_agent_tasks(
             if t.get("action_payload"):
                 try:
                     t["action_payload"] = json.loads(t["action_payload"])
-                except Exception:
-                    pass
+                except (json.JSONDecodeError, TypeError, ValueError) as json_err:
+                    logger.debug(f"解析任务载荷 JSON 失败: {json_err}")
             tasks.append(t)
         return tasks
 
@@ -259,8 +259,8 @@ def update_agent_task(task_id: str, updates: Dict[str, Any]) -> Optional[Dict[st
             if t.get("action_payload"):
                 try:
                     t["action_payload"] = json.loads(t["action_payload"])
-                except Exception:
-                    pass
+                except (json.JSONDecodeError, TypeError, ValueError) as json_err:
+                    logger.debug(f"解析任务载荷 JSON 失败: {json_err}")
             return t
         return None
 
@@ -340,7 +340,7 @@ def get_recent_dialogues(matter_id: str = "default", limit: int = 30) -> List[Di
             if m.get("action_summary"):
                 try:
                     m["action_summary"] = json.loads(m["action_summary"])
-                except Exception:
-                    pass
+                except (json.JSONDecodeError, TypeError, ValueError) as json_err:
+                    logger.debug(f"解析对话概要 JSON 失败: {json_err}")
             msgs.append(m)
         return msgs

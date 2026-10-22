@@ -163,6 +163,13 @@ async def save_llm_settings(req: LLMConfigReq):
     sanitized = ollama_client.save_settings(new_cfg)
     ollama_client._active_ollama_url = None
     health = await ollama_client.check_health()
+    try:
+        from gateway.utils.matter_vault_db import record_audit_log
+        record_audit_log(action="settings_update", target="llm_settings")
+        if req.provider:
+            record_audit_log(action="cloud_toggle_change", target=f"provider={req.provider}")
+    except Exception as audit_err:
+        logger.warning(f"记录设置审计日志失败: {audit_err}")
 
     return {
         "status": "success",

@@ -123,17 +123,17 @@ class GraphExtractReq(BaseModel):
 
 
 class GuaranteeAnalysisReq(BaseModel):
-    principal_due_date: Optional[str] = Field(default=None, example="2024-03-15", description="主债务约定到期日")
-    today_date: Optional[str] = Field(default=None, example="2024-06-01", description="审查核验基准日")
+    principal_due_date: Optional[str] = Field(default=None, examples=["2024-03-15"], description="主债务约定到期日")
+    today_date: Optional[str] = Field(default=None, examples=["2024-06-01"], description="审查核验基准日")
     override_nodes: Optional[List[Dict[str, Any]]] = None
     override_edges: Optional[List[Dict[str, Any]]] = None
 
 
 class CashflowAuditReq(BaseModel):
-    principal_amount: Optional[float] = Field(default=None, example=5000000.0, description="借款/合同本金总额")
-    annual_interest_rate: Optional[float] = Field(default=None, example=0.12, description="约定年化利息率（小数，如0.12）")
-    annual_rate: Optional[float] = Field(default=None, example=0.12, description="annual_interest_rate 别名")
-    start_date: Optional[str] = Field(default=None, example="2023-03-16", description="出借交付起息日")
+    principal_amount: Optional[float] = Field(default=None, examples=[5000000.0], description="借款/合同本金总额")
+    annual_interest_rate: Optional[float] = Field(default=None, examples=[0.12], description="约定年化利息率（小数，如0.12）")
+    annual_rate: Optional[float] = Field(default=None, examples=[0.12], description="annual_interest_rate 别名")
+    start_date: Optional[str] = Field(default=None, examples=["2023-03-16"], description="出借交付起息日")
     contract_date: Optional[str] = Field(default=None, description="合同成立日（默认取起息日）")
     filing_date: Optional[str] = Field(default=None, description="起诉日（2020-08-20前合同核验上限时需要）")
     fees: Optional[float] = Field(default=None, description="实现债权的有关费用")
@@ -708,6 +708,11 @@ async def api_delete_matter(matter_id: str, confirm: bool = Query(False, descrip
     if not matter:
         raise HTTPException(status_code=404, detail="案件空间不存在")
     ok = soft_delete_matter(matter_id)
+    try:
+        from gateway.utils.matter_vault_db import record_audit_log
+        record_audit_log(action="matter_delete", matter_id=matter_id, target=matter_id)
+    except Exception as audit_err:
+        logger.warning(f"记录案件删除审计日志失败: {audit_err}")
     return {
         "status": "success",
         "message": f"案件【{matter['title']}】已成功软删除",
@@ -745,4 +750,19 @@ async def api_get_deadlines(
         "status": "success",
         "count": len(deadlines),
         "deadlines": deadlines
+    }
+
+
+@router.get("/audit-log", summary="案件空间审计日志查询（分页）")
+async def api_vault_get_audit_log(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    action: Optional[str] = Query(None),
+    matter_id: Optional[str] = Query(None)
+):
+    from gateway.utils.matter_vault_db import get_audit_logs
+    data = get_audit_logs(page=page, page_size=page_size, action=action, matter_id=matter_id)
+    return {
+        "status": "success",
+        "data": data
     }

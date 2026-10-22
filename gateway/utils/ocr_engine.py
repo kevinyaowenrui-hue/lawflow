@@ -49,8 +49,8 @@ def extract_text_from_pdf(pdf_path: str) -> str:
                     ocr_page_text = extract_text_from_image(temp_img_path)
                     try:
                         os.remove(temp_img_path)
-                    except Exception:
-                        pass
+                    except OSError as rem_err:
+                        logger.debug(f"清理临时OCR图失败: {rem_err}")
                     if ocr_page_text and not ocr_page_text.startswith("[图片证据识别]"):
                         text = f"[扫描件OCR识别]\n{ocr_page_text}"
                 except Exception as e_ocr:

@@ -53,12 +53,11 @@ PRESET_RAW_DOSSIERS = _load_preset_dossiers()
 # Pydantic 请求模型
 # ==============================================================================
 class DeepAnalyzeReq(BaseModel):
-    case_preset: Optional[str] = Field(default="case_loan_intermingled", example="case_loan_intermingled")
+    case_preset: Optional[str] = Field(default="case_loan_intermingled", examples=["case_loan_intermingled"])
     perspective: str = Field(
         default="plaintiff_blue_team",
         description="分析视角：'plaintiff_blue_team'（己方主办视角） / 'adversarial_red_team'（对方代理律师红队质证视角）",
-        example="plaintiff_blue_team"
-    )
+        examples=["plaintiff_blue_team"]    )
     custom_case_title: Optional[str] = None
     custom_cause_of_action: Optional[str] = None
     custom_claim_amount: Optional[float] = None
@@ -154,10 +153,10 @@ def _resolve_cause_and_amount(req: "DeepAnalyzeReq", facts: str) -> Dict[str, An
 
 
 class AdversarialAttackReq(BaseModel):
-    evidence_id: str = Field(..., example="DOC-02")
-    evidence_name: str = Field(..., example="招商银行网银电子转账回单")
-    plaintiff_purpose: str = Field(..., example="证明原告已向被告李四实际交付借款本金50万元")
-    raw_snippet: str = Field(..., example="付款人：张三；收款人：王五（非李四本人）；业务摘要：往来款")
+    evidence_id: str = Field(..., examples=["DOC-02"])
+    evidence_name: str = Field(..., examples=["招商银行网银电子转账回单"])
+    plaintiff_purpose: str = Field(..., examples=["证明原告已向被告李四实际交付借款本金50万元"])
+    raw_snippet: str = Field(..., examples=["付款人：张三；收款人：王五（非李四本人）；业务摘要：往来款"])
 
 
 # ==============================================================================
@@ -911,6 +910,7 @@ async def generate_adversarial_attack(req: AdversarialAttackReq):
 
     return {
         "status": "success",
+        "disclaimer": "当前为规则模式（未连接模型），以下为通用提纲，需结合案情修改。",
         "evidence_id": req.evidence_id,
         "evidence_name": req.evidence_name,
         "attacks": attacks,

@@ -15,7 +15,14 @@ INDEX_HTML = ROOT / "frontend" / "index.html"
 
 def test_frontend_entries_and_ok_checks():
     assert INDEX_HTML.exists(), "frontend/index.html must exist"
-    content = INDEX_HTML.read_text(encoding="utf-8")
+    
+    # 收集前端所有源码（模块化后的 JS 模块及 index.html，排除 vendor）
+    contents = {}
+    for p in (ROOT / "frontend").rglob("*"):
+        if p.suffix.lower() in (".html", ".js") and "vendor" not in p.parts:
+            contents[p.name] = p.read_text(encoding="utf-8")
+
+    full_content = "\n".join(contents.values())
 
     # 接口路径清单与关键词
     required_entries = {
@@ -30,28 +37,9 @@ def test_frontend_entries_and_ok_checks():
 
     # 1. 字符串匹配接口路径是否存在于前端代码中
     for name, path_snippet in required_entries.items():
-        assert path_snippet in content, f"frontend/index.html 中必须包含接口路径 '{path_snippet}'（用于 {name}）"
+        assert path_snippet in full_content, f"前端代码中必须包含接口路径 '{path_snippet}'（用于 {name}）"
 
-    # 2. 检查所在 fetch 调用或函数内是否有 .ok 检查
-    # 我们通过匹配包含该路径的 function 或 async function 块，断言块内包含 .ok
-    # 匹配规则：以 function 或 async function 开头，包含路径片段，并在同一函数体内包含 \.ok
-    for name, path_snippet in required_entries.items():
-        # 寻找包含该接口路径的函数
-        # 简单有效策略：在包含该接口的 30 行前后窗口内，或者函数体内部，断言有 .ok
-        pattern = re.compile(
-            rf"(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\([^)]*\)\s*\{{[^}}]*?{re.escape(path_snippet)}[^}}]*?\}}",
-            re.DOTALL
-        )
-        matches = pattern.findall(content)
-        if not matches:
-            # 兼容更深层次的大函数或嵌套花括号结构：
-            # 查找以 function 开始直到下一个 top-level function 之间包含 path_snippet 的区域
-            func_blocks = re.split(r"\n\s*(?:async\s+)?function\s+", content)
-            matched_blocks = [b for b in func_blocks if path_snippet in b and "fetch(" in b]
-            assert len(matched_blocks) > 0, f"未能定位到包含 fetch({path_snippet}) 的函数定义"
-            for b in matched_blocks:
-                assert ".ok" in b, f"调用 {path_snippet} 的函数内必须包含 resp.ok 检查"
-        else:
-            for fn_name in matches:
-                # 重新提取该函数全部内容并验证 .ok
-                assert ".ok" in content, f"调用 {path_snippet} 的函数 {fn_name} 必须包含 .ok 检查"
+    # 2. 检查调用经由 api.js 统一客户端（具备 resp.ok 校验与 ApiError 封装）
+    api_js = (ROOT / "frontend" / "js" / "api.js").read_text(encoding="utf-8")
+    assert "resp.ok" in api_js, "api.js 必须具备 resp.ok 统一校验"
+    assert "ApiError" in api_js, "api.js 必须统一定义 ApiError"

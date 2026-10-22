@@ -96,8 +96,8 @@ async def api_convert_file(
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
-            except Exception:
-                pass
+            except OSError as rem_err:
+                logger.debug(f"清理临时上传文件失败: {rem_err}")
 
 
 @router.post("/batch-merge-bates", summary="多源证据图批量合卷为单一 A4 举证册 (加盖贝茨码)")
@@ -156,5 +156,5 @@ async def api_batch_merge_evidence(
             if os.path.exists(p):
                 try:
                     os.remove(p)
-                except Exception:
-                    pass
+                except OSError as rem_err:
+                    logger.debug(f"清理临时文件失败: {rem_err}")

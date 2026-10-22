@@ -32,6 +32,7 @@ htmlcov/
 .env
 
 # Storage & Temporary Files
+logs/
 storage/generated/*
 !storage/generated/.gitkeep
 storage/uploads/*

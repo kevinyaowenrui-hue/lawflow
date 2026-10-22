@@ -14,6 +14,8 @@ import re
 import time
 import shutil
 import logging
+
+logger = logging.getLogger("lawflow.phase2")
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
@@ -25,8 +27,8 @@ from PIL import Image, ImageOps
 try:
     import pillow_heif
     pillow_heif.register_heif_opener()
-except Exception:
-    pass
+except ImportError as imp_err:
+    logger.debug(f"pillow_heif not installed: {imp_err}")
 
 from gateway.core.ollama_client import ollama_client
 from gateway.core.security import (
@@ -70,31 +72,27 @@ def _templates_dir() -> str:
 # Pydantic 模型
 # ==============================================================================
 class TrialOutlineFiveModulesReq(BaseModel):
-    case_title: str = Field(..., example="张三诉北京某科技公司技术服务合同纠纷案")
-    cause_of_action: str = Field(..., example="技术服务合同纠纷")
+    case_title: str = Field(..., examples=["张三诉北京某科技公司技术服务合同纠纷案"])
+    cause_of_action: str = Field(..., examples=["技术服务合同纠纷"])
     plaintiff_claims_and_facts: str = Field(
         ...,
         description="原告起诉请求与事实理由概述",
-        example="原告主张按期完成系统开发并交付，被告已上线试运行但拒付尾款20万元，请求支付尾款及LPR违约金。"
-    )
+        examples=["原告主张按期完成系统开发并交付，被告已上线试运行但拒付尾款20万元，请求支付尾款及LPR违约金。"]    )
     defendant_defense: str = Field(
         ...,
         description="被告答辩意见及事实异议",
-        example="被告抗辩称系统存在严重Bug多次崩溃未达验收标准，原告逾期交付超过30天，被告有权解除合同并主张5万元违约金抵扣。"
-    )
+        examples=["被告抗辩称系统存在严重Bug多次崩溃未达验收标准，原告逾期交付超过30天，被告有权解除合同并主张5万元违约金抵扣。"]    )
 
 class ContractReviewReq(BaseModel):
-    contract_title: str = Field(default="商业采购与技术开发服务合同", example="技术开发服务合同")
+    contract_title: str = Field(default="商业采购与技术开发服务合同", examples=["技术开发服务合同"])
     contract_text: str = Field(
         ...,
         description="待审查的合同正文条文",
-        example="第七条 违约责任：乙方如延期交付超过3日，每日应向甲方支付合同总价款5%的惩罚性违约金；甲方有权随时单方解除合同且无需退还首期款项。发生争议由甲方所在地人民法院管辖。"
-    )
+        examples=["第七条 违约责任：乙方如延期交付超过3日，每日应向甲方支付合同总价款5%的惩罚性违约金；甲方有权随时单方解除合同且无需退还首期款项。发生争议由甲方所在地人民法院管辖。"]    )
     perspective: str = Field(
         default="乙方防御版",
         description="审查视角：甲方强势版 / 乙方防御版 / 中立版",
-        example="乙方防御版"
-    )
+        examples=["乙方防御版"]    )
     playbook_preset: Optional[str] = Field(
         default="general",
         description="预设红线库：general (通用商业) / tech_service (软件技术服务) / procurement (大宗采购) / labor (劳动用工)"
@@ -118,16 +116,15 @@ class ExportRedlineReq(BaseModel):
     source_file_id: Optional[str] = Field(default=None, description="先经 upload-source 返回的文件 ID")
 
 class AutoEvidenceCatalogReq(BaseModel):
-    cause_of_action: str = Field(..., example="民间借贷纠纷")
-    plaintiff_name: str = Field(..., example="张三")
+    cause_of_action: str = Field(..., examples=["民间借贷纠纷"])
+    plaintiff_name: str = Field(..., examples=["张三"])
     evidence_notes: str = Field(
         ...,
         description="杂乱证据材料清单或提取文字",
-        example="证据一：2023年1月1日张三通过招商银行给李四转账50万的网银回单电子凭证，证明借款交付。证据二：李四手写借条原件，约定年利率15%一年后还本付息。证据三：微信聊天记录导出，李四多次在微信中承认欠款并请求宽限两周。"
-    )
+        examples=["证据一：2023年1月1日张三通过招商银行给李四转账50万的网银回单电子凭证，证明借款交付。证据二：李四手写借条原件，约定年利率15%一年后还本付息。证据三：微信聊天记录导出，李四多次在微信中承认欠款并请求宽限两周。"]    )
 
 class RedactSensitiveReq(BaseModel):
-    pdf_filename: str = Field(..., description="storage/generated 或 uploads 中的 PDF 文件名", example="合卷证据包_test.pdf")
+    pdf_filename: str = Field(..., description="storage/generated 或 uploads 中的 PDF 文件名", examples=["合卷证据包_test.pdf"])
     redact_idcard: bool = Field(default=True, description="是否自动涂黑 18 位身份证号码")
     redact_bankcard: bool = Field(default=True, description="是否自动涂黑 16-19 位银行卡号")
 
@@ -312,8 +309,8 @@ async def process_evidence_bates_stamping(
             if p and os.path.exists(p):
                 try:
                     os.remove(p)
-                except Exception:
-                    pass
+                except OSError as rem_err:
+                    logger.debug(f"清理临时文件失败: {rem_err}")
 
 
 # ==============================================================================
@@ -410,6 +407,29 @@ async def auto_generate_evidence_catalog(req: AutoEvidenceCatalogReq):
 
     from gateway.utils.pii_sanitizer import build_entities_from_parties
 
+    def _parse_raw_evidence_items(notes: str) -> list:
+        raw_lines = [l.strip() for l in (notes or "").splitlines() if l.strip()]
+        if not raw_lines and (notes or "").strip():
+            raw_lines = [x.strip() for x in re.split(r'[,，;；\n、]', notes.strip()) if x.strip()]
+        extracted = []
+        for line in raw_lines:
+            clean_name = re.sub(r'^\s*(?:\d+[\.、\-\)]\s*|\([0-9一二三四五六七八九十]+\)\s*|（[0-9一二三四五六七八九十]+）\s*|[一二三四五六七八九十]+[、\.\s]\s*|[-*•]\s*)', '', line).strip()
+            clean_name = os.path.splitext(clean_name)[0].strip()
+            if not clean_name:
+                clean_name = line.strip()
+            if clean_name:
+                cat = "书证"
+                if any(k in clean_name for k in ["微信", "短信", "聊天", "录音", "视频", "电子", "流水", "回单", "凭单", "网银", "邮件"]):
+                    cat = "电子数据"
+                extracted.append({
+                    "name": clean_name,
+                    "category": cat,
+                    "source": "【待填写】",
+                    "purpose": "【待填写】",
+                    "pages": "【待填写】"
+                })
+        return extracted
+
     _catalog_entities = build_entities_from_parties([{"name": getattr(req, "plaintiff_name", None)}])
     try:
         raw_output = await ollama_client.generate(
@@ -420,34 +440,36 @@ async def auto_generate_evidence_catalog(req: AutoEvidenceCatalogReq):
         )
         parsed_items = ollama_client.extract_json(raw_output)
         if isinstance(parsed_items, dict) and "error" in parsed_items:
-            # 容错降级结构
-            items = [
-                {
-                    "name": "《银行电子转账回单及交易流水》",
-                    "category": "电子数据",
-                    "source": "银行网银导出打印",
-                    "purpose": "证明款项交付与资金流向事实",
-                    "pages": "第 1-2 页"
-                },
-                {
-                    "name": "《借条/合同协议原件》",
-                    "category": "书证",
-                    "source": "原告持有原件",
-                    "purpose": "证明双方合同法律关系及权利义务约定",
-                    "pages": "第 3 页"
-                }
-            ]
+            items = _parse_raw_evidence_items(req.evidence_notes)
         elif isinstance(parsed_items, list):
             items = parsed_items
         elif isinstance(parsed_items, dict):
             items = parsed_items.get("evidence_items", parsed_items.get("items", [parsed_items]))
         else:
             items = []
+        if not items:
+            items = _parse_raw_evidence_items(req.evidence_notes)
     except Exception as e:
         logger.warning(f"gemma4:12b 提炼证据目录异常: {e}")
+        items = _parse_raw_evidence_items(req.evidence_notes)
+
+    if not items:
         items = [
-            {"name": "案件关键书证及凭证", "category": "书证", "source": "原告留存", "purpose": "证明诉请主张事实", "pages": "1-3"}
+            {"name": "案件关键书证及凭证", "category": "书证", "source": "【待填写】", "purpose": "【待填写】", "pages": "【待填写】"}
         ]
+
+    # 保留用户原始名称与字段空栏【待填写】补全
+    raw_parsed = _parse_raw_evidence_items(req.evidence_notes)
+    if len(raw_parsed) == len(items):
+        for idx, item in enumerate(items):
+            item["name"] = raw_parsed[idx]["name"]
+    for item in items:
+        if not item.get("source"):
+            item["source"] = "【待填写】"
+        if not item.get("purpose"):
+            item["purpose"] = "【待填写】"
+        if not item.get("pages"):
+            item["pages"] = "【待填写】" 
 
     # 渲染至 Word 模板
     tpl_path = os.path.join(_templates_dir(), "evidence_catalog_template.docx")
@@ -466,6 +488,16 @@ async def auto_generate_evidence_catalog(req: AutoEvidenceCatalogReq):
     catalog_filename = f"证据目录_{req.plaintiff_name}_{timestamp}.docx"
     output_path = os.path.join(str(get_generated_dir()), catalog_filename)
     doc.save(output_path)
+
+    try:
+        from gateway.utils.matter_vault_db import record_audit_log
+        record_audit_log(
+            action="document_generate",
+            target=catalog_filename,
+            result="success"
+        )
+    except Exception as audit_err:
+        logger.warning(f"记录证据目录生成审计日志失败: {audit_err}")
 
     return {
         "status": "success",
@@ -512,6 +544,10 @@ async def generate_five_modules_trial_outline(req: TrialOutlineFiveModulesReq):
     except Exception as e:
         logger.warning(f"庭审提纲生成异常，启动规则兜底: {e}")
         outline_markdown = ollama_client._generate_rule_fallback(prompt, trial_system_prompt)
+
+    if getattr(ollama_client, "last_llm_mode", "rule_fallback") == "rule_fallback":
+        if "规则模式" not in outline_markdown[:150]:
+            outline_markdown = "> **【提示】当前为规则模式（未连接模型），以下为通用提纲，需结合案情修改。**\n\n" + outline_markdown
 
     from gateway.utils.citation_guard import audit_citations_in_text
     citation_audit = audit_citations_in_text(outline_markdown, auto_sanitize=True)
@@ -835,10 +871,10 @@ async def export_redline_contract_docx(req: ExportRedlineReq):
 # 6. 证据三性审查接口 (POST /api/v1/phase2/cross-examination)
 # ==============================================================================
 class CrossExamReq(BaseModel):
-    evidence_name: str = Field(..., example="被告提交的手写收据复印件")
-    evidence_category: str = Field(default="书证", example="书证")
-    opponent_purpose: str = Field(..., example="证明原告已收取10万元货款并结清")
-    client_facts: str = Field(..., example="原告从未收到该款项，收据签名不是原告字迹，被告拒不出示原件")
+    evidence_name: str = Field(..., examples=["被告提交的手写收据复印件"])
+    evidence_category: str = Field(default="书证", examples=["书证"])
+    opponent_purpose: str = Field(..., examples=["证明原告已收取10万元货款并结清"])
+    client_facts: str = Field(..., examples=["原告从未收到该款项，收据签名不是原告字迹，被告拒不出示原件"])
 
 @router.post("/api/v1/phase2/cross-examination", summary="AI 证据三性审查与反驳意见生成")
 @router.post("/api/evidence/cross-examination", include_in_schema=False)
@@ -856,6 +892,9 @@ async def api_cross_examination(req: CrossExamReq):
             temperature=0.2
         )
         parsed = ollama_client.extract_json(raw_output)
+        if getattr(ollama_client, "last_llm_mode", "rule_fallback") == "rule_fallback":
+            if isinstance(parsed, dict) and "disclaimer" not in parsed:
+                parsed["disclaimer"] = "当前为规则模式（未连接模型），以下为通用提纲，需结合案情修改。"
         return {
             "status": "success",
             "cross_examination": parsed,

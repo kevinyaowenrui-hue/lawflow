@@ -68,13 +68,54 @@ def test_matter_list_keeps_raw_title_api_uses_escapeHtml_in_grid(client):
     titles = [m.get("title") for m in listing.json().get("matters", [])]
     assert xss_title in titles
 
-    index_html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
-    # 汇报要求：确认案件列表渲染处使用 escapeHtml，并给出行号
+    matters_file = ROOT / "frontend" / "js" / "modules" / "07_matters.js"
+    source = matters_file.read_text(encoding="utf-8") if matters_file.exists() else (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     needle = "function renderMattersGrid"
-    idx = index_html.find(needle)
+    idx = source.find(needle)
     assert idx >= 0
-    line_no = index_html[:idx].count("\n") + 1
-    grid_fn = index_html[idx : idx + 2500]
+    line_no = source[:idx].count("\n") + 1
+    grid_fn = source[idx : idx + 2500]
     assert "escapeHtml(m.title)" in grid_fn
     # 供汇报引用
-    print(f"renderMattersGrid starts at line {line_no}; uses escapeHtml(m.title)")
+    print(f"renderMattersGrid starts at line {line_no} of {matters_file.name}; uses escapeHtml(m.title)")
+
+
+def test_check_fetch_script_exits_zero():
+    """批次 17 A-09：除 api.js 外不得直接出现 fetch(。"""
+    script = ROOT / "scripts" / "check_fetch.py"
+    proc = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert proc.returncode == 0, proc.stdout + "\n" + proc.stderr
+
+
+def test_check_a11y_script_exits_zero():
+    """批次 17 A-10：无障碍静态扫描通过。"""
+    script = ROOT / "scripts" / "check_a11y.py"
+    proc = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert proc.returncode == 0, proc.stdout + "\n" + proc.stderr
+
+
+def test_frontend_index_line_count_and_csp(client):
+    """批次 17 A-09 验收：index.html 行数 < 1,500，且 CSP script-src 不含 'unsafe-inline'。"""
+    index_html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    line_count = len(index_html.splitlines())
+    assert line_count < 1500, f"frontend/index.html 行数必须 < 1,500，当前为 {line_count}"
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    csp = resp.headers.get("content-security-policy") or resp.headers.get("Content-Security-Policy") or ""
+    assert "script-src 'self'" in csp
+    assert "script-src 'self' 'unsafe-inline'" not in csp

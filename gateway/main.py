@@ -51,6 +51,30 @@ def bootstrap_env_and_logging(env_file: str | Path | None = None) -> int:
         )
     root.setLevel(level)
     logging.getLogger("lawflow.gateway").setLevel(level)
+
+    # RotatingFileHandler 日志落盘配置 (A-13)
+    from logging.handlers import RotatingFileHandler
+    log_dir = os.environ.get("LAWFLOW_LOG_DIR") or str(Path(BASE_DIR) / "logs")
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, "lawflow.log")
+        has_file_handler = any(isinstance(h, RotatingFileHandler) for h in root.handlers)
+        if not has_file_handler:
+            file_handler = RotatingFileHandler(
+                log_file,
+                maxBytes=10 * 1024 * 1024,
+                backupCount=5,
+                encoding="utf-8"
+            )
+            file_handler.setLevel(level)
+            file_handler.setFormatter(logging.Formatter(
+                "%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S"
+            ))
+            root.addHandler(file_handler)
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to setup lawflow.log rotating handler: {e}\n")
+
     return level
 
 
@@ -159,6 +183,34 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+import uuid
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exceptions import RequestValidationError
+
+@app.exception_handler(Exception)
+async def global_unhandled_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, StarletteHTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=getattr(exc, "headers", None)
+        )
+    if isinstance(exc, RequestValidationError):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": exc.errors()}
+        )
+    req_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    logger.exception(f"Unhandled exception [request_id={req_id}]: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error_code": "INTERNAL_ERROR",
+            "message": "服务器内部错误",
+            "request_id": req_id
+        }
+    )
+
 # CORS：默认仅本机来源；凭证关闭
 _allowed_origins = _parse_csv_env(
     "LAWFLOW_ALLOWED_ORIGINS",
@@ -250,6 +302,20 @@ async def disclaimer_middleware(request: Request, call_next):
     )
 
 
+@app.get("/api/v1/audit-log", summary="审计日志查询（分页）")
+async def api_get_audit_log(
+    page: int = 1,
+    page_size: int = 20,
+    action: str = None,
+    matter_id: str = None
+):
+    from gateway.utils.matter_vault_db import get_audit_logs
+    data = get_audit_logs(page=page, page_size=page_size, action=action, matter_id=matter_id)
+    return {
+        "status": "success",
+        "data": data
+    }
+
 # 挂载各业务阶段路由
 app.include_router(phase1_router)
 app.include_router(phase2_router)
@@ -301,7 +367,7 @@ _CSP_HEADER = (
     "object-src 'none'; "
     "base-uri 'self'; "
     "frame-ancestors 'none'; "
-    "script-src 'self' 'unsafe-inline'; "
+    "script-src 'self'; "
     "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: blob:; "
     "connect-src 'self'; "

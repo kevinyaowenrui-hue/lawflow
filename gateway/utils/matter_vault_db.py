@@ -125,6 +125,18 @@ def init_matter_vault_db():
         );
         """)
 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            time TEXT NOT NULL,
+            action TEXT NOT NULL,
+            matter_id TEXT,
+            target TEXT,
+            client_ip TEXT,
+            result TEXT DEFAULT 'success'
+        );
+        """)
+
     if _should_seed_demo():
         seed_demo_matters()
 
@@ -568,3 +580,70 @@ def list_matter_deadlines(
             d["done"] = bool(d["done"])
             results.append(d)
         return results
+
+
+def record_audit_log(
+    action: str,
+    matter_id: Optional[str] = None,
+    target: Optional[str] = None,
+    client_ip: Optional[str] = None,
+    result: str = "success"
+) -> int:
+    """写入审计日志，不包含当事人敏感信息"""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO audit_log (time, action, matter_id, target, client_ip, result) VALUES (?, ?, ?, ?, ?, ?)",
+            (now_str, action, matter_id, target, client_ip, result)
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_audit_logs(
+    page: int = 1,
+    page_size: int = 20,
+    action: Optional[str] = None,
+    matter_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """分页获取审计日志"""
+    offset = max(0, (page - 1) * page_size)
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        where_clauses = ["1=1"]
+        params = []
+        if action:
+            where_clauses.append("action = ?")
+            params.append(action)
+        if matter_id:
+            where_clauses.append("matter_id = ?")
+            params.append(matter_id)
+        
+        where_sql = " AND ".join(where_clauses)
+        cursor.execute(f"SELECT COUNT(*) as cnt FROM audit_log WHERE {where_sql}", params)
+        total = cursor.fetchone()["cnt"]
+        
+        cursor.execute(
+            f"SELECT id, time, action, matter_id, target, client_ip, result FROM audit_log WHERE {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?",
+            params + [page_size, offset]
+        )
+        rows = cursor.fetchall()
+        items = [
+            {
+                "id": r["id"],
+                "time": r["time"],
+                "action": r["action"],
+                "matter_id": r["matter_id"],
+                "target": r["target"],
+                "client_ip": r["client_ip"],
+                "result": r["result"]
+            }
+            for r in rows
+        ]
+        return {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": items
+        }

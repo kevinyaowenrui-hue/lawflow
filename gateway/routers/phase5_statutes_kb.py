@@ -64,15 +64,11 @@ class LinkCreationRequest(BaseModel):
 
 @router.get("/overview", summary="全景法源库与引擎指标总览")
 async def get_overview():
-    try:
-        stats = get_statute_database_stats()
-        return {
-            "status": "success",
-            "data": stats
-        }
-    except Exception as e:
-        logger.error(f"获取法规库概览失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    stats = get_statute_database_stats()
+    return {
+        "status": "success",
+        "data": stats
+    }
 
 
 @router.get("/laws", summary="获取法规法典全景目录列表")
@@ -109,7 +105,7 @@ async def list_laws(
         }
     except Exception as e:
         logger.error(f"获取法规列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="获取法规库概览失败")
 
 
 @router.get("/law/{law_id}", summary="获取单部法律详情及其所有法条清单")
@@ -144,7 +140,7 @@ async def get_law_detail(law_id: str):
         raise
     except Exception as e:
         logger.error(f"获取法规详情失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="获取法规库概览失败")
 
 
 @router.get("/article/{article_id:path}", summary="获取单条法条详情及其完整的子母法关联网")
@@ -161,7 +157,7 @@ async def get_article_detail(article_id: str):
         raise
     except Exception as e:
         logger.error(f"获取法条详情失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="获取法规库概览失败")
 
 
 @router.post("/search", summary="三路混合检索（精确条号 + 复合短语 + FTS5 + 子母法图谱）")
@@ -183,7 +179,7 @@ async def search_statutes(req: StatuteSearchRequest):
         }
     except Exception as e:
         logger.error(f"法典检索异常: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="获取法规库概览失败")
 
 
 @router.post("/import", summary="律所私有新法规/地方审判指引一键切片导入")
@@ -209,7 +205,7 @@ async def import_statute(req: StatuteImportRequest):
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logger.error(f"导入法规失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="获取法规库概览失败")
 
 
 @router.post("/link", summary="手动绑定或拓展母法与司法解释子母关联图谱")
@@ -244,7 +240,7 @@ async def create_link(req: LinkCreationRequest):
         raise
     except Exception as e:
         logger.error(f"建立子母法图谱失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="获取法规库概览失败")
 
 
 class ReseedReq(BaseModel):
@@ -265,4 +261,4 @@ async def reseed_database(req: ReseedReq = Body(default_factory=ReseedReq)):
         }
     except Exception as e:
         logger.error(f"重置法规库失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="获取法规库概览失败")

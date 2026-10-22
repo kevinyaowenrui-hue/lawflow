@@ -356,8 +356,8 @@ class UniversalLLMClient:
                     self._active_ollama_url = primary
                     self._ollama_available = True
                     return True
-        except Exception:
-            pass
+        except httpx.HTTPError as net_err:
+            logger.debug(f"Primary ollama probe failed: {net_err}")
 
         # 仅当显式设置了环境变量 HOST_OLLAMA_URL 时探测备用地址，避免 Windows 无效 DNS 广播阻塞
         if os.getenv("HOST_OLLAMA_URL"):
@@ -369,8 +369,8 @@ class UniversalLLMClient:
                         self._active_ollama_url = fallback
                         self._ollama_available = True
                         return True
-            except Exception:
-                pass
+            except httpx.HTTPError as net_err:
+                logger.debug(f"Fallback ollama probe failed: {net_err}")
 
         self._active_ollama_url = None
         self._ollama_available = False
@@ -533,8 +533,8 @@ class UniversalLLMClient:
                         }
                         self.last_llm_mode = "ollama"
                         return result
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Ollama health check failed: %s", e)
 
         # 3. 规则兜底：model_ready 必须为 false
         result = {
@@ -834,6 +834,28 @@ class UniversalLLMClient:
 
         # 2. 证据目录提炼场景 (Phase 2)
         if "证据目录" in prompt or "梳理提炼为规范的 JSON 数组" in prompt:
+            notes_part = ""
+            if "【原始证据材料清单/碎片信息】" in prompt:
+                notes_part = prompt.split("【原始证据材料清单/碎片信息】")[-1].split("请按照规范")[0].strip()
+            if notes_part:
+                raw_lines = [l.strip() for l in notes_part.splitlines() if l.strip()]
+                if not raw_lines:
+                    raw_lines = [x.strip() for x in re.split(r'[,，;；\n、]', notes_part) if x.strip()]
+                res_items = []
+                for line in raw_lines:
+                    clean_name = re.sub(r'^\s*(?:\d+[\.、\-\)]\s*|\([0-9一二三四五六七八九十]+\)\s*|（[0-9一二三四五六七八九十]+）\s*|[一二三四五六七八九十]+[、\.\s]\s*|[-*•]\s*)', '', line).strip()
+                    clean_name = os.path.splitext(clean_name)[0].strip() or line.strip()
+                    if clean_name:
+                        res_items.append({
+                            "name": clean_name,
+                            "category": "电子数据" if any(k in clean_name for k in ["流水", "回单", "凭单", "微信", "短信", "转账", "网银"]) else "书证",
+                            "source": "【待填写】",
+                            "purpose": "【待填写】",
+                            "pages": "【待填写】"
+                        })
+                if res_items:
+                    return json.dumps(res_items, ensure_ascii=False, indent=2)
+
             return json.dumps([
                 {
                     "name": "《合同协议及补充约定书原件》",
@@ -861,6 +883,7 @@ class UniversalLLMClient:
         # 3. 五模块庭审提纲场景 (Phase 2)
         if "五模块结构" in prompt or "出庭提纲" in prompt:
             return (
+                "> **【提示】当前为规则模式（未连接模型），以下为通用提纲，需结合案情修改。**\n\n"
                 "# 诉讼出庭全流程审判五模块提纲 (专家规则模式)\n\n"
                 "### 一、案件核心概览\n"
                 "- **争议焦点性质**：本案系因给付义务履行迟延引发的合同履约纠纷，争议核心围绕给付条件是否成就、违约责任界定及抗辩事由展开。\n"
@@ -951,6 +974,7 @@ class UniversalLLMClient:
         # 5. 证据三性审查质证意见 (Phase 2)
         if "质证" in prompt or "证明力" in prompt:
             return json.dumps({
+                "disclaimer": "当前为规则模式（未连接模型），以下为通用提纲，需结合案情修改。",
                 "authenticity": "对其真实性提出异议。对方仅提供复印件/打印件，未能当庭出示原件或原始载体以供核对，无法排除伪造变造可能。",
                 "legality": "对其合法性存疑。该材料来源未经依法公证或合法调取程序，取证手段存在瑕疵。",
                 "relevance": "对其关联性不予认可。该材料与我方主张的核心待证事实无直接因果对应关系，不能证明对方之主张。",

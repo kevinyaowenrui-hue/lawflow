@@ -15,6 +15,7 @@ import subprocess
 import logging
 import time
 import uuid
+import hashlib
 from typing import List, Dict, Any, Optional
 from PIL import Image, ImageOps
 
@@ -52,8 +53,12 @@ def _tools_filee_dir() -> str:
 
 def find_filee_executable() -> Optional[str]:
     """
-    自动多路径探测 Filee CLI 执行程序
+    自动多路径探测 Filee CLI 执行程序。
+    Filee 仅支持 Windows 平台。
     """
+    if sys.platform != "win32":
+        logger.info("Filee 仅支持 Windows，已使用内置转换")
+        return None
     # 1. 显式环境变量
     env_path = os.environ.get("FILEE_PATH")
     if env_path and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
@@ -89,6 +94,33 @@ def find_filee_executable() -> Optional[str]:
             return sp
 
     return None
+
+def verify_filee_integrity(filee_exe: str) -> bool:
+    """
+    若设置了环境变量 FILEE_SHA256，则校验 Filee 可执行文件哈希；
+    哈希不匹配则记录错误日志并拒绝调用。未设置该环境变量时跳过校验。
+    """
+    expected_sha256 = os.environ.get("FILEE_SHA256")
+    if not expected_sha256:
+        return True
+    expected_sha256 = expected_sha256.strip().lower()
+    try:
+        import hashlib
+        sha256_hash = hashlib.sha256()
+        with open(filee_exe, "rb") as f:
+            for byte_block in iter(lambda: f.read(65536), b""):
+                sha256_hash.update(byte_block)
+        actual_sha256 = sha256_hash.hexdigest().lower()
+        if actual_sha256 != expected_sha256:
+            logger.error(
+                f"Filee 可执行文件 SHA-256 校验不匹配！期望: {expected_sha256}, 实际: {actual_sha256}，已拒绝执行并记录日志"
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.error(f"校验 Filee 可执行文件完整性异常: {e}")
+        return False
+
 
 
 def _pydub_available() -> bool:
@@ -221,8 +253,8 @@ def convert_images_to_court_pdf(
             if os.path.exists(temp_png):
                 try:
                     os.remove(temp_png)
-                except Exception:
-                    pass
+                except OSError as rem_err:
+                    logger.debug(f"清理临时图失败: {rem_err}")
 
         except Exception as e:
             logger.error(f"处理图片 {path} 失败: {e}")
@@ -375,10 +407,18 @@ def execute_filee_cli_conversion(
     output_dir: str
 ) -> Optional[str]:
     """
-    通过 Filee CLI 执行转码 (若已安装)
+    通过 Filee CLI 执行转码 (若已安装且完整性校验通过)
     """
+    if sys.platform != "win32":
+        logger.info("Filee 仅支持 Windows，已使用内置转换")
+        return None
+
     filee_exe = find_filee_executable()
     if not filee_exe:
+        return None
+
+    if not verify_filee_integrity(filee_exe):
+        logger.warning("Filee SHA-256 完整性校验未通过，拒绝执行并降级为内置转换")
         return None
 
     try:

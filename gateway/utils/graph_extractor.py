@@ -16,6 +16,46 @@ from gateway.core.ollama_client import ollama_client
 
 logger = logging.getLogger("lawflow.graph_extractor")
 
+# 尾随虚词/动词停用词表（实体清洗用）
+TRAILING_STOPWORDS = (
+    "承担", "提供", "向", "与", "的", "应", "须", "需", "自", "由", "对",
+    "负有", "负责", "承诺", "支付", "履行", "具有", "连带", "连带保证"
+)
+
+# 规范公司/企业后缀
+COMPANY_SUFFIXES = (
+    "有限责任公司", "股份有限公司", "有限公司", "合伙企业", "商贸公司", "科技公司", "公司"
+)
+
+
+def clean_entity_name(name: str, is_company: bool = False) -> str:
+    """
+    清洗实体名称：
+    1. 公司名在命中标准后缀（有限责任公司/股份有限公司/有限公司/合伙企业等）后截断
+    2. 去掉尾随的动词与虚词（承担、提供、向、与、的等）
+    3. 去除前后空白与标点符号
+    """
+    if not name:
+        return ""
+    cleaned = name.strip(" ：:，,。；;、\t\r\n")
+    if is_company:
+        for suffix in COMPANY_SUFFIXES:
+            idx = cleaned.find(suffix)
+            if idx != -1:
+                cleaned = cleaned[:idx + len(suffix)]
+                break
+    changed = True
+    while changed and cleaned:
+        changed = False
+        cleaned = cleaned.strip(" ：:，,。；;、\t\r\n")
+        for sw in TRAILING_STOPWORDS:
+            if cleaned.endswith(sw) and len(cleaned) > len(sw):
+                cleaned = cleaned[:-len(sw)].strip(" ：:，,。；;、\t\r\n")
+                changed = True
+                break
+    return cleaned
+
+
 CASE_GRAPH_SYSTEM_PROMPT = """你是一名资深商事诉讼专家与法律知识图谱架构师。
 你的任务是根据律师输入的《案件事实陈述》或《案卷材料文本》，深度抽取并结构化构建案件三大核心图谱：
 1. 事实发生时间线 (timeline)
@@ -139,19 +179,22 @@ def extract_rule_based_graphs(text: str) -> Dict[str, Any]:
     node_counter = 1
 
     # 寻找企业名与自然人
-    comp_matches = re.findall(r"([\u4e00-\u9fa5]{2,15}(?:有限公司|股份有限公司|有限责任公司|商贸公司|科技公司|合伙企业))", text)
-    unique_comps = list(dict.fromkeys(comp_matches))
+    comp_matches = re.findall(r"([\u4e00-\u9fa5]{2,20}(?:有限公司|股份有限公司|有限责任公司|商贸公司|科技公司|合伙企业))", text)
+    cleaned_comps = [clean_entity_name(c, is_company=True) for c in comp_matches]
+    unique_comps = list(dict.fromkeys([c for c in cleaned_comps if len(c) >= 3]))
 
     # 寻找自然人（原告、被告、保证人）
-    p_names = re.findall(r"(?:原告|被告|出借人|借款人|保证人|当事人|代表人)[：:\s]*([\u4e00-\u9fa5]{2,4})", text)
-    unique_names = list(dict.fromkeys(p_names))
+    p_names = re.findall(r"(?:原告|被告|出借人|借款人|保证人|当事人|代表人)[：:\s]*([\u4e00-\u9fa5]{2,6})", text)
+    cleaned_names = [clean_entity_name(n, is_company=False) for n in p_names]
+    unique_names = list(dict.fromkeys([n for n in cleaned_names if len(n) >= 2]))
 
     for idx, comp in enumerate(unique_comps):
-        nid = f"e{node_counter}"
-        node_counter += 1
-        role = "原告/出借人" if idx == 0 else "被告/主债务人"
-        nodes.append({"id": nid, "name": comp, "role": role, "type": "企业主体"})
-        node_id_map[comp] = nid
+        if comp not in node_id_map:
+            nid = f"e{node_counter}"
+            node_counter += 1
+            role = "原告/出借人" if idx == 0 else "被告/主债务人"
+            nodes.append({"id": nid, "name": comp, "role": role, "type": "企业主体"})
+            node_id_map[comp] = nid
 
     for name in unique_names:
         if name not in node_id_map and len(name) >= 2:
@@ -308,6 +351,11 @@ async def extract_case_graphs_from_text(facts_text: str, documents_text: str = "
                     t["evidence_ref"] = t.get("source_doc")
 
             eg = parsed.get("entity_graph", {})
+            for n in eg.get("nodes", []):
+                if "name" in n:
+                    is_comp = n.get("type") in ("企业主体", "企业或合伙企业", "企业")
+                    n["name"] = clean_entity_name(n["name"], is_company=is_comp)
+
             for e in eg.get("edges", []):
                 if "relation" not in e:
                     e["relation"] = e.get("type") or "关联关系"

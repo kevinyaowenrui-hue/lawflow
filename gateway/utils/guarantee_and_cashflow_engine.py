@@ -32,14 +32,14 @@ def _parse_date_from_text(text: str) -> Optional[date]:
     if m:
         try:
             return datetime.strptime(m.group(1), "%Y-%m-%d").date()
-        except Exception:
-            pass
+        except ValueError as val_err:
+            logger.debug(f"日期解析失败: {val_err}")
     m2 = _CN_DATE_RE.search(text)
     if m2:
         try:
             return date(int(m2.group(1)), int(m2.group(2)), int(m2.group(3)))
-        except Exception:
-            pass
+        except ValueError as val_err:
+            logger.debug(f"中文日期解析失败: {val_err}")
     return None
 
 
@@ -62,8 +62,8 @@ def _extract_principal_due_date(
     if principal_due_date:
         try:
             return datetime.strptime(principal_due_date, "%Y-%m-%d").date()
-        except Exception:
-            pass
+        except ValueError as val_err:
+            logger.debug(f"本金到期日解析失败: {val_err}")
 
     if not timeline:
         return None
@@ -706,8 +706,8 @@ def audit_and_reconcile_cashflow(
         if d_str:
             try:
                 flow_date = datetime.strptime(d_str, "%Y-%m-%d").date()
-            except Exception:
-                pass
+            except ValueError as val_err:
+                logger.debug(f"流水日期解析失败: {val_err}")
 
         kind = _classify_flow_purpose(purpose)
         item = {
@@ -741,8 +741,8 @@ def audit_and_reconcile_cashflow(
     if start_date:
         try:
             d_initial = datetime.strptime(start_date, "%Y-%m-%d").date()
-        except Exception:
-            pass
+        except ValueError as val_err:
+            logger.debug(f"初始日期解析失败: {val_err}")
 
     if not d_initial and valid_dated_flows:
         for f in valid_dated_flows:

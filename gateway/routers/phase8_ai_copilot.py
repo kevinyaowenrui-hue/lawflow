@@ -73,8 +73,8 @@ def extract_chinese_amount(text: str) -> Optional[float]:
             elif '亿' in unit and '亿' not in raw_num:
                 val *= 100000000
             return val
-        except Exception:
-            pass
+        except (ValueError, TypeError) as num_err:
+            logger.debug(f"cn2an 金额解析失败: {num_err}")
 
     # 3. 匹配明确带有金额动作前缀（改为/调整为/标的/本金/借款）的汉字数词（如：改为一百万、标的五十万、本金1000000）
     m_prefix = re.search(r'(?:改为|调整为|调为|变更为|本金|标的|金额|欠款|借款)\s*[:：=]?\s*([0-9零一二两三四五六七八九十百千万亿]+(?:\.[0-9零一二两三四五六七八九]+)?)', masked_text)
@@ -84,8 +84,8 @@ def extract_chinese_amount(text: str) -> Optional[float]:
             try:
                 val = float(cn2an.cn2an(raw_num, 'smart'))
                 return val
-            except Exception:
-                pass
+            except (ValueError, TypeError) as num_err:
+                logger.debug(f"cn2an 前缀金额解析失败: {num_err}")
 
     return None
 
@@ -225,10 +225,29 @@ def _rule_based_intent_parser(
     if d_match:
         context_patch["defendant"] = {"name": d_match.group(1)}
 
-    # 4. 判断是否需要执行【01 精算】联动（LPR利息 / 诉讼费 / 劳动仲裁）
-    is_calc_req = any(k in text_clean for k in ["算", "计息", "利息", "lpr", "LPR", "诉讼费", "保全费", "核算", "重算"])
+    # 4. 显式规则意图识别 (A-17 增强)
+    intent = None
+    if any(k in text_clean for k in ["算利息", "计算利息", "计息", "利息", "lpr", "LPR"]):
+        intent = "LPR 计算"
+    elif any(k in text_clean for k in ["生成起诉状", "写起诉状", "起诉状", "立案材料", "起草", "生成公文", "文书"]):
+        intent = "文书生成"
+    elif any(k in text_clean for k in ["诉讼时效", "时效", "时效计算"]):
+        intent = "时效计算"
+    elif any(k in text_clean for k in ["上诉期", "上诉期限", "上诉期计算"]):
+        intent = "上诉期计算"
+    elif any(k in text_clean for k in ["查法条", "核验", "Citation Guard", "法条核验"]):
+        intent = "Citation Guard"
+    elif any(k in text_clean for k in ["法条", "民法典", "司法解释", "第", "借款合同"]):
+        intent = "Citation Guard"
+    elif extracted_amount is not None or start_date_str is not None:
+        intent = "LPR 计算"
+
+    # 4.1 执行【01 精算】联动（LPR利息 / 诉讼费 / 劳动仲裁）
+    is_calc_req = intent == "LPR 计算" or any(k in text_clean for k in ["算", "计息", "利息", "lpr", "LPR", "诉讼费", "保全费", "核算", "重算"])
     if is_calc_req or extracted_amount is not None or start_date_str is not None:
-        principal = extracted_amount if extracted_amount is not None else (case_ctx.get("amount") or 500000.0)
+        if not intent:
+            intent = "LPR 计算"
+        principal = extracted_amount if extracted_amount is not None else (case_ctx.get("principal") or case_ctx.get("amount") or 500000.0)
         start = start_date_str or (case_ctx.get("interest_calc") or {}).get("start_date") or "2023-01-01"
         end = end_date_str or (case_ctx.get("interest_calc") or {}).get("end_date") or datetime.now().strftime("%Y-%m-%d")
 
@@ -251,8 +270,13 @@ def _rule_based_intent_parser(
                 "preservation_fee": court_res.get("preservation_fee", 0.0)
             }
             context_patch["interest_calc"] = calc_patch
+            context_patch["principal"] = principal
             if "amount" not in context_patch:
                 context_patch["amount"] = principal
+            if "start_date" not in context_patch:
+                context_patch["start_date"] = start
+            if "end_date" not in context_patch:
+                context_patch["end_date"] = end
 
             module_actions.append({
                 "module_id": "phase1_calc",
@@ -266,9 +290,33 @@ def _rule_based_intent_parser(
         except Exception as e:
             logger.warning(f"本地规则精算执行异常: {e}")
 
+    # 4.2 执行时效或上诉期联动
+    if intent == "时效计算":
+        module_actions.append({
+            "module_id": "phase1_calc",
+            "module_name": "01 实务精算与核验",
+            "action_name": "诉讼时效审查与中断计算",
+            "target_tab": "tab-calc",
+            "status": "success",
+            "summary": "已进入诉讼时效审查与中断精算面板",
+            "data": {"action": "statute_of_limitations"}
+        })
+    elif intent == "上诉期计算":
+        module_actions.append({
+            "module_id": "phase1_calc",
+            "module_name": "01 实务精算与核验",
+            "action_name": "上诉期计算与节假日顺延",
+            "target_tab": "tab-calc",
+            "status": "success",
+            "summary": "已进入上诉期计算与节假日顺延核算面板",
+            "data": {"action": "appeal_deadline"}
+        })
+
     # 5. 判断是否需要执行【06 法典穿透】联动
-    statute_keywords = ["法条", "民法典", "司法解释", "第", "借款合同", "违约金", "劳动合同", "时效", "利息上限", "保证"]
-    if any(k in text_clean for k in statute_keywords):
+    statute_keywords = ["法条", "民法典", "司法解释", "第", "借款合同", "违约金", "劳动合同", "时效", "利息上限", "保证", "Citation Guard"]
+    if intent == "Citation Guard" or any(k in text_clean for k in statute_keywords):
+        if not intent:
+            intent = "Citation Guard"
         query_word = "民间借贷 借款合同 利息"
         if "违约金" in text_clean:
             query_word = "违约金 调减 损失"
@@ -302,7 +350,9 @@ def _rule_based_intent_parser(
             logger.warning(f"本地法典检索联动异常: {e}")
 
     # 6. 判断是否需要【02 文书流水线】联动
-    if any(k in text_clean for k in ["起诉状", "文书", "立案材料", "起草", "生成公文"]):
+    if intent == "文书生成" or any(k in text_clean for k in ["起诉状", "文书", "立案材料", "起草", "生成公文"]):
+        if not intent:
+            intent = "文书生成"
         module_actions.append({
             "module_id": "phase1_litigation",
             "module_name": "02 立案文书流水线",
@@ -376,15 +426,22 @@ def _rule_based_intent_parser(
         int_total = c_patch.get('interest_total', 0)
         if int_total > 0:
             speech_parts.append(f"核算LPR利息暂计为{int_total:,.0f}元")
+    if any(a["module_id"] == "phase1_litigation" for a in module_actions):
+        speech_parts.append("已为您装配起诉状草稿与立案公文包")
+    if any(a.get("action_name") == "诉讼时效审查与中断计算" for a in module_actions):
+        speech_parts.append("已进入诉讼时效审查与中断精算面板")
+    if any(a.get("action_name") == "上诉期计算与节假日顺延" for a in module_actions):
+        speech_parts.append("已进入上诉期计算与节假日顺延核算面板")
     if any(a["module_id"] == "phase5_statutes" for a in module_actions):
         speech_parts.append("已挂载实体法条依据")
     if task_operations:
         speech_parts.append(f"已在办案看板中归纳了{len(task_operations)}项待办")
 
-    if not speech_parts:
+    if not speech_parts and not module_actions and not task_operations and not context_patch:
         # 用户仅打招呼或寒暄
         if any(w in text_clean for w in ["你好", "您好", "在吗", "在不在", "嗨", "hello", "hi"]):
             return {
+                "intent": "问候",
                 "speech_reply": "您好！我是智律 AI 助手，已就绪，随时为您调度计算与办案待办整理。",
                 "text_reply": """### ⚖️ 智律 AI 协同总控就绪
 
@@ -398,10 +455,11 @@ def _rule_based_intent_parser(
                 "module_actions": []
             }
         
-        # 未识别出有效法律要素或交办指令：严禁主动发声朗读，保持静默！
+        # 未识别出有效法律要素或交办指令
         return {
+            "intent": "未识别",
             "speech_reply": "",
-            "text_reply": f"已收到口述记录：「{text_clean}」。当前未检测到明确的案件要素修改、利息计算或待办任务交办指令。若需调整案情或排期待办，请直接说明。",
+            "text_reply": f"未识别指令，可尝试：\n- 算利息 / LPR 计算（如：帮我算一下 10 万元从 2024-01-01 到 2025-01-01 的利息）\n- 生成起诉状 / 写起诉状（如：生成起诉状）\n- 诉讼时效计算（如：借款合同诉讼时效计算）\n- 上诉期计算（如：判决书送达后上诉期计算）\n- 查法条 / 核验 (Citation Guard)",
             "context_patch": {},
             "task_operations": [],
             "module_actions": []
@@ -420,6 +478,7 @@ def _rule_based_intent_parser(
 *所有计算结果与法条依据已实时回填至当前案件总线 `CaseContextStore`。*"""
 
     return {
+        "intent": intent or "协同编排",
         "speech_reply": speech_reply,
         "text_reply": text_reply,
         "context_patch": context_patch,
@@ -460,7 +519,7 @@ async def list_copilot_tasks(
 @router.post("/tasks", summary="创建新办案任务")
 async def create_new_copilot_task(req: TaskCreateReq):
     init_agent_task_db()
-    created = create_agent_task(req.dict())
+    created = create_agent_task(req.model_dump())
     return {
         "status": "success",
         "task": created
@@ -470,7 +529,7 @@ async def create_new_copilot_task(req: TaskCreateReq):
 @router.put("/tasks/{task_id}", summary="更新办案任务状态或属性")
 async def update_copilot_task_info(task_id: str, req: TaskUpdateReq):
     init_agent_task_db()
-    data = {k: v for k, v in req.dict().items() if v is not None}
+    data = {k: v for k, v in req.model_dump().items() if v is not None}
     updated = update_agent_task(task_id, data)
     if not updated:
         raise HTTPException(status_code=404, detail="未找到目标任务或任务不存在")
@@ -682,6 +741,7 @@ async def copilot_converse_orchestrate(req: CopilotConverseReq):
 
     return {
         "status": "success",
+        "intent": orchestration_result.get("intent"),
         "speech_reply": orchestration_result.get("speech_reply", "指令已执行完成。"),
         "text_reply": orchestration_result.get("text_reply", ""),
         "context_patch": orchestration_result.get("context_patch", {}),

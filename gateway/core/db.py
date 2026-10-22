@@ -38,8 +38,8 @@ def connect(
     except Exception:
         try:
             conn.rollback()
-        except Exception:
-            pass
+        except sqlite3.Error as rb_err:
+            logger.debug(f"Rollback failed: {rb_err}")
         raise
     finally:
         conn.close()

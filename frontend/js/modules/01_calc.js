@@ -1109,6 +1109,9 @@ export function renderTabCalc() {
     }
 
 
+    let lastCalcDeadline = null;
+    let lastAppealDeadline = null;
+
     function addCurrentCalcDeadlineToVault() {
       if (!lastCalcDeadline) {
         showToast("暂无计算完成的期限结果！");
@@ -1195,4 +1198,37 @@ export function renderTabCalc() {
       const note = document.getElementById('new-deadline-note')?.value.trim() || '';
       if (!date) {
         showToast("请选择截止日期！");
+        return;
+      }
+      await addCalculatorDeadlineToVault(kind, date, source, note);
+      closeAddDeadlineModal();
+      await fetchAndRenderVaultDeadlines();
+    }
 
+export {
+  clientConvertRmbCapital,
+  handleRmbInput,
+  handleSubjectInput,
+  runSubjectValidate,
+  copySubjectNote,
+  switchCalcSegment,
+  runAppealCalc,
+  runLprCalc,
+  runCourtFeeCalc,
+  runLaborArbitrationCalc,
+  runStatuteLimitCalc,
+  runPreservationRenewalCalc,
+  runStatuteValidityCheck,
+  toggleSettlementPlanUI,
+  runSettlementCalc,
+  addCurrentCalcDeadlineToVault,
+  addAppealDeadlineToVault,
+  addCalculatorDeadlineToVault,
+  openAddDeadlineModal,
+  closeAddDeadlineModal,
+  handleAddDeadlineBackdropClick,
+  onDeadlineKindChange,
+  submitManualDeadline,
+  lastCalcDeadline,
+  lastAppealDeadline,
+};

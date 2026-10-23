@@ -267,3 +267,18 @@ import { showToast } from '../ui/toast.js';
     // =========================================================================
     // 批次 15 新增：案件状态流转、软删除、期限日历、PII扫描、证据三性质证与红队攻击
 
+export {
+  openFileConverterModal,
+  closeFileConverterModal,
+  handleConverterModalBackdropClick,
+  fetchConverterStatus,
+  applyConverterPreset,
+  onTargetFormatChange,
+  onConverterFilesSelected,
+  clearConverterFiles,
+  renderConverterFilesSummary,
+  executeOfflineConversion,
+  pushConvertedToEvidenceList,
+  pushConvertedToVoiceCopilot,
+  initConverterDropZone,
+};

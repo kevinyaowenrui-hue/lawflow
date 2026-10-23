@@ -314,6 +314,7 @@ export function renderTabAppealSigning() {
     // =========================================================================
     // 5. 模块 04：二审/再审类案裁判分歧对抗与心证翻盘大屏 (P3升级)
     // =========================================================================
+    let lastAppealDeadline = null;
     let currentAppealAuditData = null;
     let currentAppealDocView = 'pleading'; // 'pleading' or 'memo'
 
@@ -770,4 +771,19 @@ export function renderTabAppealSigning() {
       }
     }
 
-
+export {
+  switchRagSignSubTab,
+  load80MRepurchasePreset,
+  runAppealAuditUI,
+  switchAppealDocView,
+  renderAppealDocPreview,
+  copyAppealDocument,
+  copyRebuttalQuote,
+  exportAppealDocxUI,
+  runDualRAGSearch,
+  runRAGConsult,
+  runCreateDocuSealLink,
+  copySigningLink,
+  simulateClientSignature,
+  lastAppealDeadline,
+};

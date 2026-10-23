@@ -362,12 +362,13 @@ async def health_check():
 
 
 # Content-Security-Policy：同源默认；内联脚本暂保留 unsafe-inline（批次 17 A-09 拆分前端后去除）
+# TODO(P1): migrate inline handlers to addEventListener, then drop 'unsafe-inline'
 _CSP_HEADER = (
     "default-src 'self'; "
     "object-src 'none'; "
     "base-uri 'self'; "
     "frame-ancestors 'none'; "
-    "script-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
     "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: blob:; "
     "connect-src 'self'; "

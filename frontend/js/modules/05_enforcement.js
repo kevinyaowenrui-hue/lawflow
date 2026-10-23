@@ -980,4 +980,24 @@ export function renderTabEnforcement() {
       `;
     }
 
-
+export {
+  switchDeepMatrixSubTab,
+  load120MEnforcementPreset,
+  runEnforcementAuditUI,
+  switchEnforcementDocView,
+  renderEnforcementDocPreview,
+  copyEnforcementDocument,
+  exportEnforcementDocxUI,
+  changeDeepPreset,
+  switchPerspective,
+  runDeepMatrixAnalyze,
+  renderRawDossierList,
+  renderTimelineAndConflicts,
+  renderFactElements,
+  renderVerifiabilityLedger,
+  locateRawDossierSnippet,
+  exportDeepMatrixReport,
+  runAdversarialAttackUI,
+  renderAdversarialAttackResult,
+  currentDeepData,
+};

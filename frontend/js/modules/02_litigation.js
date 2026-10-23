@@ -459,4 +459,7 @@ export function renderTabLitigation() {
       }
     }
 
-
+export {
+  updateCausePreset,
+  runGenerateLitigationPackage,
+};

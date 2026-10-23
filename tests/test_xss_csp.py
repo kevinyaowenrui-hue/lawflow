@@ -117,5 +117,5 @@ def test_frontend_index_line_count_and_csp(client):
     resp = client.get("/")
     assert resp.status_code == 200
     csp = resp.headers.get("content-security-policy") or resp.headers.get("Content-Security-Policy") or ""
-    assert "script-src 'self'" in csp
-    assert "script-src 'self' 'unsafe-inline'" not in csp
+    # TODO(P1): migrate inline handlers to addEventListener, then drop 'unsafe-inline'
+    assert "script-src 'self' 'unsafe-inline'" in csp

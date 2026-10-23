@@ -812,8 +812,11 @@ export function renderTabMatters() {
     // =========================================================================
     // 10. 案件独立空间管理与核心图谱中枢 (Matter Vault & Core Graphs)
     // =========================================================================
+    let currentDeepData = null;
     let activeMatterId = null;
+      if (typeof window !== 'undefined') window.activeMatterId = null;
     let activeMatterData = null;
+      if (typeof window !== 'undefined') window.activeMatterData = null;
     let allVaultMatters = [];
 
     async function clearDemoDataUI() {
@@ -825,6 +828,7 @@ export function renderTabMatters() {
         }
         showToast('已清空演示数据');
         activeMatterId = '';
+      if (typeof window !== 'undefined') window.activeMatterId = '';
         await fetchAndRenderMattersList(false);
         updateDemoDataBadge();
       } catch (e) {
@@ -891,7 +895,9 @@ export function renderTabMatters() {
         }
         showToast('演示数据已清空');
         activeMatterId = null;
+      if (typeof window !== 'undefined') window.activeMatterId = null;
         activeMatterData = null;
+      if (typeof window !== 'undefined') window.activeMatterData = null;
         await fetchAndRenderMattersList(true);
         if (allVaultMatters.length > 0) {
           await switchActiveMatter(allVaultMatters[0].matter_id, false);
@@ -997,6 +1003,7 @@ export function renderTabMatters() {
 
     async function switchActiveMatter(matterId, triggerToast = true) {
       activeMatterId = matterId;
+      if (typeof window !== 'undefined') window.activeMatterId = matterId;
       try {
         const resp = await api.request(`${API_BASE}/api/v1/vault/matters/${matterId}`);
         if (!resp.ok) return;
@@ -2726,7 +2733,9 @@ export function renderTabMatters() {
         showToast(res.message || "案件已软删除");
         if (activeMatterId === matterId) {
           activeMatterId = null;
+      if (typeof window !== 'undefined') window.activeMatterId = null;
           activeMatterData = null;
+      if (typeof window !== 'undefined') window.activeMatterData = null;
         }
         await fetchAndRenderMattersList(true);
         if (!activeMatterId && allVaultMatters.length > 0) {
@@ -2965,8 +2974,97 @@ export function renderTabMatters() {
       }).join('');
     }
 
-
-    let lastCalcDeadline = null;
-    let lastAppealDeadline = null;
-
-
+export {
+  CaseContextStore,
+  activeMatterId,
+  activeMatterData,
+  allVaultMatters,
+  renderGlobalCaseBar,
+  updateTabContextDisplays,
+  syncCurrentCalcToCaseContext,
+  applyCaseContextToLitigation,
+  applyCaseContextToDeepMatrix,
+  loadCaseContextToDeepPanel,
+  submitCustomDeepMatrixAnalyze,
+  toggleSelectStatuteFromList,
+  openSelectedStatutesDrawer,
+  openCaseContextModal,
+  closeCaseContextModal,
+  handleCaseModalBackdropClick,
+  syncModalCaseCauseBadge,
+  renderModalStatutesList,
+  removeStatuteFromCase,
+  saveCaseContextFromModal,
+  resetCaseContextToDefault,
+  clearCaseContextToNew,
+  syncCalcFromTab01ToModal,
+  clearDemoDataUI,
+  updateDemoDataBadge,
+  initMatterVault,
+  openMatterVaultModal,
+  closeMatterVaultModal,
+  handleMatterVaultBackdropClick,
+  updateDemoDataClearButton,
+  clearVaultDemoData,
+  fetchAndRenderMattersList,
+  filterMattersList,
+  renderMattersGrid,
+  switchActiveMatter,
+  openNewMatterDrawer,
+  closeNewMatterDrawer,
+  submitCreateNewMatter,
+  openMountDocModal,
+  closeMountDocModal,
+  handleMountDocBackdropClick,
+  submitMountDocument,
+  fetchAndRenderMatterDocs,
+  switchVaultGraphTab,
+  fetchAndRenderMatterGraphs,
+  runExtractMatterGraphs,
+  renderTimelineGraph,
+  runGuaranteeAnalysisUI,
+  renderGuaranteeSummaryBar,
+  renderTopologySVG,
+  renderEntityCardsWithGuarantee,
+  copyGuaranteeTacticalMemo,
+  renderEntityGraph,
+  runCashflowAudit,
+  switchCashflowMode,
+  renderCashflowWithMode,
+  copyCashflowStatement,
+  renderCashflowGraph,
+  switchLitigationMode,
+  updateWorkflowStepperUI,
+  startLitigationWorkflowUI,
+  renderWorkflowStepUI,
+  advanceWorkflowStep2UI,
+  advanceWorkflowStep4UI,
+  rollbackWorkflowUI,
+  resetWorkflowUI,
+  fetchAndRenderReviewTables,
+  loadReviewTableData,
+  renderReviewGrid,
+  runCellRefreshUI,
+  runColumnRefreshUI,
+  runAllReviewTableUI,
+  exportReviewTableCsvUI,
+  openAddReviewColumnModal,
+  closeAddReviewColumnModal,
+  handleAddColumnBackdropClick,
+  submitAddReviewColumn,
+  deleteReviewColumnUI,
+  switchGroundingTab,
+  openSourceGroundingViewer,
+  closeSourceGroundingViewer,
+  copyGroundingSnippet,
+  copyGroundingAnchor,
+  updateMatterStatusUI,
+  deleteMatterUI,
+  exportReviewTableXlsxUI,
+  uploadVaultDocumentFile,
+  handleVaultBatchFilesSelect,
+  handleVaultBatchFiles,
+  setupVaultDnD,
+  fetchAndRenderVaultDeadlines,
+  renderVaultDeadlinesList,
+};

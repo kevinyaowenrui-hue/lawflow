@@ -2,7 +2,7 @@
  * LawFlow Main Entry (main.js)
  * 组装与挂载 01~08 模块、初始化模态框、事件绑定与全局兼容导出
  */
-import { api, ApiError, API_BASE, withDownloadToken, getApiToken } from './api.js';
+import { api, ApiError, API_BASE, getApiToken, withDownloadToken, escapeHtml } from './api.js';
 import { showToast } from './ui/toast.js';
 import { initModals, setupModalFocusManagement } from './modules/modals.js';
 import * as CalcModule from './modules/01_calc.js';
@@ -32,14 +32,23 @@ const allModules = [
 
 for (const mod of allModules) {
   for (const [key, val] of Object.entries(mod)) {
-    if (typeof window !== 'undefined' && !(key in window)) {
+    if (typeof window !== 'undefined') {
       window[key] = val;
     }
   }
 }
+if (typeof window !== 'undefined') {
+  window.toggleSidebar = toggleSidebar;
+  window.switchNavTab = switchNavTab;
+  window.initDate = initDate;
+  window.copyToClipboard = copyToClipboard;
+  window.copyBadgeText = copyBadgeText;
+  window.copyElementText = copyElementText;
+  window.copyLegalStatement = copyLegalStatement;
+  window.mountAllTabs = mountAllTabs;
+}
 
 // 通用工具与导航函数
-    const API_BASE = "";
     // S-01：从服务端注入的 meta 读取同源 API Token；统一包装 fetch 与下载链接
     const LAWFLOW_TOKEN = (document.querySelector('meta[name="lawflow-token"]') || {}).content || "";
     const LAWFLOW_DISCLAIMER = "本输出由软件自动生成，仅供执业律师参考，不构成法律意见，须经律师审核后使用。";
@@ -68,13 +77,7 @@ for (const mod of allModules) {
       initResultCardDisclaimers();
     }
 
-    function withDownloadToken(url) {
-      if (!url || typeof url !== 'string') return url;
-      if (url.indexOf('/api/documents/download/') === -1) return url;
-      if (!LAWFLOW_TOKEN) return url;
-      if (/[?&]token=/.test(url)) return url;
-      return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(LAWFLOW_TOKEN);
-    }
+
 
     window.fetch = function lawflowFetch(input, init) {
       const opts = init ? Object.assign({}, init) : {};
@@ -126,22 +129,7 @@ for (const mod of allModules) {
       if (dateEl) dateEl.innerText = dateStr;
     }
 
-    // 轻量级 Toast 提示
-    function showToast(msg) {
-      const container = document.getElementById('toast-container');
-      const toast = document.createElement('div');
-      toast.className = 'toast';
-      toast.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C58532" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-        <span>${escapeHtml(msg)}</span>
-      `;
-      container.appendChild(toast);
-      setTimeout(() => toast.classList.add('show'), 10);
-      setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 250);
-      }, 2400);
-    }
+
 
     function copyToClipboard(text, successMsg) {
       if (!text) return;
@@ -207,6 +195,15 @@ window.addEventListener('DOMContentLoaded', () => {
   if (typeof initResultCardDisclaimers === 'function') initResultCardDisclaimers();
 
   // 3. 初始化在办案件状态机与案件列表
+  // Restore batch-16 startup calls dropped in the batch-17 split (engine status, case bar, vault, RAG, converter status)
+  if (typeof renderGlobalCaseBar === 'function') renderGlobalCaseBar();
+  if (typeof updateTabContextDisplays === 'function') updateTabContextDisplays();
+  if (typeof initMatterVault === 'function') initMatterVault();
+  if (typeof runDualRAGSearch === 'function') runDualRAGSearch();
+  if (typeof fetchEngineHealth === 'function') fetchEngineHealth();
+  if (typeof fetchConverterStatus === 'function') fetchConverterStatus();
+  if (typeof runDeepMatrixAnalyze === 'function') runDeepMatrixAnalyze();
+
   if (window.CaseContextStore && typeof window.CaseContextStore.init === 'function') {
     window.CaseContextStore.init();
   }

@@ -29,6 +29,17 @@ export function getApiToken() {
   }
 }
 
+
+export function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export function withDownloadToken(url) {
   if (!url || typeof url !== "string") return url || "#";
   const token = getApiToken();
@@ -190,4 +201,12 @@ if (typeof window !== "undefined") {
   window.ApiError = ApiError;
   window.API_BASE = API_BASE;
   window.withDownloadToken = withDownloadToken;
+  window.escapeHtml = escapeHtml;
+  window.activeMatterId = null;
+  window.activeMatterData = null;
+  window.allVaultMatters = [];
+  window.lastCalcDeadline = null;
+  window.lastAppealDeadline = null;
+  window.currentDeepData = null;
+  window._lastCitationAudit = null;
 }

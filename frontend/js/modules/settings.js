@@ -555,107 +555,7 @@ import { showToast } from '../ui/toast.js';
       }
     }
 
-    // 本地库比对引注熔断模态框控制
-    function openCitationGuardReportModal(customAudit) {
-      const audit = customAudit || window._lastCitationAudit;
-      const modal = document.getElementById('modal-citation-guard');
-      if (modal) {
-        modal.classList.add('active');
-        if (audit) {
-          renderCitationAuditReport(audit);
-        }
-      }
-    }
-
-    function closeCitationGuardReportModal() {
-      const modal = document.getElementById('modal-citation-guard');
-      if (modal) modal.classList.remove('active');
-    }
-
-    function handleCitationGuardModalBackdropClick(e) {
-      if (e.target.id === 'modal-citation-guard') closeCitationGuardReportModal();
-    }
-
-    function switchCitationGuardTab(tab) {
-      document.getElementById('tab-btn-cg-items')?.classList.toggle('active', tab === 'items');
-      document.getElementById('tab-btn-cg-tester')?.classList.toggle('active', tab === 'tester');
-      document.getElementById('tab-btn-cg-single')?.classList.toggle('active', tab === 'single');
-      if (document.getElementById('view-cg-items')) document.getElementById('view-cg-items').style.display = tab === 'items' ? 'block' : 'none';
-      if (document.getElementById('view-cg-tester')) document.getElementById('view-cg-tester').style.display = tab === 'tester' ? 'block' : 'none';
-      if (document.getElementById('view-cg-single')) document.getElementById('view-cg-single').style.display = tab === 'single' ? 'block' : 'none';
-    }
-
-    function renderCitationAuditReport(audit) {
-      if (!audit) return;
-      const stats = audit.stats || {};
-      document.getElementById('cg-stat-total').innerText = (stats.total_citations || 0) + (stats.case_numbers_total || 0);
-      document.getElementById('cg-stat-verified').innerText = (stats.verified_count || 0) + (stats.case_numbers_verified || 0);
-      document.getElementById('cg-stat-abrogated').innerText = stats.abrogated_count || 0;
-      document.getElementById('cg-stat-hallucinated').innerText = stats.hallucinated_count || 0;
-
-      const badge = document.getElementById('cg-modal-badge');
-      if (badge) {
-        if (audit.has_abrogated_laws || audit.has_hallucinations) {
-          badge.style.background = '#C58532';
-          badge.innerText = `⚠️ 已熔断并修正旧法/拦截虚构 (合格率 ${audit.compliance_rate})`;
-        } else {
-          badge.style.background = '#2E7D32';
-          badge.innerText = `100% 权威现行有效 (零法条案号幻觉)`;
-        }
-      }
-
-      const listDiv = document.getElementById('cg-items-list');
-      if (!listDiv) return;
-
-      const items = audit.items || [];
-      const cases = audit.case_numbers || [];
-
-      if (items.length === 0 && cases.length === 0) {
-        listDiv.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 25px;">文书中未探测到具体法条或案号引用</div>`;
-        return;
-      }
-
-      const itemsHtml = items.map((it, idx) => {
-        const st = it.audit_status || it.status || '';
-        let badgeBg = '#FFF8E1';
-        let badgeColor = '#B78103';
-        let label = '待核验';
-        if (st === 'LOCAL_MATCH') {
-          badgeBg = '#E8F5E9';
-          badgeColor = '#2E7D32';
-          label = '本地库比对一致';
-        } else if (st === 'ABROGATED_BLOCKED' || st === 'CONTENT_MISMATCH' || st === 'HALLUCINATION_EXCEEDED') {
-          badgeBg = '#FFEBEE';
-          badgeColor = '#D32F2F';
-          label = st === 'ABROGATED_BLOCKED' ? '已废止·禁止引用' : (st === 'CONTENT_MISMATCH' ? '正文不一致' : '虚构条号');
-        } else if (st === 'UNRECOGNIZED_LAW') {
-          badgeBg = '#FFEBEE';
-          badgeColor = '#C62828';
-          label = '未识别法律名称';
-        } else if (st === 'UNINDEXED_UNVERIFIABLE' || st === 'PENDING_VERIFICATION') {
-          badgeBg = '#FFF8E1';
-          badgeColor = '#B78103';
-          label = st === 'PENDING_VERIFICATION' ? '已收录·待核验' : '未收录·无法核验';
-        }
-
-        let replaceHtml = '';
-        if (it.suggested_replacement) {
-          replaceHtml = `
-            <div style="background: #FFF8E1; border: 1px solid #FFE082; padding: 6px 10px; border-radius: 3px; margin-top: 6px; font-size: 11px; color: #8D6E63;">
-              💡 自动替换建议: <strong>${it.suggested_replacement}</strong> (${it.risk_tip || '已自动切换至现行民法典对应条款'})
-            </div>
-          `;
-        }
-
-        let articleContentHtml = '';
-        if (it.article_content) {
-          articleContentHtml = `
-            <div style="background: #F4F6F9; border-left: 3px solid #14233C; padding: 6px 10px; margin-top: 6px; font-size: 11.5px; color: var(--text-primary); line-height: 1.5;">
-              <span style="font-weight: 700; color: var(--primary-navy);">${it.statute_full_name || it.law_name}：</span>
-              ${it.article_content}
-            </div>
-
-    async function runPiiScanUI() {
+async function runPiiScanUI() {
       const text = document.getElementById('pii-scan-input')?.value.trim();
       if (!text) {
         showToast("请输入待扫描脱敏的文本！");
@@ -702,4 +602,30 @@ import { showToast } from '../ui/toast.js';
       `;
     }
 
-
+export {
+  fetchEngineHealth,
+  updateEngineStatusUI,
+  openEngineSettingsModal,
+  closeEngineSettingsModal,
+  handleModalBackdropClick,
+  selectEngineMode,
+  onCloudPresetChange,
+  toggleApiKeyVisibility,
+  showTestFeedback,
+  hideTestFeedback,
+  testEngineConnection,
+  saveEngineSettings,
+  openConflictCheckModal,
+  closeConflictCheckModal,
+  handleConflictModalBackdropClick,
+  switchConflictModalTab,
+  syncConflictFormFromGlobalCase,
+  quickCheckTabLitigationConflict,
+  runConflictCheckSubmit,
+  renderConflictResult,
+  loadConflictRegistry,
+  toggleRegisterCaseDrawer,
+  submitRegisterConflictCase,
+  runPiiScanUI,
+  renderPiiScanResult,
+};

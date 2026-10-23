@@ -1290,4 +1290,28 @@ export function renderTabEvidence() {
       `;
     }
 
-
+export {
+  runProcessEvidence,
+  runRedactSensitive,
+  runTrialOutlineAgent,
+  escapeHtml,
+  switchPhase2RightTab,
+  switchEvidenceSubTool,
+  loadPlaybooksIfNeeded,
+  onPlaybookChange,
+  renderDiffHtml,
+  runContractReview,
+  copySuggestedClause,
+  handleContractSourceFileSelect,
+  exportRedlineDocx,
+  copyPhase2ActiveContent,
+  switchContractReviewMode,
+  loadVersionDiffPreset,
+  runVersionCompareUI,
+  renderVersionDiffResult,
+  exportVersionDiffDocxUI,
+  runAutoEvidenceCatalogUI,
+  renderEvidenceCatalogResult,
+  runCrossExaminationUI,
+  renderCrossExaminationResult,
+};

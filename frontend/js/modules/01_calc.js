@@ -121,9 +121,18 @@ export const CALC_TAB_HTML = `
               <div class="form-group">
                 <label class="form-label">审理程序</label>
                 <select aria-label="fee proc"  id="fee-proc">
-                  <option value="false">普通程序 (全额交纳)</option>
-                  <option value="true">简易程序 / 调解结案 (减半交纳)</option>
+                  <option value="false">普通程序 (全额交纳 100%)</option>
+                  <option value="true">简易程序 / 调解结案 (依法减半 50% · 《诉讼费用交纳办法》第15条)</option>
                 </select>
+              </div>
+            </div>
+            <div class="form-row" style="margin-top: 10px;">
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label">财产保全申请标的金额 (元，选填)</label>
+                <input aria-label="preservation amount" type="number" id="fee-preserv-amount" placeholder="留空默认等同诉讼标的额" step="5000">
+                <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">
+                  诉责险市场参考费率 0.08%~0.15%，起保最低收费 500 元（法释〔2016〕22号第七条）
+                </span>
               </div>
             </div>
 
@@ -419,6 +428,11 @@ export const CALC_TAB_HTML = `
               <span class="metric-value" id="metric-v3">365 天</span>
               <span class="metric-sub" id="metric-s3">2023-01-01 至 2024-01-01</span>
             </div>
+            <div class="metric-item" id="metric-item-4" style="display: none;">
+              <span class="metric-label" id="metric-l4">诉责险市场参考成本</span>
+              <span class="metric-value highlight" id="metric-v4">¥ 500.00 ~ ¥ 750.00</span>
+              <span class="metric-sub" id="metric-s4">费率 0.08%~0.15% (起保 500 元)</span>
+            </div>
           </div>
 
           <!-- 排版规范公文正文 (衬线字体，真实卷宗质感) -->
@@ -635,6 +649,10 @@ export function renderTabCalc() {
       const paneAppeal = document.getElementById('calc-pane-appeal');
       if (paneAppeal) paneAppeal.style.display = mode === 'appeal' ? 'block' : 'none';
 
+      // 调整第4项指标（诉责险）：仅在诉讼与保全费模式下展示
+      const m4 = document.getElementById('metric-item-4');
+      if (m4) m4.style.display = mode === 'court' ? 'flex' : 'none';
+
       // 调整右侧凭条类型徽章
       const typeBadge = document.getElementById('receipt-type-badge');
       if (mode === 'lpr') {
@@ -754,38 +772,77 @@ export function renderTabCalc() {
       const amount = parseFloat(document.getElementById('fee-amount').value) || 0;
       const isSummary = document.getElementById('fee-proc').value === 'true';
 
+      const payload = {
+        claim_amount: amount,
+        is_summary_procedure: isSummary,
+        case_type: "财产案件"
+      };
+
+      const preservEl = document.getElementById('fee-preserv-amount');
+      if (preservEl && preservEl.value.trim() !== '') {
+        const parsedPreserv = parseFloat(preservEl.value.trim());
+        if (!isNaN(parsedPreserv) && parsedPreserv >= 0) {
+          payload.preservation_amount = parsedPreserv;
+        }
+      }
+
       try {
         const resp = await api.request(`${API_BASE}/api/v1/phase1/calc/court-fees`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ claim_amount: amount, is_summary_procedure: isSummary, case_type: "财产案件" })
+          body: JSON.stringify(payload)
         });
         const d = await resp.json();
 
         // 渲染大号指标
         document.getElementById('metric-l1').innerText = "实际应交受理费";
         document.getElementById('metric-v1').innerText = `¥ ${d.actual_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`;
-        document.getElementById('metric-s1').innerText = `大写：${d.rmb_capital} (${isSummary ? '简易程序减半' : '普通程序全额'})`;
+        const summaryBadge = isSummary
+          ? `简易程序依法减半 (原¥ ${d.standard_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})})`
+          : `普通程序全额 (¥ ${d.standard_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})})`;
+        document.getElementById('metric-s1').innerText = `大写：${d.rmb_capital} · ${summaryBadge}`;
 
-        document.getElementById('metric-l2').innerText = "财产保全申请费";
+        document.getElementById('metric-l2').innerText = "财产保全申请规费";
         document.getElementById('metric-v2').innerText = `¥ ${d.preservation_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`;
-        document.getElementById('metric-s2').innerText = "封顶 5,000.00 元";
+        const pAmount = (d.preservation_amount !== undefined && d.preservation_amount !== null) ? d.preservation_amount : d.claim_amount;
+        document.getElementById('metric-s2').innerText = `保全标的 ¥ ${pAmount.toLocaleString('zh-CN', {minimumFractionDigits: 2})} (封顶 5,000 元)`;
 
         document.getElementById('metric-l3').innerText = "诉讼标的额";
         document.getElementById('metric-v3').innerText = `¥ ${d.claim_amount.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`;
-        document.getElementById('metric-s3').innerText = "依据《诉讼费用交纳办法》第13/14条";
+        document.getElementById('metric-s3').innerText = isSummary
+          ? `减免 ¥ ${d.reduction_amount.toLocaleString('zh-CN', {minimumFractionDigits: 2})} (依据《办法》第15条)`
+          : `依据《诉讼费用交纳办法》第13条`;
 
-        // 生成公文说明段落
-        const statement = `【诉讼费用与保全费用核算说明】
+        const m4 = document.getElementById('metric-item-4');
+        if (m4) {
+          m4.style.display = 'flex';
+          const ins = d.preservation_insurance || {};
+          document.getElementById('metric-l4').innerText = "诉责险市场参考成本";
+          document.getElementById('metric-v4').innerText = ins.cost_range_display || "¥ 0.00 ~ ¥ 0.00";
+          const minNote = ins.is_minimum_charge_applied_low ? "起保底价 500 元" : `参考费率 ${ins.rate_range_desc || '0.08%~0.15%'}`;
+          document.getElementById('metric-s4').innerText = minNote;
+        }
+
+        // 生成公文说明段落 (完整三部分说明)
+        const ins = d.preservation_insurance || {};
+        const pAmountDisplay = pAmount.toLocaleString('zh-CN', {minimumFractionDigits: 2});
+        const statement = `【诉讼费用、保全规费与诉责险测算说明】
 一、案件受理费交纳依据与数额：
 本案诉讼请求标的总金额为人民币 ${d.claim_amount.toLocaleString('zh-CN', {minimumFractionDigits: 2})} 元。
-依据国务院《诉讼费用交纳办法》第十三条第一款关于财产案件受理费交纳比例之规定，本案基准案件受理费为人民币 ${d.standard_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})} 元。
-因本案适用${isSummary ? '简易程序审理（或经人民法院调解达成协议结案），依法减半交纳案件受理费，原告实际预交案件受理费' : '普通程序审理，原告全额交纳案件受理费'}人民币 ${d.actual_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})} 元（大写：${d.rmb_capital}）。
+依据国务院《诉讼费用交纳办法》第十三条第一款关于财产案件受理费交纳比例之规定，本案全额基准案件受理费为人民币 ${d.standard_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})} 元。
+${isSummary 
+  ? `因本案适用简易程序审理（或经人民法院调解达成协议结案），依据《诉讼费用交纳办法》第十五条规定，依法减半收取案件受理费，减免金额为人民币 ${d.reduction_amount.toLocaleString('zh-CN', {minimumFractionDigits: 2})} 元，原告实际应预交案件受理费为人民币 ${d.actual_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})} 元（大写：${d.rmb_capital}）。`
+  : `本案适用普通程序审理，原告全额交纳案件受理费人民币 ${d.actual_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})} 元（大写：${d.rmb_capital}）。`}
 
-二、诉讼财产保全申请费：
-依据《诉讼费用交纳办法》第十四条第二款规定，申请财产保全数额为人民币 ${d.claim_amount.toLocaleString('zh-CN', {minimumFractionDigits: 2})} 元，依法应向人民法院交纳保全申请费人民币 ${d.preservation_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})} 元。
+二、诉讼财产保全申请规费：
+依据《诉讼费用交纳办法》第十四条第二款关于财产保全申请费之规定，保全申请金额为人民币 ${pAmountDisplay} 元，依法应向人民法院交纳保全申请规费人民币 ${d.preservation_fee.toLocaleString('zh-CN', {minimumFractionDigits: 2})} 元（法定最高封顶 5,000.00 元整）。
 
-以上诉讼费用及保全费用，原告在起诉状中请求判令由被告全额承担。`;
+三、诉讼保全责任保险（诉责险）市场参考成本：
+依据《最高人民法院关于人民法院办理财产保全案件若干问题的规定》（法释〔2016〕22号）第七条关于财产保全担保机制之规定，申请人向保险金融机构投保诉讼财产保全责任保险作为保全担保。
+按当前司法金融市场通用费率标准（${ins.rate_range_desc || '0.08% ~ 0.15%'}，单笔最低起保保费 ${ins.min_premium ? ins.min_premium.toFixed(2) : '500.00'} 元），以保全标的人民币 ${pAmountDisplay} 元测算：
+市场参考保费区间为人民币 ${ins.cost_low ? ins.cost_low.toLocaleString('zh-CN', {minimumFractionDigits: 2}) : '0.00'} 元 至人民币 ${ins.cost_high ? ins.cost_high.toLocaleString('zh-CN', {minimumFractionDigits: 2}) : '0.00'} 元（${ins.cost_range_display || ''}）。注：该保费为商业承保参考估算，最终费用以承保金融机构核保单为准。
+
+以上案件受理费及保全申请费用，原告在起诉状中请求判令由被告承担；保全责任险保费依据相关司法裁判规则可作为保全实际支出损失一并向违约方主张赔偿。`;
 
         document.getElementById('legal-statement-text').innerText = statement;
         showToast("诉讼与保全费公文说明已更新");

@@ -158,7 +158,10 @@
           <span>电子存证签章</span>
           <span class="popover-status">DocuSeal 存证链</span>
         </div>
-        <div role="button" tabindex="0"  class="popover-item" style="color: var(--accent-amber); font-size: 10.5px; margin-top: 5px; cursor: pointer;" onclick="openEngineSettingsModal()">
+        <div role="button" tabindex="0" class="popover-item" style="color: #0284c7; font-size: 10.5px; margin-top: 5px; cursor: pointer;" onclick="openSystemHealthModal()">
+          <span>🩺 查看系统依赖体检报告 (LibreOffice / Ollama / 数据库)</span>
+        </div>
+        <div role="button" tabindex="0"  class="popover-item" style="color: var(--accent-amber); font-size: 10.5px; margin-top: 3px; cursor: pointer;" onclick="openEngineSettingsModal()">
           <span>⚙ 点击打开模型引擎与分发配置</span>
         </div>
       </div>
@@ -192,6 +195,10 @@
         <button type="button" class="btn btn-secondary btn-sm" onclick="openFileConverterModal()" style="padding: 4px 10px; font-size: 11.5px; background: #FFFFFF; border: 1px solid var(--border-hairline); color: var(--primary-navy); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;" title="司法离线全格式转码箱 (Filee 协同 · 支持 HEIC/录音/PDF/表格)">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M12 18v-6"></path><path d="M9 15h6"></path></svg>
           <span id="header-converter-tag">⚖️ 离线转码箱</span>
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" id="header-system-health-btn" onclick="openSystemHealthModal()" style="padding: 4px 10px; font-size: 11.5px; background: #FFFFFF; border: 1px solid var(--border-hairline); color: var(--primary-navy); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;" title="系统运行环境与依赖体检 (LibreOffice / Ollama / 数据库 / PDF 引擎)">
+          <span class="pulse-dot" id="header-health-dot" style="background: #22c55e; width: 7px; height: 7px;"></span>
+          <span id="header-health-tag">🩺 环境体检</span>
         </button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="openEngineSettingsModal()" style="padding: 4px 10px; font-size: 11.5px; background: #FFFFFF; border: 1px solid var(--border-hairline); color: var(--primary-navy); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
@@ -265,6 +272,65 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
           <span>案件工作卡</span>
         </button>
+      </div>
+    </div>
+
+    <!-- ======================================================================
+         全局办案生命周期阶段向导时间轴 (Matter Pipeline Wizard / Stepper) - P1
+         ====================================================================== -->
+    <div class="case-pipeline-stepper-wrap" id="case-pipeline-stepper-wrap">
+      <div class="stepper-header">
+        <div class="stepper-title-box">
+          <span class="stepper-icon">🧭</span>
+          <span class="stepper-title">诉讼办案向导时间轴</span>
+          <span class="stepper-badge" id="stepper-progress-badge">标准办案流 · 点击步骤直达</span>
+        </div>
+        <div class="stepper-actions">
+          <button type="button" class="btn btn-secondary btn-xs" id="btn-toggle-stepper" onclick="toggleStepperView()" title="折叠/展开办案向导时间轴">
+            收起向导 ▴
+          </button>
+        </div>
+      </div>
+      <div class="stepper-steps-track" id="stepper-steps-track">
+        <div role="button" tabindex="0" class="step-card" id="step-node-1" onclick="navigateToPipelineStep(1)" title="阶段1：案件建档、主体排查与《律师法》第39条利冲穿透">
+          <div class="step-idx">1</div>
+          <div class="step-content">
+            <div class="step-name">接案与利冲排查</div>
+            <div class="step-status" id="step-status-1">案件空间 · 利冲红线</div>
+          </div>
+          <div class="step-arrow">›</div>
+        </div>
+        <div role="button" tabindex="0" class="step-card active-step" id="step-node-2" onclick="navigateToPipelineStep(2)" title="阶段2：央行LPR利息、简易程序减半与保全责任险精算">
+          <div class="step-idx">2</div>
+          <div class="step-content">
+            <div class="step-name">实务精算与费用</div>
+            <div class="step-status" id="step-status-2">LPR计息 · 简易减半 · 保全险</div>
+          </div>
+          <div class="step-arrow">›</div>
+        </div>
+        <div role="button" tabindex="0" class="step-card" id="step-node-3" onclick="navigateToPipelineStep(3)" title="阶段3：多格式证据合卷、Bates编码与绝对起止页码目录">
+          <div class="step-idx">3</div>
+          <div class="step-content">
+            <div class="step-name">证据合卷与目录</div>
+            <div class="step-status" id="step-status-3">贝茨码 · 绝对页码强对齐</div>
+          </div>
+          <div class="step-arrow">›</div>
+        </div>
+        <div role="button" tabindex="0" class="step-card" id="step-node-4" onclick="navigateToPipelineStep(4)" title="阶段4：一键注入全案要素，生成最高法移动微法院标准四分卷">
+          <div class="step-idx">4</div>
+          <div class="step-content">
+            <div class="step-name">微法院立案公文包</div>
+            <div class="step-status" id="step-status-4">微法院四件套分卷导出</div>
+          </div>
+          <div class="step-arrow">›</div>
+        </div>
+        <div role="button" tabindex="0" class="step-card" id="step-node-5" onclick="navigateToPipelineStep(5)" title="阶段5：证据三性意见、五模块庭审提纲与七维要件事实红队对抗">
+          <div class="step-idx">5</div>
+          <div class="step-content">
+            <div class="step-name">庭审提纲与攻防</div>
+            <div class="step-status" id="step-status-5">三性质证 · 七维对抗矩阵</div>
+          </div>
+        </div>
       </div>
     </div>
 

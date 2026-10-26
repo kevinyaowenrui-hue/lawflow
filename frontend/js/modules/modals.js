@@ -1156,6 +1156,155 @@ export const MODALS_HTML = `
       </div>
     </div>
   </div>
+
+  <!-- ========================================================================
+       系统运行环境与依赖体检模态框 (System Health Probing Modal)
+       ======================================================================== -->
+  <div role="button" tabindex="0" class="modal-overlay" id="modal-system-health" onclick="handleSystemHealthModalBackdropClick(event)">
+    <div role="button" tabindex="0" class="modal-container" style="max-width: 820px; width: 94%;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="background: #14233C; color: #FFFFFF; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div class="modal-title" style="display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; color: #FFFFFF;">
+            <span>🩺 系统运行环境与本地依赖体检报告</span>
+            <span class="badge" id="health-overall-badge" style="background: rgba(34, 197, 94, 0.2); color: #4ADE80; font-size: 11px; border: 1px solid rgba(74, 222, 128, 0.4);">
+              检测中...
+            </span>
+          </div>
+          <div class="modal-subtitle" style="font-size: 11.5px; color: #94A3B8; margin-top: 2px;">
+            全面探测本地 LibreOffice、Ollama、SQLite 知识库、案件空间及 PDF 渲染引擎运行状态
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" onclick="closeSystemHealthModal()" title="关闭" style="background: transparent; border: none; color: #94A3B8; cursor: pointer; padding: 4px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="modal-body" style="max-height: 75vh; overflow-y: auto; padding: 18px 22px; background: #F8FAFC;">
+        
+        <!-- 总体健康摘要卡片 -->
+        <div id="health-summary-banner" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: var(--radius-sm); padding: 14px 18px; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="health-summary-icon" style="font-size: 18px;">🔍</span>
+              <strong style="font-size: 13.5px; color: var(--primary-navy);" id="health-summary-title">系统体检进行中</strong>
+            </div>
+            <span id="health-last-checked" style="font-size: 11px; color: var(--text-muted);">尚未体检</span>
+          </div>
+          <div style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;" id="health-summary-text">
+            正在探测本地运行环境依赖项...
+          </div>
+        </div>
+
+        <!-- 5 项依赖组件体检卡片列表 -->
+        <div style="font-size: 12px; font-weight: 700; color: var(--primary-navy); margin-bottom: 8px;">
+          组件探测详情与排障建议：
+        </div>
+        <div id="health-cards-container" style="display: flex; flex-direction: column; gap: 10px;">
+
+          <!-- 1. LibreOffice -->
+          <div class="health-card" id="card-health-libreoffice" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: var(--radius-sm); padding: 12px 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">📝</span>
+                <span style="font-size: 13px; font-weight: 700; color: var(--primary-navy);">LibreOffice 司法级排版引擎</span>
+              </div>
+              <span class="badge" id="health-badge-libreoffice" style="font-size: 11px; padding: 2px 8px;">探测中</span>
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 6px;" id="health-info-libreoffice">
+              执行文件路径: 检测中...
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; background: #F8FAFC; border-radius: 4px; padding: 6px 10px;" id="health-remediation-libreoffice">
+              未检测到 LibreOffice (soffice)。若需完美还原复杂的 Word 排版及法庭文书，可下载安装 LibreOffice 7.x/24.x 并添加至系统 PATH；未安装时系统自动降级使用内置 PyMuPDF 纯代码分页引擎。
+            </div>
+          </div>
+
+          <!-- 2. 本地 Ollama 大模型 -->
+          <div class="health-card" id="card-health-ollama" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: var(--radius-sm); padding: 12px 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">🤖</span>
+                <span style="font-size: 13px; font-weight: 700; color: var(--primary-navy);">本地离线私有化大模型 (Ollama)</span>
+              </div>
+              <span class="badge" id="health-badge-ollama" style="font-size: 11px; padding: 2px 8px;">探测中</span>
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 6px;" id="health-info-ollama">
+              服务地址: http://127.0.0.1:11434
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; background: #F8FAFC; border-radius: 4px; padding: 6px 10px;" id="health-remediation-ollama">
+              本地 11434 端口未启动。若需完全离线断网大模型，请运行 'ollama serve'；若无需本地模型，可配置云端 API Key 或使用内置专家规则引擎。
+            </div>
+          </div>
+
+          <!-- 3. SQLite 权威法典库 -->
+          <div class="health-card" id="card-health-cn-laws" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: var(--radius-sm); padding: 12px 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">📚</span>
+                <span style="font-size: 13px; font-weight: 700; color: var(--primary-navy);">权威法典与全文检索库 (cn_laws_kb.db)</span>
+              </div>
+              <span class="badge" id="health-badge-cn-laws" style="font-size: 11px; padding: 2px 8px;">探测中</span>
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 6px;" id="health-info-cn-laws">
+              存储路径: 检测中...
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; background: #F8FAFC; border-radius: 4px; padding: 6px 10px;" id="health-remediation-cn-laws">
+              权威法典库状态检测中...
+            </div>
+          </div>
+
+          <!-- 4. SQLite 案件独立空间数据库 -->
+          <div class="health-card" id="card-health-matter-vault" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: var(--radius-sm); padding: 12px 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">📁</span>
+                <span style="font-size: 13px; font-weight: 700; color: var(--primary-navy);">案件空间独立数据库 (matter_vault.db)</span>
+              </div>
+              <span class="badge" id="health-badge-matter-vault" style="font-size: 11px; padding: 2px 8px;">探测中</span>
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 6px;" id="health-info-matter-vault">
+              存储路径: 检测中...
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; background: #F8FAFC; border-radius: 4px; padding: 6px 10px;" id="health-remediation-matter-vault">
+              案件空间数据库状态检测中...
+            </div>
+          </div>
+
+          <!-- 5. PDF 渲染引擎矩阵 -->
+          <div class="health-card" id="card-health-pdf-engine" style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: var(--radius-sm); padding: 12px 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">📑</span>
+                <span style="font-size: 13px; font-weight: 700; color: var(--primary-navy);">PDF 渲染与文书排版引擎矩阵</span>
+              </div>
+              <span class="badge" id="health-badge-pdf-engine" style="font-size: 11px; padding: 2px 8px;">探测中</span>
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 6px;" id="health-info-pdf-engine">
+              活动引擎: 检测中...
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; background: #F8FAFC; border-radius: 4px; padding: 6px 10px;" id="health-remediation-pdf-engine">
+              PDF 引擎状态检测中...
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- 模态框底部操作栏 -->
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 22px; border-top: 1px solid var(--border-hairline); background: #FFFFFF;">
+        <div style="font-size: 11px; color: var(--text-muted);">
+          💡 提示：本系统所有核心功能均具备纯本地离线与算法兜底设计，部分依赖缺失不影响基础精算与立案操作。
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeSystemHealthModal()">关闭</button>
+          <button type="button" class="btn btn-sm" id="btn-refresh-system-health" onclick="refreshSystemHealth(true)" style="background: #14233C; color: #FFFFFF; font-weight: 700; padding: 6px 14px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+            🔄 重新体检
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
 </body>
 </html>
 `;

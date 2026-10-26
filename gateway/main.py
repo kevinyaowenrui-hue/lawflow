@@ -248,6 +248,7 @@ _DISCLAIMER_SKIP_PREFIXES = (
     "/health",
     "/api/health",
     "/api/v1/health",
+    "/api/system/health",
     "/api/documents/download/",
     "/static",
 )
@@ -335,29 +336,49 @@ if os.path.exists(_frontend_dir()):
 
 
 @app.get("/health", summary="全局网关健康检查探针")
+@app.get("/health/", include_in_schema=False)
 @app.get("/api/health", summary="全局网关健康检查探针")
+@app.get("/api/health/", include_in_schema=False)
 @app.get("/api/v1/health", summary="全局网关健康检查探针")
-async def health_check():
-    """健康检查：含实际 llm_mode 与 model_ready；规则兜底时 model_ready 为 false。"""
-    health = await ollama_client.check_health()
-    llm_mode = health.get("llm_mode") or health.get("mode") or "rule_fallback"
-    if llm_mode in ("rule_engine", "fallback"):
+@app.get("/api/v1/health/", include_in_schema=False)
+@app.get("/api/system/health", summary="系统环境依赖体检探针")
+@app.get("/api/system/health/", include_in_schema=False)
+async def health_check(force: bool = False):
+    """健康检查与系统依赖体检：含实际 llm_mode、model_ready 以及 5 项核心依赖体检结果。"""
+    from gateway.core.service_probe import get_system_health_diagnostics
+    diag = get_system_health_diagnostics(force=force)
+
+    if diag["diagnostics"]["ollama"]["status"] == "MISSING":
         llm_mode = "rule_fallback"
-    model_ready = bool(health.get("model_ready"))
-    if llm_mode == "rule_fallback":
         model_ready = False
+    elif not force and diag["diagnostics"]["ollama"]["status"] == "OK":
+        llm_mode = "ollama"
+        model_ready = True
+    else:
+        health = await ollama_client.check_health()
+        llm_mode = health.get("llm_mode") or health.get("mode") or "rule_fallback"
+        if llm_mode in ("rule_engine", "fallback"):
+            llm_mode = "rule_fallback"
+        model_ready = bool(health.get("model_ready"))
+        if llm_mode == "rule_fallback":
+            model_ready = False
+
     try:
-        from gateway.utils.ocr_engine import get_easyocr_reader
-        ocr_available = get_easyocr_reader() is not None
+        import easyocr
+        ocr_available = True
     except Exception:
         ocr_available = False
 
     return {
-        "status": "healthy",
+        "status": "healthy" if diag["overall_status"] in ("OK", "DEGRADED") else "degraded",
+        "overall_status": diag["overall_status"],
         "app": "LawFlow",
         "ocr_available": ocr_available,
         "llm_mode": llm_mode,
         "model_ready": model_ready,
+        "diagnostics": diag["diagnostics"],
+        "dependencies": diag["dependencies"],
+        "summary": diag["summary"],
     }
 
 

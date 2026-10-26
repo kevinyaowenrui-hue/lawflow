@@ -443,10 +443,47 @@ export function renderTabEvidence() {
           }).join("");
           skipBlock = `<div style="margin-top:10px;padding:10px;border:1px solid #C58532;background:#FFF8E7;color:#7A4E00;"><strong>以下文件未并入：</strong><ul style="margin:6px 0 0 18px;">${lines}</ul></div>`;
         }
+        window._lastFilePageMap = Array.isArray(d.file_page_map) ? d.file_page_map : [];
+        let pageMapHtml = "";
+        if (window._lastFilePageMap.length > 0) {
+          const rows = window._lastFilePageMap.map((m, i) => `
+            <tr style="border-bottom: 1px solid #E2E8F0;">
+              <td style="padding: 4px 8px; font-weight: 600;">${escapeHtml(String(i + 1))}</td>
+              <td style="padding: 4px 8px;">${escapeHtml(m.filename || '')}</td>
+              <td style="padding: 4px 8px; font-family: var(--font-mono);">${escapeHtml(String(m.page_count || 1))}</td>
+              <td style="padding: 4px 8px; font-family: var(--font-mono); font-weight: 700; color: #0369A1;">${escapeHtml(m.page_range || '')}</td>
+            </tr>
+          `).join('');
+          pageMapHtml = `
+            <div style="margin-top: 10px; padding: 10px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <strong style="color: var(--primary-navy); font-size: 12px;">📑 证据物理起止绝对页码映射表（共 ${escapeHtml(String(d.total_pages))} 页）：</strong>
+                <button type="button" class="btn btn-amber btn-sm" onclick="syncBatesPagesToCatalog()" style="padding: 2px 8px; font-size: 11px;">
+                  ⚡ 一键同步绝对页码至证据清单
+                </button>
+              </div>
+              <table style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
+                <thead>
+                  <tr style="background: #F1F5F9; border-bottom: 1px solid #CBD5E1; text-align: left;">
+                    <th style="padding: 4px 8px; width: 36px;">#</th>
+                    <th style="padding: 4px 8px;">文件名</th>
+                    <th style="padding: 4px 8px; width: 50px;">页数</th>
+                    <th style="padding: 4px 8px; width: 110px;">物理起止页码</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows}
+                </tbody>
+              </table>
+            </div>
+          `;
+        }
+
         resBox.innerHTML = ` // safe-html: skipBlock 列表项已 escapeHtml
           已成功合卷${escapeHtml(statusNote)}！总页数：${escapeHtml(d.total_pages)} 页 | 文件：${escapeHtml(d.merged_pdf_filename)}
           <a href="${escapeHtml(withDownloadToken(d.download_url))}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载合卷 PDF</a>
-          ${skipBlock} // safe-html: static or pre-escaped HTML fragment
+          ${skipBlock}
+          ${pageMapHtml}
         `;
         document.getElementById('redact-pdf-name').value = d.merged_pdf_filename || "";
         showToast(d.status === "partial" ? "证据合卷完成（有文件未并入）" : "证据合卷与贝茨编码完成");
@@ -1157,14 +1194,18 @@ export function renderTabEvidence() {
       }
       showToast("正在提炼四要素并生成《证据目录.docx》...");
       try {
+        const catPayload = {
+          cause_of_action: cause,
+          plaintiff_name: plaintiff,
+          evidence_notes: notes
+        };
+        if (window._lastFilePageMap && window._lastFilePageMap.length > 0) {
+          catPayload.file_page_map = window._lastFilePageMap;
+        }
         const resp = await api.request(`${API_BASE}/api/v1/phase2/auto-catalog`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cause_of_action: cause,
-            plaintiff_name: plaintiff,
-            evidence_notes: notes
-          })
+          body: JSON.stringify(catPayload)
         });
         if (!resp.ok) {
           const err = await resp.json().catch(() => null);
@@ -1290,7 +1331,26 @@ export function renderTabEvidence() {
       `;
     }
 
+
+    function syncBatesPagesToCatalog() {
+      if (!window._lastFilePageMap || window._lastFilePageMap.length === 0) {
+        showToast("暂无可同步的合卷页码数据，请先执行合卷", "warn");
+        return;
+      }
+      const notesEl = document.getElementById('ev-catalog-notes');
+      if (notesEl) {
+        const textLines = window._lastFilePageMap.map((m, i) => {
+          const cleanName = (m.filename || `证据${i + 1}`).replace(/\.[^/.]+$/, "");
+          return `证据${i + 1}：${cleanName}，证明本案事实。（起止页码：${m.page_range || `第${m.start_page}页`}）`;
+        }).join('\n');
+        notesEl.value = textLines;
+      }
+      showToast("已将合卷绝对起止页码成功同步至证据目录清单输入框！");
+    }
+    window.syncBatesPagesToCatalog = syncBatesPagesToCatalog;
+
 export {
+  syncBatesPagesToCatalog,
   runProcessEvidence,
   runRedactSensitive,
   runTrialOutlineAgent,

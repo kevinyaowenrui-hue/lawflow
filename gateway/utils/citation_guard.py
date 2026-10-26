@@ -601,6 +601,24 @@ def _audit_citations_core(conn, content_text, auto_sanitize, incident_date=None)
         # A. 废止
         if canon in abrogated_map:
             ab_info = abrogated_map[canon]
+            # P1 强化：若明确传入法律事实发生日（incident_date < 2021-01-01），依时间效力规定属于合法适用当时的实体法
+            if incident_date and incident_date[:10] < CIVIL_CODE_EFFECTIVE:
+                citation_entry["status"] = "HISTORICAL_VALID"
+                citation_entry["audit_status"] = "HISTORICAL_VALID"
+                citation_entry["risk_level"] = "HISTORICAL_INFO"
+                citation_entry["is_historical_valid"] = True
+                yellow_count += 1
+                citation_entry["notes"] = (
+                    f"【历史实体法适用】法律事实发生于 {incident_date}（2021-01-01 民法典施行前）。"
+                    f"依据《最高人民法院关于适用〈中华人民共和国民法典〉时间效力的若干规定》第一条第二款：{CIVIL_CODE_TIME_EFFECT_ART1_PARA2}，依法适用当时的法律规定。"
+                    f"对应《民法典》参照条文为：{ab_info.get('replaced_by') or '民法典相关条文'}。"
+                )
+                citation_entry["risk_tip"] = citation_entry["notes"]
+                citation_entry["replacement_suggestion"] = f"《民法典》参照条文：{ab_info.get('replaced_by')}"
+                citation_entry["suggested_replacement"] = ab_info.get("replaced_by")
+                audited_citations.append(citation_entry)
+                continue
+
             abrogated_count += 1
             red_count += 1
             citation_entry["status"] = "ABROGATED_BLOCKED"

@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import time
 import uuid
+import zipfile
 import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Literal, Tuple
@@ -34,6 +35,7 @@ from gateway.utils.cn_legal_calc import (
     validate_and_parse_idcard,
     validate_and_parse_uscc,
     calculate_court_fees,
+    calculate_preservation_insurance,
     calculate_lpr_interest,
     calculate_labor_compensation,
     calculate_statute_of_limitations,
@@ -74,18 +76,37 @@ def _templates_dir() -> str:
 STIRLING_PDF_URL = os.getenv("STIRLING_PDF_URL", "http://127.0.0.1:8081").rstrip("/")
 
 
+_SOFFICE_CACHED_PATH: Optional[str] = None
+_SOFFICE_SEARCHED: bool = False
+
 def _find_soffice() -> Optional[str]:
-    """定位 LibreOffice soffice 可执行文件。"""
-    for cand in (
-        shutil.which("soffice"),
-        shutil.which("libreoffice"),
+    """定位 LibreOffice soffice 可执行文件（带极速内存缓存防多次遍历 PATH 超时）。"""
+    global _SOFFICE_CACHED_PATH, _SOFFICE_SEARCHED
+    if _SOFFICE_SEARCHED:
+        return _SOFFICE_CACHED_PATH
+
+    for static_cand in (
         r"C:\Program Files\LibreOffice\program\soffice.exe",
         r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
         "/usr/bin/soffice",
         "/usr/bin/libreoffice",
     ):
+        if os.path.isfile(static_cand):
+            _SOFFICE_CACHED_PATH = static_cand
+            _SOFFICE_SEARCHED = True
+            return static_cand
+
+    for cand in (
+        shutil.which("soffice"),
+        shutil.which("libreoffice"),
+    ):
         if cand and os.path.isfile(cand):
+            _SOFFICE_CACHED_PATH = cand
+            _SOFFICE_SEARCHED = True
             return cand
+
+    _SOFFICE_CACHED_PATH = None
+    _SOFFICE_SEARCHED = True
     return None
 
 
@@ -446,6 +467,18 @@ class CourtFeeReq(BaseModel):
         le=300,
         description="离婚案件基础规费（50至300元之间）",
     )
+    preservation_amount: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="保全申请金额，留空默认等于诉讼标的额",
+    )
+
+
+class PreservationInsuranceReq(BaseModel):
+    preservation_amount: float = Field(..., ge=0, examples=[500000.0])
+    min_rate: Optional[float] = Field(default=0.0008, ge=0, le=1, description="保费最低费率（默认0.08%）")
+    max_rate: Optional[float] = Field(default=0.0015, ge=0, le=1, description="保费最高费率（默认0.15%）")
+    min_premium: Optional[float] = Field(default=500.0, ge=0, description="起保最低保费（默认500.00元）")
 
 class LPRInterestReq(BaseModel):
     principal: float = Field(..., examples=[100000.0])
@@ -569,6 +602,10 @@ SubDocType = Literal[
     "legal_rep_certificate",
     "property_preservation",
     "evidence_catalog",
+    "law_firm_letter",
+    "id_credential_attachment",
+    "lawyer_license_attachment",
+    "evidence_bundle_cover",
 ]
 
 class GenerateLitigationPackageReq(BaseModel):
@@ -599,7 +636,11 @@ class GenerateLitigationPackageReq(BaseModel):
     auto_generate_sub_docs: bool = Field(default=True, description="是否一并生成授权委托书、送达地址确认书、身份证明或保全申请书（兼容参数）")
     sub_documents: Optional[List[SubDocType]] = Field(
         default=None,
-        description="选择生成的附属文书类型列表，可选：power_of_attorney, service_address, legal_rep_certificate, property_preservation, evidence_catalog",
+        description="选择生成的附属文书类型列表，可选：power_of_attorney, service_address, legal_rep_certificate, property_preservation, evidence_catalog, law_firm_letter, id_credential_attachment, lawyer_license_attachment, evidence_bundle_cover",
+    )
+    archive_format: Literal["spc_mobile", "flat"] = Field(
+        default="spc_mobile",
+        description="压缩包结构格式：spc_mobile（最高人民法院移动微法院4类目录标准）或 flat（传统单层扁平结构）",
     )
     evidences: Optional[List[EvidenceItem]] = Field(default=None, description="证据和证据来源，证人姓名和住所")
     copies: Optional[int] = Field(default=None, description="起诉状副本份数，默认等于被告人数")
@@ -631,7 +672,29 @@ async def api_uscc(req: USCCReq):
 @router.post("/api/calc/court-fees", include_in_schema=False)
 async def api_court_fees(req: CourtFeeReq):
     try:
-        return calculate_court_fees(req.claim_amount, req.case_type, req.is_summary_procedure)
+        return calculate_court_fees(
+            claim_amount=req.claim_amount,
+            case_type=req.case_type,
+            is_summary_procedure=req.is_summary_procedure,
+            divorce_base_fee=req.divorce_base_fee if req.divorce_base_fee is not None else 100.0,
+            preservation_amount=req.preservation_amount,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
+
+
+@router.post("/api/v1/phase1/calc/preservation-insurance", summary="诉讼保全责任保险（诉责险）市场参考成本估算")
+@router.post("/api/calc/preservation-insurance", include_in_schema=False)
+async def api_preservation_insurance(req: PreservationInsuranceReq):
+    try:
+        kwargs: Dict[str, Any] = {"preservation_amount": req.preservation_amount}
+        if req.min_rate is not None:
+            kwargs["min_rate"] = req.min_rate
+        if req.max_rate is not None:
+            kwargs["max_rate"] = req.max_rate
+        if req.min_premium is not None:
+            kwargs["min_premium"] = req.min_premium
+        return calculate_preservation_insurance(**kwargs)
     except ValueError as e:
         raise _http_422(str(e)) from e
 
@@ -846,6 +909,513 @@ async def api_appeal_deadline(req: AppealDeadlineReq):
         )
     except ValueError as e:
         raise _http_422(str(e)) from e
+
+
+# ==============================================================================
+# 移动微法院在线诉讼配套支撑材料生成与公文包 ZIP 归档引擎
+# ==============================================================================
+_PACKAGE_ARCHIVE_REGISTRY: Dict[str, Dict[str, Tuple[str, str]]] = {}
+
+
+def _create_law_firm_letter_docx(
+    output_path: str,
+    law_firm: str,
+    lawyer_name: str,
+    lawyer_license: str,
+    lawyer_phone: str,
+    client_name: str,
+    opponent_name: str,
+    cause_of_action: str,
+    court_name: str,
+    sign_date: str,
+) -> None:
+    """生成正式《律师事务所公函》（含案由、委派律师、律所、受诉法院）。"""
+    import docx as python_docx
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = python_docx.Document()
+    for s in doc.sections:
+        s.top_margin = Inches(1.0)
+        s.bottom_margin = Inches(1.0)
+        s.left_margin = Inches(1.1)
+        s.right_margin = Inches(1.1)
+
+    # 律所抬头红标
+    p_header = doc.add_paragraph()
+    p_header.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r_firm = p_header.add_run(law_firm or "北京市京师律师事务所")
+    r_firm.font.name = "黑体"
+    r_firm.font.size = Pt(20)
+    r_firm.font.bold = True
+    r_firm.font.color.rgb = RGBColor(0x99, 0x1B, 0x1B)
+
+    # 公函标题
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.paragraph_format.space_after = Pt(12)
+    r_title = p_title.add_run("律 师 事 务 所 公 函")
+    r_title.font.name = "宋体"
+    r_title.font.size = Pt(16)
+    r_title.font.bold = True
+
+    # 函号预留
+    current_year = datetime.now().year
+    p_no = doc.add_paragraph()
+    p_no.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_no = p_no.add_run(f"（{current_year}）京律函字第【待填写】号")
+    r_no.font.name = "仿宋_GB2312"
+    r_no.font.size = Pt(11)
+
+    # 送达法院
+    p_court = doc.add_paragraph()
+    p_court.paragraph_format.space_before = Pt(8)
+    p_court.paragraph_format.space_after = Pt(8)
+    r_court = p_court.add_run(f"{court_name}：")
+    r_court.font.name = "黑体"
+    r_court.font.size = Pt(13)
+    r_court.font.bold = True
+
+    # 正文首段
+    p_body1 = doc.add_paragraph()
+    p_body1.paragraph_format.line_spacing = 1.35
+    p_body1.paragraph_format.space_after = Pt(6)
+    p_body1.paragraph_format.first_line_indent = Inches(0.35)
+    r_b1 = p_body1.add_run(
+        f"根据《中华人民共和国律师法》第二十八条及《中华人民共和国民事诉讼法》第六十一条之规定，"
+        f"本所依法接受当事人【{client_name}】之委托，特指派本所专职律师【{lawyer_name}】"
+        f"（执业证号：{lawyer_license}，联系电话：{lawyer_phone}）担任其与【{opponent_name}】"
+        f"【{cause_of_action}】一案的诉讼代理人，出庭参加诉讼活动。"
+    )
+    r_b1.font.name = "仿宋_GB2312"
+    r_b1.font.size = Pt(12)
+
+    # 正文二段
+    p_body2 = doc.add_paragraph()
+    p_body2.paragraph_format.line_spacing = 1.35
+    p_body2.paragraph_format.space_after = Pt(10)
+    p_body2.paragraph_format.first_line_indent = Inches(0.35)
+    r_b2 = p_body2.add_run(
+        "代理人的具体代理权限详见委托人出具之《民事授权委托书》。"
+        "特提请贵院依法准予上述指派律师出庭履行代理职责，并在立案审查、文书送达、证据质证及开庭审理各阶段予以协助为盼。"
+    )
+    r_b2.font.name = "仿宋_GB2312"
+    r_b2.font.size = Pt(12)
+
+    # 结束语
+    p_close = doc.add_paragraph()
+    p_close.paragraph_format.first_line_indent = Inches(0.35)
+    r_close = p_close.add_run("特此函告。")
+    r_close.font.name = "仿宋_GB2312"
+    r_close.font.size = Pt(12)
+
+    # 签章落款
+    doc.add_paragraph()
+    p_sign1 = doc.add_paragraph()
+    p_sign1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_s1 = p_sign1.add_run(f"律师事务所（公章）：{law_firm}")
+    r_s1.font.name = "仿宋_GB2312"
+    r_s1.font.size = Pt(12)
+
+    p_sign2 = doc.add_paragraph()
+    p_sign2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_s2 = p_sign2.add_run(f"指派律师（签字）：{lawyer_name}")
+    r_s2.font.name = "仿宋_GB2312"
+    r_s2.font.size = Pt(12)
+
+    p_sign3 = doc.add_paragraph()
+    p_sign3.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_s3 = p_sign3.add_run(f"出具日期：{sign_date}")
+    r_s3.font.name = "仿宋_GB2312"
+    r_s3.font.size = Pt(12)
+
+    doc.save(output_path)
+    from gateway.utils.disclaimer import add_disclaimer_to_docx
+    add_disclaimer_to_docx(output_path)
+
+
+def _create_id_credential_attachment_docx(
+    output_path: str,
+    plaintiff: Dict[str, Any],
+    court_name: str,
+    sign_date: str,
+) -> None:
+    """生成《原告主体资格证明材料说明页》（身份证/营业执照扫描粘贴说明页）。"""
+    import docx as python_docx
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = python_docx.Document()
+    for s in doc.sections:
+        s.top_margin = Inches(1.0)
+        s.bottom_margin = Inches(1.0)
+        s.left_margin = Inches(1.1)
+        s.right_margin = Inches(1.1)
+
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r_title = p_title.add_run("原告主体资格证明材料说明页")
+    r_title.font.name = "黑体"
+    r_title.font.size = Pt(16)
+    r_title.font.bold = True
+
+    p_sub = doc.add_paragraph()
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.paragraph_format.space_after = Pt(12)
+    r_sub = p_sub.add_run("（人民法院在线服务 · 01_起诉状及身份证明材料专页）")
+    r_sub.font.name = "楷体"
+    r_sub.font.size = Pt(10.5)
+    r_sub.font.color.rgb = RGBColor(0x4B, 0x55, 0x63)
+
+    is_legal = plaintiff.get("party_type") == "legal"
+    party_type_label = "法人或其他组织" if is_legal else "自然人"
+    code_label = "统一社会信用代码" if is_legal else "公民身份号码"
+
+    # 信息表格
+    table = doc.add_table(rows=4 if not is_legal else 5, cols=2)
+    table.style = 'Table Grid'
+    rows_data = [
+        ("原告主体名称", str(plaintiff.get("name", PLACEHOLDER))),
+        ("主体类型", party_type_label),
+        (code_label, str(plaintiff.get("id_card_or_uscc", PLACEHOLDER))),
+        ("送达住址 / 住所地", str(plaintiff.get("address", PLACEHOLDER))),
+    ]
+    if is_legal:
+        rows_data.append((
+            "法定代表人 / 负责人",
+            f"{plaintiff.get('legal_rep', PLACEHOLDER)}（职务：{plaintiff.get('rep_position', '法定代表人')}）"
+        ))
+    for i, (k, v) in enumerate(rows_data):
+        row = table.rows[i]
+        c0, c1 = row.cells[0], row.cells[1]
+        c0.width = Inches(1.8)
+        c1.width = Inches(4.5)
+        p0 = c0.paragraphs[0]
+        r0 = p0.add_run(k)
+        r0.font.name = "黑体"
+        r0.font.size = Pt(10.5)
+        r0.font.bold = True
+        p1 = c1.paragraphs[0]
+        r1 = p1.add_run(v)
+        r1.font.name = "仿宋_GB2312"
+        r1.font.size = Pt(10.5)
+
+    doc.add_paragraph()
+    # 说明文字
+    p_desc = doc.add_paragraph()
+    p_desc.paragraph_format.line_spacing = 1.3
+    r_desc = p_desc.add_run("【最高人民法院在线诉讼身份证明材料装订说明】\n")
+    r_desc.font.name = "黑体"
+    r_desc.font.size = Pt(11)
+    r_desc.font.bold = True
+    r_desc_b = p_desc.add_run(
+        "1. 自然人原告：请将二代居民身份证人像面与国徽面（或港澳台居住证/护照）彩色复印件或清晰扫描件附于本说明页之后。\n"
+        "2. 法人或其他组织原告：请在此页后附最新加盖公章的《营业执照》副本复印件，并一并提交加盖公章的《法定代表人身份证明书》及法定代表人居民身份证复印件。\n"
+        "3. 本页按照人民法院在线服务电子立案规范编制，与起诉状共同作为第一类目（01_起诉状及身份证明）合卷上传。"
+    )
+    r_desc_b.font.name = "仿宋_GB2312"
+    r_desc_b.font.size = Pt(10)
+
+    # 粘贴/附页示意框
+    t_box = doc.add_table(rows=1, cols=1)
+    t_box.style = 'Table Grid'
+    cell_box = t_box.rows[0].cells[0]
+    cell_box.width = Inches(6.3)
+    p_box = cell_box.paragraphs[0]
+    p_box.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_box.paragraph_format.space_before = Pt(36)
+    p_box.paragraph_format.space_after = Pt(36)
+    r_box = p_box.add_run("【此处附：身份证件或营业执照复印件 / 扫描件】")
+    r_box.font.name = "楷体"
+    r_box.font.size = Pt(11)
+    r_box.font.color.rgb = RGBColor(0x9C, 0xA3, 0xAF)
+
+    doc.add_paragraph()
+    p_foot = doc.add_paragraph()
+    p_foot.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_foot = p_foot.add_run(f"原告（签名/盖章）：____________________    日期：{sign_date}")
+    r_foot.font.name = "仿宋_GB2312"
+    r_foot.font.size = Pt(11)
+
+    doc.save(output_path)
+    from gateway.utils.disclaimer import add_disclaimer_to_docx
+    add_disclaimer_to_docx(output_path)
+
+
+def _create_lawyer_license_attachment_docx(
+    output_path: str,
+    lawyer_name: str,
+    law_firm: str,
+    lawyer_license: str,
+    lawyer_phone: str,
+    court_name: str,
+    sign_date: str,
+) -> None:
+    """生成《律师执业证复印件说明页》（含年度考核说明与粘贴框）。"""
+    import docx as python_docx
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = python_docx.Document()
+    for s in doc.sections:
+        s.top_margin = Inches(1.0)
+        s.bottom_margin = Inches(1.0)
+        s.left_margin = Inches(1.1)
+        s.right_margin = Inches(1.1)
+
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r_title = p_title.add_run("律师执业证复印件说明页")
+    r_title.font.name = "黑体"
+    r_title.font.size = Pt(16)
+    r_title.font.bold = True
+
+    p_sub = doc.add_paragraph()
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.paragraph_format.space_after = Pt(12)
+    r_sub = p_sub.add_run("（人民法院在线服务 · 02_委托代理材料专页）")
+    r_sub.font.name = "楷体"
+    r_sub.font.size = Pt(10.5)
+    r_sub.font.color.rgb = RGBColor(0x4B, 0x55, 0x63)
+
+    table = doc.add_table(rows=4, cols=2)
+    table.style = 'Table Grid'
+    rows_data = [
+        ("承办律师姓名", lawyer_name or PLACEHOLDER),
+        ("执业机构", law_firm or PLACEHOLDER),
+        ("律师执业证号", lawyer_license or PLACEHOLDER),
+        ("联系电话", lawyer_phone or PLACEHOLDER),
+    ]
+    for i, (k, v) in enumerate(rows_data):
+        row = table.rows[i]
+        c0, c1 = row.cells[0], row.cells[1]
+        c0.width = Inches(1.8)
+        c1.width = Inches(4.5)
+        p0 = c0.paragraphs[0]
+        r0 = p0.add_run(k)
+        r0.font.name = "黑体"
+        r0.font.size = Pt(10.5)
+        r0.font.bold = True
+        p1 = c1.paragraphs[0]
+        r1 = p1.add_run(v)
+        r1.font.name = "仿宋_GB2312"
+        r1.font.size = Pt(10.5)
+
+    doc.add_paragraph()
+    p_desc = doc.add_paragraph()
+    p_desc.paragraph_format.line_spacing = 1.3
+    r_desc = p_desc.add_run("【最高人民法院在线诉讼委托代理资格说明】\n")
+    r_desc.font.name = "黑体"
+    r_desc.font.size = Pt(11)
+    r_desc.font.bold = True
+    r_desc_b = p_desc.add_run(
+        "1. 按照最高人民法院《人民法院在线诉讼规则》第十一条规定，诉讼代理人应当提交律师执业证书及律师事务所公函。\n"
+        "2. 请将承办律师有效执业证书基本信息页（含彩色照片）及最近年度考核称职备案盖章页复印件粘贴于下方区域。\n"
+        "3. 本页与《民事授权委托书》、《律师事务所公函》共同归入第二类目（02_委托代理材料）合卷上传。"
+    )
+    r_desc_b.font.name = "仿宋_GB2312"
+    r_desc_b.font.size = Pt(10)
+
+    t_box = doc.add_table(rows=1, cols=1)
+    t_box.style = 'Table Grid'
+    cell_box = t_box.rows[0].cells[0]
+    cell_box.width = Inches(6.3)
+    p_box = cell_box.paragraphs[0]
+    p_box.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_box.paragraph_format.space_before = Pt(36)
+    p_box.paragraph_format.space_after = Pt(36)
+    r_box = p_box.add_run("【此处附：律师执业证基本信息页及年度考核备案页复印件】")
+    r_box.font.name = "楷体"
+    r_box.font.size = Pt(11)
+    r_box.font.color.rgb = RGBColor(0x9C, 0xA3, 0xAF)
+
+    doc.add_paragraph()
+    p_foot = doc.add_paragraph()
+    p_foot.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_foot = p_foot.add_run(f"承办律师（签字）：____________________    日期：{sign_date}")
+    r_foot.font.name = "仿宋_GB2312"
+    r_foot.font.size = Pt(11)
+
+    doc.save(output_path)
+    from gateway.utils.disclaimer import add_disclaimer_to_docx
+    add_disclaimer_to_docx(output_path)
+
+
+def _create_evidence_bundle_cover_docx(
+    output_path: str,
+    cause_of_action: str,
+    plaintiff_name: str,
+    opponent_name: str,
+    court_name: str,
+    evidences: Optional[List[Any]] = None,
+    sign_date: str = "",
+) -> None:
+    """生成《初步证据材料合卷说明页》（附证据装订总则与目录汇总）。"""
+    import docx as python_docx
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = python_docx.Document()
+    for s in doc.sections:
+        s.top_margin = Inches(1.0)
+        s.bottom_margin = Inches(1.0)
+        s.left_margin = Inches(1.1)
+        s.right_margin = Inches(1.1)
+
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r_title = p_title.add_run("初步证据材料合卷说明页")
+    r_title.font.name = "黑体"
+    r_title.font.size = Pt(16)
+    r_title.font.bold = True
+
+    p_sub = doc.add_paragraph()
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.paragraph_format.space_after = Pt(12)
+    r_sub = p_sub.add_run("（人民法院在线服务 · 04_证据清单与证据材料专页）")
+    r_sub.font.name = "楷体"
+    r_sub.font.size = Pt(10.5)
+    r_sub.font.color.rgb = RGBColor(0x4B, 0x55, 0x63)
+
+    p_meta = doc.add_paragraph()
+    p_meta.paragraph_format.line_spacing = 1.3
+    r_m = p_meta.add_run(
+        f"案件案由：{cause_of_action}\n"
+        f"原告（申请人）：{plaintiff_name}\n"
+        f"被告（被申请人）：{opponent_name}\n"
+        f"受诉机构：{court_name}\n"
+        f"初步证据数量：共 {len(evidences or [])} 项\n"
+    )
+    r_m.font.name = "仿宋_GB2312"
+    r_m.font.size = Pt(11)
+
+    ev_list = evidences or []
+    if ev_list:
+        table = doc.add_table(rows=len(ev_list) + 1, cols=4)
+        table.style = 'Table Grid'
+        headers = ["序号", "证据名称", "证明目的", "形式"]
+        widths = [Inches(0.8), Inches(2.2), Inches(2.5), Inches(0.8)]
+        hdr_cells = table.rows[0].cells
+        for idx, h_text in enumerate(headers):
+            hdr_cells[idx].width = widths[idx]
+            p = hdr_cells[idx].paragraphs[0]
+            r = p.add_run(h_text)
+            r.font.name = "黑体"
+            r.font.size = Pt(10)
+            r.font.bold = True
+        for row_idx, ev in enumerate(ev_list, start=1):
+            row_cells = table.rows[row_idx].cells
+            for c_idx in range(4):
+                row_cells[c_idx].width = widths[c_idx]
+            ev_name = getattr(ev, "name", None) or (ev.get("name") if isinstance(ev, dict) else str(ev))
+            ev_purpose = getattr(ev, "purpose", None) or (ev.get("purpose") if isinstance(ev, dict) else "")
+            ev_format = getattr(ev, "original_or_copy", None) or (ev.get("original_or_copy") if isinstance(ev, dict) else "复印件")
+            for c_idx, val in enumerate([str(row_idx), str(ev_name or ""), str(ev_purpose or ""), str(ev_format or "")]):
+                p = row_cells[c_idx].paragraphs[0]
+                r = p.add_run(val)
+                r.font.name = "仿宋_GB2312"
+                r.font.size = Pt(9.5)
+    else:
+        p_empty = doc.add_paragraph()
+        r_empty = p_empty.add_run("（证据材料清单详见《证据目录》，本合卷页后附全部初步书证及电子证据打印件）")
+        r_empty.font.name = "楷体"
+        r_empty.font.size = Pt(10.5)
+
+    doc.add_paragraph()
+    p_desc = doc.add_paragraph()
+    p_desc.paragraph_format.line_spacing = 1.3
+    r_desc = p_desc.add_run("【最高人民法院在线诉讼证据装订与质证指引】\n")
+    r_desc.font.name = "黑体"
+    r_desc.font.size = Pt(11)
+    r_desc.font.bold = True
+    r_desc_b = p_desc.add_run(
+        "1. 移动微法院证据上传时，证据文件序号应与本合卷说明页及《证据目录》严格对应。\n"
+        "2. 多页书证应合并为单个 PDF 依次上传，单文件建议不超过 50MB。\n"
+        "3. 开庭质证时原告应携带全部证据原件或原始存储介质以供核对。"
+    )
+    r_desc_b.font.name = "仿宋_GB2312"
+    r_desc_b.font.size = Pt(10)
+
+    doc.add_paragraph()
+    p_foot = doc.add_paragraph()
+    p_foot.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_foot = p_foot.add_run(f"提交人（签名/盖章）：____________________    日期：{sign_date}")
+    r_foot.font.name = "仿宋_GB2312"
+    r_foot.font.size = Pt(11)
+
+    doc.save(output_path)
+    from gateway.utils.disclaimer import add_disclaimer_to_docx
+    add_disclaimer_to_docx(output_path)
+
+
+def classify_litigation_file(filename: str) -> str:
+    """按最高人民法院在线服务立案四大类目划分文件所属目录。"""
+    if any(k in filename for k in ["起诉状", "仲裁申请书", "法定代表人", "原告身份证明", "财产保全"]):
+        return "01_起诉状及身份证明"
+    elif any(k in filename for k in ["委托书", "律师事务所公函", "律师执业证"]):
+        return "02_委托代理材料"
+    elif any(k in filename for k in ["送达地址"]):
+        return "03_送达地址确认书"
+    elif any(k in filename for k in ["证据", "补偿金"]):
+        return "04_证据清单与证据材料"
+    return "01_起诉状及身份证明"
+
+
+def build_litigation_archive(
+    package_id: str,
+    generated_docs: List[Dict[str, Any]],
+    safe_party_name: str,
+    timestamp: int,
+    archive_format: Literal["spc_mobile", "flat"] = "spc_mobile",
+) -> Tuple[str, str]:
+    """
+    构建立案公文包 ZIP 归档并保存至 storage/generated/。
+    - spc_mobile: 最高人民法院移动微法院四级类目归档
+    - flat: 传统扁平单层 ZIP 归档
+    返回: (zip_filename, zip_filepath)
+    """
+    generated_dir = get_generated_dir()
+    if archive_format == "spc_mobile":
+        zip_filename = f"立案公文包_移动微法院标准_{package_id}_{safe_party_name}_{timestamp}.zip"
+    else:
+        zip_filename = f"立案公文包_扁平打包_{package_id}_{safe_party_name}_{timestamp}.zip"
+    zip_path = os.path.join(str(generated_dir), zip_filename)
+
+    spc_folders = [
+        "01_起诉状及身份证明",
+        "02_委托代理材料",
+        "03_送达地址确认书",
+        "04_证据清单与证据材料",
+    ]
+
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        if archive_format == "spc_mobile":
+            for folder in spc_folders:
+                zf.writestr(f"{folder}/", "")
+            for doc in generated_docs:
+                cat = doc.get("category") or classify_litigation_file(doc.get("filename_docx", ""))
+                # docx
+                if doc.get("filename_docx"):
+                    docx_path = doc.get("path") or os.path.join(str(generated_dir), doc["filename_docx"])
+                    if os.path.isfile(docx_path):
+                        zf.write(docx_path, arcname=f"{cat}/{doc['filename_docx']}")
+                # pdf
+                if doc.get("filename_pdf"):
+                    pdf_path = doc.get("pdf_path") or os.path.join(str(generated_dir), doc["filename_pdf"])
+                    if os.path.isfile(pdf_path):
+                        zf.write(pdf_path, arcname=f"{cat}/{doc['filename_pdf']}")
+        else:
+            for doc in generated_docs:
+                if doc.get("filename_docx"):
+                    docx_path = doc.get("path") or os.path.join(str(generated_dir), doc["filename_docx"])
+                    if os.path.isfile(docx_path):
+                        zf.write(docx_path, arcname=doc["filename_docx"])
+                if doc.get("filename_pdf"):
+                    pdf_path = doc.get("pdf_path") or os.path.join(str(generated_dir), doc["filename_pdf"])
+                    if os.path.isfile(pdf_path):
+                        zf.write(pdf_path, arcname=doc["filename_pdf"])
+
+    return zip_filename, zip_path
 
 
 # ==============================================================================
@@ -1098,6 +1668,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
 
     generated_docs.append({
         "doc_type": doc_label,
+        "category": "01_起诉状及身份证明",
         "filename_docx": main_docx_name,
         "path": main_docx_path,
         "docx_url": f"/api/documents/download/{main_docx_name}",
@@ -1139,19 +1710,24 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "sign_date": filing_date_str,
         })
         doc_poa.save(poa_docx_path)
-        await convert_docx_to_pdf(poa_docx_path, poa_pdf_path, title="民事授权委托书")
+        poa_pdf_ok = await convert_docx_to_pdf(poa_docx_path, poa_pdf_path, title="民事授权委托书")
         generated_docs.append({
             "doc_type": "民事授权委托书",
+            "category": "02_委托代理材料",
             "filename_docx": poa_docx_name,
+            "path": poa_docx_path,
             "docx_url": f"/api/documents/download/{poa_docx_name}",
-            "filename_pdf": poa_pdf_name,
-            "pdf_url": f"/api/documents/download/{poa_pdf_name}",
+            "filename_pdf": poa_pdf_name if poa_pdf_ok else None,
+            "pdf_path": poa_pdf_path if poa_pdf_ok else None,
+            "pdf_url": f"/api/documents/download/{poa_pdf_name}" if poa_pdf_ok else None,
         })
 
     if "service_address" in target_sub_docs:
         addr_tpl = os.path.join(_templates_dir(), "service_address_template.docx")
         addr_docx_name = f"送达地址确认书_{safe_party_name}_{timestamp}.docx"
         addr_docx_path = os.path.join(str(get_generated_dir()), addr_docx_name)
+        addr_pdf_name = f"送达地址确认书_{safe_party_name}_{timestamp}.pdf"
+        addr_pdf_path = os.path.join(str(get_generated_dir()), addr_pdf_name)
         doc_addr = DocxTemplate(addr_tpl)
         doc_addr.render({
             "cause_of_action": req.cause_of_action,
@@ -1168,10 +1744,16 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "sign_date": filing_date_str,
         })
         doc_addr.save(addr_docx_path)
+        addr_pdf_ok = await convert_docx_to_pdf(addr_docx_path, addr_pdf_path, title="送达地址确认书")
         generated_docs.append({
             "doc_type": "送达地址确认书",
+            "category": "03_送达地址确认书",
             "filename_docx": addr_docx_name,
+            "path": addr_docx_path,
             "docx_url": f"/api/documents/download/{addr_docx_name}",
+            "filename_pdf": addr_pdf_name if addr_pdf_ok else None,
+            "pdf_path": addr_pdf_path if addr_pdf_ok else None,
+            "pdf_url": f"/api/documents/download/{addr_pdf_name}" if addr_pdf_ok else None,
         })
 
     if "legal_rep_certificate" in target_sub_docs:
@@ -1179,6 +1761,8 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         if os.path.isfile(rep_tpl):
             rep_docx_name = f"法定代表人身份证明书_{safe_party_name}_{timestamp}.docx"
             rep_docx_path = os.path.join(str(get_generated_dir()), rep_docx_name)
+            rep_pdf_name = f"法定代表人身份证明书_{safe_party_name}_{timestamp}.pdf"
+            rep_pdf_path = os.path.join(str(get_generated_dir()), rep_pdf_name)
             doc_rep = DocxTemplate(rep_tpl)
             doc_rep.render({
                 "legal_rep_name": plaintiff.get("legal_rep") or PLACEHOLDER,
@@ -1192,16 +1776,24 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
                 "sign_date": filing_date_str,
             })
             doc_rep.save(rep_docx_path)
+            rep_pdf_ok = await convert_docx_to_pdf(rep_docx_path, rep_pdf_path, title="法定代表人身份证明书")
             generated_docs.append({
                 "doc_type": "法定代表人身份证明书",
+                "category": "01_起诉状及身份证明",
                 "filename_docx": rep_docx_name,
+                "path": rep_docx_path,
                 "docx_url": f"/api/documents/download/{rep_docx_name}",
+                "filename_pdf": rep_pdf_name if rep_pdf_ok else None,
+                "pdf_path": rep_pdf_path if rep_pdf_ok else None,
+                "pdf_url": f"/api/documents/download/{rep_pdf_name}" if rep_pdf_ok else None,
             })
 
     if "property_preservation" in target_sub_docs:
         preserv_tpl = os.path.join(_templates_dir(), "property_preservation_template.docx")
         preserv_docx_name = f"财产保全申请书_{safe_party_name}_{timestamp}.docx"
         preserv_docx_path = os.path.join(str(get_generated_dir()), preserv_docx_name)
+        preserv_pdf_name = f"财产保全申请书_{safe_party_name}_{timestamp}.pdf"
+        preserv_pdf_path = os.path.join(str(get_generated_dir()), preserv_pdf_name)
         doc_preserv = DocxTemplate(preserv_tpl)
         doc_preserv.render({
             "applicant_name": plaintiff["name"],
@@ -1225,10 +1817,16 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "sign_date": filing_date_str,
         })
         doc_preserv.save(preserv_docx_path)
+        preserv_pdf_ok = await convert_docx_to_pdf(preserv_docx_path, preserv_pdf_path, title="财产保全申请书")
         generated_docs.append({
             "doc_type": "财产保全申请书",
+            "category": "01_起诉状及身份证明",
             "filename_docx": preserv_docx_name,
+            "path": preserv_docx_path,
             "docx_url": f"/api/documents/download/{preserv_docx_name}",
+            "filename_pdf": preserv_pdf_name if preserv_pdf_ok else None,
+            "pdf_path": preserv_pdf_path if preserv_pdf_ok else None,
+            "pdf_url": f"/api/documents/download/{preserv_pdf_name}" if preserv_pdf_ok else None,
         })
 
     if "evidence_catalog" in target_sub_docs:
@@ -1236,6 +1834,8 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         if os.path.isfile(ev_tpl):
             ev_docx_name = f"证据目录_{safe_party_name}_{timestamp}.docx"
             ev_docx_path = os.path.join(str(get_generated_dir()), ev_docx_name)
+            ev_pdf_name = f"证据目录_{safe_party_name}_{timestamp}.pdf"
+            ev_pdf_path = os.path.join(str(get_generated_dir()), ev_pdf_name)
             doc_ev = DocxTemplate(ev_tpl)
             doc_ev.render({
                 "cause_of_action": req.cause_of_action,
@@ -1244,10 +1844,16 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
                 "evidences": req.evidences or [],
             })
             doc_ev.save(ev_docx_path)
+            ev_pdf_ok = await convert_docx_to_pdf(ev_docx_path, ev_pdf_path, title="证据目录")
             generated_docs.append({
                 "doc_type": "证据目录",
+                "category": "04_证据清单与证据材料",
                 "filename_docx": ev_docx_name,
+                "path": ev_docx_path,
                 "docx_url": f"/api/documents/download/{ev_docx_name}",
+                "filename_pdf": ev_pdf_name if ev_pdf_ok else None,
+                "pdf_path": ev_pdf_path if ev_pdf_ok else None,
+                "pdf_url": f"/api/documents/download/{ev_pdf_name}" if ev_pdf_ok else None,
             })
 
     if is_labor and (req.auto_generate_sub_docs or "labor_compensation_calc" in target_sub_docs):
@@ -1273,9 +1879,150 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         doc_labor.save(labor_docx_path)
         generated_docs.append({
             "doc_type": "经济补偿金计算清单",
+            "category": "04_证据清单与证据材料",
             "filename_docx": labor_docx_name,
+            "path": labor_docx_path,
             "docx_url": f"/api/documents/download/{labor_docx_name}",
+            "filename_pdf": None,
+            "pdf_path": None,
+            "pdf_url": None,
         })
+
+    # 移动微法院在线诉讼配套支撑材料（当 auto_generate_sub_docs 或显式选择相应材料时生成）
+    # 1. 01_起诉状及身份证明：原告主体资格证明材料说明页
+    if req.auto_generate_sub_docs or "id_credential_attachment" in target_sub_docs:
+        id_cred_docx_name = f"原告身份证明材料说明页_{safe_party_name}_{timestamp}.docx"
+        id_cred_docx_path = os.path.join(str(get_generated_dir()), id_cred_docx_name)
+        _create_id_credential_attachment_docx(
+            output_path=id_cred_docx_path,
+            plaintiff=plaintiff,
+            court_name=court_full if not is_labor else arbitration_full,
+            sign_date=filing_date_str,
+        )
+        generated_docs.append({
+            "doc_type": "原告主体资格证明材料说明页",
+            "category": "01_起诉状及身份证明",
+            "filename_docx": id_cred_docx_name,
+            "path": id_cred_docx_path,
+            "docx_url": f"/api/documents/download/{id_cred_docx_name}",
+            "filename_pdf": None,
+            "pdf_path": None,
+            "pdf_url": None,
+        })
+
+    # 2. 02_委托代理材料：律师事务所公函
+    if req.auto_generate_sub_docs or "law_firm_letter" in target_sub_docs or ("power_of_attorney" in target_sub_docs and req.law_firm):
+        firm_letter_docx_name = f"律师事务所公函_{safe_party_name}_{timestamp}.docx"
+        firm_letter_docx_path = os.path.join(str(get_generated_dir()), firm_letter_docx_name)
+        firm_letter_pdf_name = f"律师事务所公函_{safe_party_name}_{timestamp}.pdf"
+        firm_letter_pdf_path = os.path.join(str(get_generated_dir()), firm_letter_pdf_name)
+        _create_law_firm_letter_docx(
+            output_path=firm_letter_docx_path,
+            law_firm=req.law_firm,
+            lawyer_name=req.lawyer_name,
+            lawyer_license=req.lawyer_license,
+            lawyer_phone=req.lawyer_phone,
+            client_name=plaintiff["name"],
+            opponent_name=defendant["name"],
+            cause_of_action=req.cause_of_action,
+            court_name=court_full if not is_labor else arbitration_full,
+            sign_date=filing_date_str,
+        )
+        letter_pdf_ok = await convert_docx_to_pdf(firm_letter_docx_path, firm_letter_pdf_path, title="律师事务所公函")
+        generated_docs.append({
+            "doc_type": "律师事务所公函",
+            "category": "02_委托代理材料",
+            "filename_docx": firm_letter_docx_name,
+            "path": firm_letter_docx_path,
+            "docx_url": f"/api/documents/download/{firm_letter_docx_name}",
+            "filename_pdf": firm_letter_pdf_name if letter_pdf_ok else None,
+            "pdf_path": firm_letter_pdf_path if letter_pdf_ok else None,
+            "pdf_url": f"/api/documents/download/{firm_letter_pdf_name}" if letter_pdf_ok else None,
+        })
+
+    # 3. 02_委托代理材料：律师执业证复印件说明页
+    if req.auto_generate_sub_docs or "lawyer_license_attachment" in target_sub_docs or ("power_of_attorney" in target_sub_docs and req.lawyer_license):
+        lawyer_lic_docx_name = f"律师执业证复印件说明页_{safe_party_name}_{timestamp}.docx"
+        lawyer_lic_docx_path = os.path.join(str(get_generated_dir()), lawyer_lic_docx_name)
+        _create_lawyer_license_attachment_docx(
+            output_path=lawyer_lic_docx_path,
+            lawyer_name=req.lawyer_name,
+            law_firm=req.law_firm,
+            lawyer_license=req.lawyer_license,
+            lawyer_phone=req.lawyer_phone,
+            court_name=court_full if not is_labor else arbitration_full,
+            sign_date=filing_date_str,
+        )
+        generated_docs.append({
+            "doc_type": "律师执业证复印件说明页",
+            "category": "02_委托代理材料",
+            "filename_docx": lawyer_lic_docx_name,
+            "path": lawyer_lic_docx_path,
+            "docx_url": f"/api/documents/download/{lawyer_lic_docx_name}",
+            "filename_pdf": None,
+            "pdf_path": None,
+            "pdf_url": None,
+        })
+
+    # 4. 04_证据清单与证据材料：初步证据材料合卷说明页
+    if req.auto_generate_sub_docs or "evidence_bundle_cover" in target_sub_docs:
+        ev_cover_docx_name = f"初步证据材料合卷说明页_{safe_party_name}_{timestamp}.docx"
+        ev_cover_docx_path = os.path.join(str(get_generated_dir()), ev_cover_docx_name)
+        _create_evidence_bundle_cover_docx(
+            output_path=ev_cover_docx_path,
+            cause_of_action=req.cause_of_action,
+            plaintiff_name=plaintiff["name"],
+            opponent_name=defendant["name"],
+            court_name=court_full if not is_labor else arbitration_full,
+            evidences=req.evidences,
+            sign_date=filing_date_str,
+        )
+        generated_docs.append({
+            "doc_type": "初步证据材料合卷说明页",
+            "category": "04_证据清单与证据材料",
+            "filename_docx": ev_cover_docx_name,
+            "path": ev_cover_docx_path,
+            "docx_url": f"/api/documents/download/{ev_cover_docx_name}",
+            "filename_pdf": None,
+            "pdf_path": None,
+            "pdf_url": None,
+        })
+
+    # 构建移动微法院标准 ZIP 包与传统扁平 ZIP 包
+    spc_zip_name, spc_zip_path = build_litigation_archive(
+        package_id=package_id,
+        generated_docs=generated_docs,
+        safe_party_name=safe_party_name,
+        timestamp=timestamp,
+        archive_format="spc_mobile",
+    )
+    flat_zip_name, flat_zip_path = build_litigation_archive(
+        package_id=package_id,
+        generated_docs=generated_docs,
+        safe_party_name=safe_party_name,
+        timestamp=timestamp,
+        archive_format="flat",
+    )
+
+    _PACKAGE_ARCHIVE_REGISTRY[package_id] = {
+        "spc_mobile": (spc_zip_name, spc_zip_path),
+        "flat": (flat_zip_name, flat_zip_path),
+    }
+
+    archive_categories: Dict[str, List[str]] = {
+        "01_起诉状及身份证明": [],
+        "02_委托代理材料": [],
+        "03_送达地址确认书": [],
+        "04_证据清单与证据材料": [],
+    }
+    for doc in generated_docs:
+        cat = doc.get("category") or classify_litigation_file(doc.get("filename_docx", ""))
+        if cat not in archive_categories:
+            archive_categories[cat] = []
+        if doc.get("filename_docx") and doc["filename_docx"] not in archive_categories[cat]:
+            archive_categories[cat].append(doc["filename_docx"])
+        if doc.get("filename_pdf") and doc["filename_pdf"] not in archive_categories[cat]:
+            archive_categories[cat].append(doc["filename_pdf"])
 
     llm_mode = getattr(ollama_client, "last_llm_mode", "rule_fallback")
     pdf_engine = get_last_pdf_engine() if pdf_ok else "local_pymupdf"
@@ -1307,6 +2054,12 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         "generated_documents": generated_docs,
         "main_docx_path": main_docx_path,
         "main_pdf_path": main_pdf_path if pdf_ok else None,
+        "package_zip_name": spc_zip_name,
+        "package_zip_url": f"/api/documents/download/{spc_zip_name}",
+        "package_flat_zip_name": flat_zip_name,
+        "package_flat_zip_url": f"/api/documents/download/{flat_zip_name}",
+        "package_download_url": f"/api/v1/phase1/package/{package_id}/download?format={req.archive_format}",
+        "archive_categories": archive_categories,
         "llm_mode": llm_mode,
         "engine_status": engine_status,
     }
@@ -1335,8 +2088,64 @@ async def download_doc(filename: str, request: Request = None):
         )
     except Exception as audit_err:
         logger.warning(f"记录文书下载审计日志失败: {audit_err}")
-    media = "application/pdf" if safe_name.endswith(".pdf") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    if safe_name.endswith(".pdf"):
+        media = "application/pdf"
+    elif safe_name.endswith(".zip"):
+        media = "application/zip"
+    else:
+        media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     return FileResponse(path=file_path, filename=os.path.basename(safe_name), media_type=media)
+
+
+@router.get("/api/v1/phase1/package/{package_id}/download", summary="移动微法院立案公文包 ZIP 归档直接下载")
+async def download_litigation_package_zip(
+    package_id: str,
+    format: Literal["spc_mobile", "flat"] = Query("spc_mobile", description="归档格式：spc_mobile（四级分类）或 flat（单层扁平）"),
+    request: Request = None,
+):
+    """
+    流式下载指定立案文书包的 ZIP 归档。
+    - format=spc_mobile: 最高人民法院移动微法院四级类目归档
+    - format=flat: 传统扁平单层 ZIP 归档
+    """
+    entry = _PACKAGE_ARCHIVE_REGISTRY.get(package_id)
+    zip_name, zip_path = None, None
+    if entry and format in entry:
+        zip_name, zip_path = entry[format]
+
+    if not zip_path or not os.path.isfile(zip_path):
+        gen_dir = str(get_generated_dir())
+        prefix = "立案公文包_移动微法院标准_" if format == "spc_mobile" else "立案公文包_扁平打包_"
+        if os.path.isdir(gen_dir):
+            cand_files = [f for f in os.listdir(gen_dir) if f.startswith(prefix) and package_id in f and f.endswith(".zip")]
+            if cand_files:
+                cand_files.sort(key=lambda x: os.path.getmtime(os.path.join(gen_dir, x)), reverse=True)
+                zip_name = cand_files[0]
+                zip_path = os.path.join(gen_dir, zip_name)
+                if package_id not in _PACKAGE_ARCHIVE_REGISTRY:
+                    _PACKAGE_ARCHIVE_REGISTRY[package_id] = {}
+                _PACKAGE_ARCHIVE_REGISTRY[package_id][format] = (zip_name, zip_path)
+
+    if not zip_path or not os.path.isfile(zip_path):
+        raise HTTPException(status_code=404, detail=f"未找到案卷包 {package_id} 对应的 ZIP 归档文件")
+
+    try:
+        from gateway.utils.matter_vault_db import record_audit_log
+        client_ip = request.client.host if request and request.client else None
+        record_audit_log(
+            action="package_zip_download",
+            target=zip_name,
+            client_ip=client_ip,
+            result="success"
+        )
+    except Exception as audit_err:
+        logger.warning(f"记录文书包下载审计日志失败: {audit_err}")
+
+    return FileResponse(
+        path=zip_path,
+        filename=os.path.basename(zip_name),
+        media_type="application/zip",
+    )
 
 
 # ==============================================================================

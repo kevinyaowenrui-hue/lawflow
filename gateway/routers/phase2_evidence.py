@@ -118,10 +118,20 @@ class ExportRedlineReq(BaseModel):
 class AutoEvidenceCatalogReq(BaseModel):
     cause_of_action: str = Field(..., examples=["民间借贷纠纷"])
     plaintiff_name: str = Field(..., examples=["张三"])
-    evidence_notes: str = Field(
-        ...,
+    evidence_notes: Optional[str] = Field(
+        default="",
         description="杂乱证据材料清单或提取文字",
-        examples=["证据一：2023年1月1日张三通过招商银行给李四转账50万的网银回单电子凭证，证明借款交付。证据二：李四手写借条原件，约定年利率15%一年后还本付息。证据三：微信聊天记录导出，李四多次在微信中承认欠款并请求宽限两周。"]    )
+        examples=["证据一：2023年1月1日张三通过招商银行给李四转账50万的网银回单电子凭证，证明借款交付。证据二：李四手写借条原件，约定年利率15%一年后还本付息。证据三：微信聊天记录导出，李四多次在微信中承认欠款并请求宽限两周。"]
+    )
+    structured_items: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="直接传入结构化证据项（包含 name, category, source, purpose, pages）"
+    )
+    file_page_map: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="来自合卷 process-evidence 的物理起止绝对页码映射表"
+    )
+
 
 class RedactSensitiveReq(BaseModel):
     pdf_filename: str = Field(..., description="storage/generated 或 uploads 中的 PDF 文件名", examples=["合卷证据包_test.pdf"])
@@ -184,6 +194,7 @@ async def process_evidence_bates_stamping(
     batch_total = 0
     batch_cap = max_upload_total_bytes()
     merged_files: List[str] = []
+    file_page_map: List[Dict[str, Any]] = []
     skipped_files: List[Dict[str, str]] = []
     temp_cleanup: List[str] = []
 
@@ -213,7 +224,18 @@ async def process_evidence_bates_stamping(
 
             try:
                 if ext == ".pdf":
+                    start_page = total_pages + 1
                     added = _append_pdf_with_bates(merged_doc, temp_path, evidence_label, total_pages)
+                    end_page = total_pages + added
+                    page_range = f"第{start_page}-{end_page}页" if start_page != end_page else f"第{start_page}页"
+                    file_page_map.append({
+                        "filename": original_name,
+                        "start_page": start_page,
+                        "end_page": end_page,
+                        "page_count": added,
+                        "page_range": page_range,
+                        "evidence_label": evidence_label
+                    })
                     total_pages += added
                     merged_files.append(original_name)
 
@@ -249,6 +271,14 @@ async def process_evidence_bates_stamping(
                     page.insert_image(rect, filename=conv_path)
                     total_pages += 1
                     _stamp_bates_on_page(page, evidence_label, total_pages)
+                    file_page_map.append({
+                        "filename": original_name,
+                        "start_page": total_pages,
+                        "end_page": total_pages,
+                        "page_count": 1,
+                        "page_range": f"第{total_pages}页",
+                        "evidence_label": evidence_label
+                    })
                     merged_files.append(original_name)
 
                 elif ext in (".docx", ".doc"):
@@ -268,7 +298,18 @@ async def process_evidence_bates_stamping(
                             "reason": "Word 转 PDF 失败",
                         })
                         continue
+                    start_page = total_pages + 1
                     added = _append_pdf_with_bates(merged_doc, tmp_pdf, evidence_label, total_pages)
+                    end_page = total_pages + added
+                    page_range = f"第{start_page}-{end_page}页" if start_page != end_page else f"第{start_page}页"
+                    file_page_map.append({
+                        "filename": original_name,
+                        "start_page": start_page,
+                        "end_page": end_page,
+                        "page_count": added,
+                        "page_range": page_range,
+                        "evidence_label": evidence_label
+                    })
                     total_pages += added
                     merged_files.append(original_name)
                 else:
@@ -302,6 +343,7 @@ async def process_evidence_bates_stamping(
             "download_url": f"/api/documents/download/{merged_filename}",
             "processed_files_count": len(merged_files),
             "merged_files": merged_files,
+            "file_page_map": file_page_map,
             "skipped_files": skipped_files,
         }
     finally:
@@ -431,27 +473,38 @@ async def auto_generate_evidence_catalog(req: AutoEvidenceCatalogReq):
         return extracted
 
     _catalog_entities = build_entities_from_parties([{"name": getattr(req, "plaintiff_name", None)}])
-    try:
-        raw_output = await ollama_client.generate(
-            prompt=prompt,
-            system_prompt=EVIDENCE_STRUCTURING_PROMPT,
-            temperature=0.2,
-            custom_entities=_catalog_entities or None,
-        )
-        parsed_items = ollama_client.extract_json(raw_output)
-        if isinstance(parsed_items, dict) and "error" in parsed_items:
+    if req.structured_items and len(req.structured_items) > 0:
+        items = [dict(it) for it in req.structured_items]
+    else:
+        try:
+            raw_output = await ollama_client.generate(
+                prompt=prompt,
+                system_prompt=EVIDENCE_STRUCTURING_PROMPT,
+                temperature=0.2,
+                custom_entities=_catalog_entities or None,
+            )
+            parsed_items = ollama_client.extract_json(raw_output)
+            if isinstance(parsed_items, dict) and "error" in parsed_items:
+                items = _parse_raw_evidence_items(req.evidence_notes)
+            elif isinstance(parsed_items, list):
+                items = parsed_items
+            elif isinstance(parsed_items, dict):
+                items = parsed_items.get("evidence_items", parsed_items.get("items", [parsed_items]))
+            else:
+                items = []
+            if not items:
+                items = _parse_raw_evidence_items(req.evidence_notes)
+        except Exception as e:
+            logger.warning(f"gemma4:12b 提炼证据目录异常: {e}")
             items = _parse_raw_evidence_items(req.evidence_notes)
-        elif isinstance(parsed_items, list):
-            items = parsed_items
-        elif isinstance(parsed_items, dict):
-            items = parsed_items.get("evidence_items", parsed_items.get("items", [parsed_items]))
-        else:
-            items = []
-        if not items:
-            items = _parse_raw_evidence_items(req.evidence_notes)
-    except Exception as e:
-        logger.warning(f"gemma4:12b 提炼证据目录异常: {e}")
-        items = _parse_raw_evidence_items(req.evidence_notes)
+
+    # 若提供了合卷绝对页码映射表 file_page_map，自动注入各证据项页码
+    if req.file_page_map and len(req.file_page_map) > 0:
+        for idx, item in enumerate(items):
+            if idx < len(req.file_page_map):
+                pm = req.file_page_map[idx]
+                if pm.get("page_range"):
+                    item["pages"] = pm["page_range"]
 
     if not items:
         items = [

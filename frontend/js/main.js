@@ -38,6 +38,9 @@ for (const mod of allModules) {
   }
 }
 if (typeof window !== 'undefined') {
+  window.navigateToPipelineStep = navigateToPipelineStep;
+  window.toggleStepperView = toggleStepperView;
+  window.updatePipelineStepperActive = updatePipelineStepperActive;
   window.toggleSidebar = toggleSidebar;
   window.switchNavTab = switchNavTab;
   window.initDate = initDate;
@@ -114,6 +117,7 @@ if (typeof window !== 'undefined') {
       const badgeText = title.split(' ')[0] || "01";
       document.getElementById('current-module-badge').innerText = '模块 ' + badgeText;
       document.getElementById('current-module-title').innerText = title.substring(3).trim();
+      updatePipelineStepperActive(tabId);
 
       if (tabId === 'tab-copilot') {
         if (typeof loadCopilotTasksUI === 'function') loadCopilotTasksUI();
@@ -202,6 +206,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (typeof runDualRAGSearch === 'function') runDualRAGSearch();
   if (typeof fetchEngineHealth === 'function') fetchEngineHealth();
   if (typeof fetchConverterStatus === 'function') fetchConverterStatus();
+  if (typeof fetchSystemHealth === 'function') fetchSystemHealth();
   if (typeof runDeepMatrixAnalyze === 'function') runDeepMatrixAnalyze();
 
   if (window.CaseContextStore && typeof window.CaseContextStore.init === 'function') {
@@ -215,3 +220,53 @@ window.addEventListener('DOMContentLoaded', () => {
   if (typeof initCopilotWorkspace === 'function') initCopilotWorkspace();
   if (typeof onPlaybookChange === 'function') onPlaybookChange();
 });
+
+    function updatePipelineStepperActive(tabId) {
+      const stepMap = {
+        'tab-graphs': 1,
+        'tab-calc': 2,
+        'tab-evidence': 3,
+        'tab-litigation': 4,
+        'tab-deep-matrix': 5
+      };
+      const activeStep = stepMap[tabId] || 0;
+      for (let i = 1; i <= 5; i++) {
+        const node = document.getElementById(`step-node-${i}`);
+        if (node) {
+          node.classList.toggle('active-step', i === activeStep);
+        }
+      }
+    }
+
+    function navigateToPipelineStep(stepIndex) {
+      if (stepIndex === 1) {
+        const btn = document.getElementById('nav-graphs');
+        if (btn) switchNavTab('tab-graphs', '07 案件空间与核心图谱中枢', btn);
+        showToast("阶段 1：案件空间管理与利冲排查");
+      } else if (stepIndex === 2) {
+        const btn = document.getElementById('nav-calc');
+        if (btn) switchNavTab('tab-calc', '01 实务精算与核验', btn);
+        showToast("阶段 2：诉讼本息与受理费精算");
+      } else if (stepIndex === 3) {
+        const btn = document.getElementById('nav-evidence');
+        if (btn) switchNavTab('tab-evidence', '03 证据清洗与庭审', btn);
+        showToast("阶段 3：证据合卷与绝对页码目录");
+      } else if (stepIndex === 4) {
+        const btn = document.getElementById('nav-litigation');
+        if (btn) switchNavTab('tab-litigation', '02 立案文书流水线', btn);
+        showToast("阶段 4：移动微法院标准立案四件套生成");
+      } else if (stepIndex === 5) {
+        const btn = document.getElementById('nav-deep-matrix');
+        if (btn) switchNavTab('tab-deep-matrix', '05 要件推演与执行破局', btn);
+        showToast("阶段 5：庭审对抗提纲与七维要件推演");
+      }
+    }
+
+    function toggleStepperView() {
+      const track = document.getElementById('stepper-steps-track');
+      const btn = document.getElementById('btn-toggle-stepper');
+      if (!track || !btn) return;
+      const isHidden = track.style.display === 'none';
+      track.style.display = isHidden ? 'flex' : 'none';
+      btn.innerText = isHidden ? '展开向导 ▾' : '收起向导 ▴';
+    }

@@ -298,6 +298,28 @@ export const LITIGATION_TAB_HTML = `      <div class="split-grid-50-50">
           <!-- 《事实与理由》司法正文 -->
           <div class="legal-statement-box" id="pkg-facts-box" style="min-height: 240px; max-height: 360px;">点击左侧【生成全套立案公文包】后，本地大模型将自动提炼案件事实要件，引用《中华人民共和国民法典》或《中华人民共和国劳动合同法》对应条款，输出严谨出庭级别的《事实与理由》起诉正文。</div>
 
+          <!-- 一键整卷打包下载操作栏 (移动微法院标准 & 扁平压缩包) -->
+          <div id="pkg-archive-bar" style="display: none; margin-top: 14px; margin-bottom: 14px; padding: 12px 14px; background: #0F172A; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--radius-sm, 6px);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 700; color: #F8FAFC;">📦 最高院移动微法院立案公文包</span>
+                <span class="badge" style="background: #1E3A8A; color: #93C5FD; font-size: 10px; padding: 2px 6px;">四级类目就绪</span>
+              </div>
+              <span style="font-size: 11px; color: #94A3B8;">一键交付 · 零格式返工</span>
+            </div>
+            <div style="font-size: 11.5px; color: #CBD5E1; margin-bottom: 10px; line-height: 1.4;">
+              内含：01_起诉状及身份证明、02_委托代理材料、03_送达地址确认书、04_证据清单与证据材料四大目录，符合“人民法院在线服务”全国统一标准。
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <a id="btn-download-spc-zip" href="#" class="btn btn-sm" style="flex: 1; min-width: 220px; background: #2563EB; color: #FFFFFF; font-weight: 600; text-align: center; justify-content: center; border: 1px solid #3B82F6;" download>
+                📦 下载移动微法院标准立案包 (.zip)
+              </a>
+              <a id="btn-download-flat-zip" href="#" class="btn btn-secondary btn-sm" style="background: #1E293B; color: #E2E8F0; border: 1px solid rgba(255,255,255,0.15); font-weight: 500; text-align: center; justify-content: center;" download>
+                📥 下载传统扁平压缩包 (Flat .zip)
+              </a>
+            </div>
+          </div>
+
           <!-- 文书下载列表 -->
           <div style="border-top: 1px dashed var(--border-hairline); padding-top: 14px;">
             <div style="font-size: 12.5px; font-weight: 700; color: var(--primary-navy); margin-bottom: 10px;">
@@ -427,23 +449,52 @@ export function renderTabLitigation() {
         // 起诉状事实与理由
         document.getElementById('pkg-facts-box').innerText = d.facts_and_reasons_polished;
 
-        // 生成文书列表
+        // 移动微法院一键整卷打包下载操作栏激活与赋值
+        const archiveBar = document.getElementById('pkg-archive-bar');
+        const btnSpcZip = document.getElementById('btn-download-spc-zip');
+        const btnFlatZip = document.getElementById('btn-download-flat-zip');
+        if (archiveBar && btnSpcZip && btnFlatZip && (d.package_zip_url || d.package_flat_zip_url || d.package_download_url)) {
+          archiveBar.style.display = 'block';
+          const spcUrl = d.package_zip_url || (d.package_id ? `/api/v1/phase1/package/${d.package_id}/download?format=spc_mobile` : null);
+          if (spcUrl) {
+            btnSpcZip.href = withDownloadToken(spcUrl);
+            btnSpcZip.setAttribute('download', d.package_zip_name || '立案公文包_移动微法院标准.zip');
+          }
+          const flatUrl = d.package_flat_zip_url || (d.package_id ? `/api/v1/phase1/package/${d.package_id}/download?format=flat` : null);
+          if (flatUrl) {
+            btnFlatZip.href = withDownloadToken(flatUrl);
+            btnFlatZip.setAttribute('download', d.package_flat_zip_name || '立案公文包_扁平打包.zip');
+          }
+        }
+
+        // 生成文书列表与最高院四大类目标签渲染
         const listDiv = document.getElementById('pkg-doc-list');
         listDiv.innerHTML = "";
-        d.generated_documents.forEach(doc => {
+        const catBadgeMap = {
+          "01_起诉状及身份证明": { label: "01 起诉及主体", bg: "#1E3A8A", text: "#93C5FD" },
+          "02_委托代理材料": { label: "02 委托代理", bg: "#312E81", text: "#C7D2FE" },
+          "03_送达地址确认书": { label: "03 送达确认", bg: "#065F46", text: "#A7F3D0" },
+          "04_证据清单与证据材料": { label: "04 证据材料", bg: "#78350F", text: "#FDE68A" },
+        };
+
+        (d.generated_documents || []).forEach(doc => {
+          const catInfo = catBadgeMap[doc.category] || { label: doc.category || "诉讼材料", bg: "#374151", text: "#E5E7EB" };
           listDiv.innerHTML += `
-            <div class="doc-pill-item">
+            <div class="doc-pill-item" style="border: 1px solid rgba(255,255,255,0.08); background: #11141C;">
               <div class="doc-info">
-                <strong>${doc.doc_type}</strong>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <strong>${doc.doc_type}</strong>
+                  <span class="badge" style="background: ${catInfo.bg}; color: ${catInfo.text}; font-size: 10px; padding: 1px 6px; border-radius: 4px;">${catInfo.label}</span>
+                </div>
                 <span>${doc.filename_docx}</span>
               </div>
               <div style="display: flex; gap: 8px;">
-                <a href="${doc.docx_url}" class="btn btn-secondary btn-sm" download>
+                <a href="${withDownloadToken(doc.docx_url)}" class="btn btn-secondary btn-sm" download>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                   Word 存证
                 </a>
                 ${doc.pdf_url ? `
-                <a href="${doc.pdf_url}" class="btn btn-sm" style="background:#1F6E4A;" download>
+                <a href="${withDownloadToken(doc.pdf_url)}" class="btn btn-sm" style="background:#1F6E4A;" download>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
                   A4 PDF
                 </a>` : ''}

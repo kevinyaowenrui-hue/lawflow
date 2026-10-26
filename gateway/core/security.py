@@ -28,6 +28,7 @@ AUTH_EXEMPT_EXACT: Set[str] = {
     "/health",
     "/api/health",
     "/api/v1/health",
+    "/api/system/health",
     # DocuSeal / 演示签署回调：使用 DOCUSEAL_WEBHOOK_SECRET，不用 X-LawFlow-Token
     "/api/v1/phase3/signing-webhook",
 }
@@ -60,7 +61,8 @@ def get_api_token() -> str:
 def is_auth_exempt(path: str, method: str = "GET") -> bool:
     if method.upper() == "OPTIONS":
         return True
-    if path in AUTH_EXEMPT_EXACT:
+    clean_path = path.rstrip("/") or "/"
+    if clean_path in AUTH_EXEMPT_EXACT:
         return True
     for prefix in AUTH_EXEMPT_PREFIXES:
         if path.startswith(prefix):
@@ -68,12 +70,18 @@ def is_auth_exempt(path: str, method: str = "GET") -> bool:
     return False
 
 
+DOWNLOAD_TOKEN_PREFIXES: tuple = (
+    "/api/documents/download/",
+    "/api/v1/phase1/package/",
+)
+
+
 def extract_request_token(request: Request) -> Optional[str]:
     token = request.headers.get("X-LawFlow-Token")
     if token:
         return token
     path = request.url.path
-    if request.method.upper() == "GET" and path.startswith("/api/documents/download/"):
+    if request.method.upper() == "GET" and any(path.startswith(prefix) for prefix in DOWNLOAD_TOKEN_PREFIXES):
         return request.query_params.get("token")
     return None
 

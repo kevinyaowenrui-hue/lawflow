@@ -1,7 +1,7 @@
 /**
  * LawFlow Module: settings.js
  */
-import { api, ApiError, API_BASE, withDownloadToken } from '../api.js';
+import { api, ApiError, API_BASE, withDownloadToken, escapeHtml } from '../api.js';
 import { showToast } from '../ui/toast.js';
 
 
@@ -602,6 +602,234 @@ async function runPiiScanUI() {
       `;
     }
 
+    // =========================================================================
+    // 7. 系统运行环境与依赖体检逻辑 (System Environment Health Probing)
+    // =========================================================================
+    let currentSystemHealth = null;
+
+    async function fetchSystemHealth(force = false) {
+      try {
+        const url = `${API_BASE}/api/system/health${force ? '?force=true' : ''}`;
+        const resp = await api.request(url);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        currentSystemHealth = data;
+        updateSystemHealthUI(data);
+        return data;
+      } catch (e) {
+        console.warn("探测系统环境健康失败:", e);
+        return null;
+      }
+    }
+
+    function updateSystemHealthUI(data) {
+      if (!data) return;
+      const dot = document.getElementById('header-health-dot');
+      const tag = document.getElementById('header-health-tag');
+      const btn = document.getElementById('header-system-health-btn');
+
+      const overall = data.overall_status || 'OK';
+      if (dot) {
+        if (overall === 'OK') {
+          dot.style.background = '#22c55e';
+          dot.style.boxShadow = '0 0 6px rgba(34, 197, 94, 0.8)';
+        } else if (overall === 'DEGRADED') {
+          dot.style.background = '#f59e0b';
+          dot.style.boxShadow = '0 0 6px rgba(245, 158, 11, 0.8)';
+        } else {
+          dot.style.background = '#ef4444';
+          dot.style.boxShadow = '0 0 6px rgba(239, 68, 68, 0.8)';
+        }
+      }
+
+      if (tag) {
+        if (overall === 'OK') {
+          tag.innerText = '🩺 环境就绪';
+        } else if (overall === 'DEGRADED') {
+          tag.innerText = '🩺 规则兜底';
+        } else {
+          tag.innerText = '🩺 核心缺失';
+        }
+      }
+
+      if (btn) {
+        btn.title = `系统运行环境体检: ${overall === 'OK' ? '全部就绪' : overall === 'DEGRADED' ? '部分降级·兜底可用' : '核心依赖缺失'} - 点击查看报告`;
+      }
+
+      const modal = document.getElementById('modal-system-health');
+      if (modal && modal.classList.contains('active')) {
+        renderSystemHealthModal(data);
+      }
+    }
+
+    function renderSystemHealthModal(data) {
+      if (!data) return;
+      const overall = data.overall_status || 'OK';
+      const badge = document.getElementById('health-overall-badge');
+      const summaryTitle = document.getElementById('health-summary-title');
+      const summaryIcon = document.getElementById('health-summary-icon');
+      const summaryText = document.getElementById('health-summary-text');
+      const lastChecked = document.getElementById('health-last-checked');
+
+      if (badge) {
+        if (overall === 'OK') {
+          badge.textContent = '✅ 全部就绪 (OK)';
+          badge.style.background = 'rgba(34, 197, 94, 0.2)';
+          badge.style.color = '#4ADE80';
+          badge.style.borderColor = 'rgba(74, 222, 128, 0.4)';
+        } else if (overall === 'DEGRADED') {
+          badge.textContent = '⚠️ 部分降级·兜底在线 (DEGRADED)';
+          badge.style.background = 'rgba(245, 158, 11, 0.2)';
+          badge.style.color = '#FBBF24';
+          badge.style.borderColor = 'rgba(251, 191, 36, 0.4)';
+        } else {
+          badge.textContent = '❌ 核心缺失 (MISSING)';
+          badge.style.background = 'rgba(239, 68, 68, 0.2)';
+          badge.style.color = '#F87171';
+          badge.style.borderColor = 'rgba(248, 113, 113, 0.4)';
+        }
+      }
+
+      if (summaryTitle) {
+        summaryTitle.textContent = overall === 'OK' ? '系统环境完备就绪' : overall === 'DEGRADED' ? '系统运行中（已启用内置降级兜底）' : '核心运行依赖缺失';
+      }
+      if (summaryIcon) {
+        summaryIcon.textContent = overall === 'OK' ? '🟢' : overall === 'DEGRADED' ? '🟡' : '🔴';
+      }
+      if (summaryText) {
+        summaryText.textContent = data.summary || '';
+      }
+      if (lastChecked) {
+        lastChecked.textContent = `体检时间: ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`;
+      }
+
+      const diags = data.diagnostics || {};
+
+      function updateCard(key, status, infoText, remText) {
+        const badgeEl = document.getElementById(`health-badge-${key}`);
+        const infoEl = document.getElementById(`health-info-${key}`);
+        const remEl = document.getElementById(`health-remediation-${key}`);
+
+        if (badgeEl) {
+          if (status === 'OK') {
+            badgeEl.textContent = '正常 (OK)';
+            badgeEl.style.background = '#DCFCE7';
+            badgeEl.style.color = '#15803D';
+            badgeEl.style.border = '1px solid #86EFAC';
+          } else if (status === 'DEGRADED') {
+            badgeEl.textContent = '降级 (DEGRADED)';
+            badgeEl.style.background = '#FEF3C7';
+            badgeEl.style.color = '#B45309';
+            badgeEl.style.border = '1px solid #FDE68A';
+          } else {
+            badgeEl.textContent = '缺失 (MISSING)';
+            badgeEl.style.background = '#FEE2E2';
+            badgeEl.style.color = '#B91C1C';
+            badgeEl.style.border = '1px solid #FCA5A5';
+          }
+        }
+        if (infoEl) infoEl.textContent = infoText;
+        if (remEl) remEl.textContent = remText;
+      }
+
+      // 1. LibreOffice
+      const lo = diags.libreoffice || {};
+      updateCard(
+        'libreoffice',
+        lo.status || 'MISSING',
+        `执行文件: ${lo.path || '未检测到 (系统 PATH 中未找到 soffice/libreoffice)'}`,
+        lo.remediation || '未检测到 LibreOffice'
+      );
+
+      // 2. Ollama
+      const ol = diags.ollama || {};
+      const modelInfo = (ol.installed_models && ol.installed_models.length)
+        ? `已装模型: ${ol.installed_models.join(', ')}`
+        : '未安装模型';
+      updateCard(
+        'ollama',
+        ol.status || 'MISSING',
+        `服务端口: ${ol.endpoint || 'http://127.0.0.1:11434'} | ${modelInfo}`,
+        ol.remediation || 'Ollama 服务未启动'
+      );
+
+      // 3. cn_laws_kb
+      const laws = diags.cn_laws_kb || {};
+      updateCard(
+        'cn-laws',
+        laws.status || 'MISSING',
+        `底库路径: ${laws.path || '未找到'} | 法规收录: ${laws.laws_count ?? 0} 部 | 全文检索法条: ${laws.articles_count ?? 0} 条`,
+        laws.remediation || '权威法典库状态异常'
+      );
+
+      // 4. matter_vault
+      const vault = diags.matter_vault || {};
+      updateCard(
+        'matter-vault',
+        vault.status || 'MISSING',
+        `底库路径: ${vault.path || '未找到'} | 在册案件独立空间: ${vault.matters_count ?? 0} 件`,
+        vault.remediation || '案件空间数据库状态异常'
+      );
+
+      // 5. pdf_engine
+      const pdf = diags.pdf_engine || {};
+      const avEngines = (pdf.available_engines || []).join(', ') || 'none';
+      updateCard(
+        'pdf-engine',
+        pdf.status || 'DEGRADED',
+        `活动渲染引擎: ${pdf.active_engine || 'local_pymupdf'} | 可用备选引擎: ${avEngines}`,
+        pdf.remediation || 'PDF 渲染引擎矩阵正常'
+      );
+    }
+
+    async function openSystemHealthModal() {
+      const modal = document.getElementById('modal-system-health');
+      if (!modal) return;
+      modal.classList.add('active');
+
+      if (currentSystemHealth) {
+        renderSystemHealthModal(currentSystemHealth);
+      }
+      await refreshSystemHealth(false);
+    }
+
+    function closeSystemHealthModal() {
+      const modal = document.getElementById('modal-system-health');
+      if (modal) {
+        modal.classList.remove('active');
+      }
+    }
+
+    function handleSystemHealthModalBackdropClick(event) {
+      if (event.target && event.target.id === 'modal-system-health') {
+        closeSystemHealthModal();
+      }
+    }
+
+    async function refreshSystemHealth(force = true) {
+      const refreshBtn = document.getElementById('btn-refresh-system-health');
+      if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.innerHTML = '🔄 探测中...';
+      }
+      try {
+        const data = await fetchSystemHealth(force);
+        if (data) {
+          renderSystemHealthModal(data);
+          if (force && typeof showToast === 'function') {
+            showToast('系统环境体检报告已更新', 'info');
+          }
+        }
+      } catch (err) {
+        console.error("刷新体检报告异常:", err);
+      } finally {
+        if (refreshBtn) {
+          refreshBtn.disabled = false;
+          refreshBtn.innerHTML = '🔄 重新体检';
+        }
+      }
+    }
+
 export {
   fetchEngineHealth,
   updateEngineStatusUI,
@@ -628,4 +856,11 @@ export {
   submitRegisterConflictCase,
   runPiiScanUI,
   renderPiiScanResult,
+  fetchSystemHealth,
+  updateSystemHealthUI,
+  renderSystemHealthModal,
+  openSystemHealthModal,
+  closeSystemHealthModal,
+  handleSystemHealthModalBackdropClick,
+  refreshSystemHealth,
 };

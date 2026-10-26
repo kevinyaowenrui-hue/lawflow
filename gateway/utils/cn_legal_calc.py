@@ -338,13 +338,71 @@ def validate_and_parse_uscc(uscc: str) -> Dict[str, Any]:
 
 
 # ==============================================================================
-# 4. 《诉讼费用交纳办法》财产与非财产案件受理费、保全费分段精算
+# 4. 《诉讼费用交纳办法》财产与非财产案件受理费、保全费分段精算及诉责险估算
 # ==============================================================================
+def calculate_preservation_insurance(
+    preservation_amount: float | Decimal,
+    min_rate: float | Decimal = Decimal("0.0008"),
+    max_rate: float | Decimal = Decimal("0.0015"),
+    min_premium: float | Decimal = Decimal("500.00"),
+) -> Dict[str, Any]:
+    """
+    测算诉讼保全责任保险（诉责险）市场参考保费成本。
+    法律依据：《最高人民法院关于人民法院办理财产保全案件若干问题的规定》（法释〔2016〕22号）第七条。
+    """
+    p_amount = Decimal(str(preservation_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if p_amount < Decimal("0"):
+        raise ValueError("保全金额不能为负数")
+
+    r_min = Decimal(str(min_rate))
+    r_max = Decimal(str(max_rate))
+    if r_min < Decimal("0") or r_max < Decimal("0") or r_min > r_max:
+        raise ValueError("保全险费率设置无效，费率不能为负且最低费率不能大于最高费率")
+
+    m_premium = Decimal(str(min_premium)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if m_premium < Decimal("0"):
+        raise ValueError("起保最低保费不能为负数")
+
+    if p_amount == Decimal("0.00"):
+        cost_low = Decimal("0.00")
+        cost_high = Decimal("0.00")
+        is_min_low = False
+        is_min_high = False
+    else:
+        raw_low = (p_amount * r_min).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        raw_high = (p_amount * r_max).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        cost_low = max(raw_low, m_premium)
+        cost_high = max(raw_high, m_premium)
+        is_min_low = bool(raw_low < m_premium)
+        is_min_high = bool(raw_high < m_premium)
+
+    min_pct_str = f"{float(r_min * Decimal('100')):.2f}%"
+    max_pct_str = f"{float(r_max * Decimal('100')):.2f}%"
+
+    return {
+        "preservation_amount": float(p_amount),
+        "min_rate": float(r_min),
+        "max_rate": float(r_max),
+        "min_rate_pct": min_pct_str,
+        "max_rate_pct": max_pct_str,
+        "rate_range_desc": f"{min_pct_str} ~ {max_pct_str}",
+        "min_premium": float(m_premium),
+        "cost_low": float(cost_low),
+        "cost_high": float(cost_high),
+        "cost_range_display": f"¥ {cost_low:,.2f} ~ ¥ {cost_high:,.2f}",
+        "is_minimum_charge_applied_low": is_min_low,
+        "is_minimum_charge_applied_high": is_min_high,
+        "statutory_basis": "《最高人民法院关于人民法院办理财产保全案件若干问题的规定》（法释〔2016〕22号）第七条",
+        "note": "市场参考费率 0.08%~0.15%，起保最低收费 500.00 元（具体以承保金融机构核保单为准）",
+    }
+
+
 def calculate_court_fees(
     claim_amount: float | Decimal,
     case_type: str = "property",
     is_summary_procedure: bool = False,
     divorce_base_fee: float | Decimal = 100,
+    preservation_amount: Optional[float | Decimal] = None,
 ) -> Dict[str, Any]:
     """
     根据《诉讼费用交纳办法》（国务院令第481号）第十三条精确计算诉讼费用。
@@ -356,6 +414,14 @@ def calculate_court_fees(
     div_base = Decimal(str(divorce_base_fee)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     if div_base < Decimal("50") or div_base > Decimal("300"):
         raise ValueError(f"离婚案件基础规费应在 50 至 300 元之间，当前为 {divorce_base_fee}")
+
+    # 保全标的确定：若传入则按传入值（>=0），若未传入则默认等同于标的额
+    if preservation_amount is not None:
+        p_amount_dec = Decimal(str(preservation_amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if p_amount_dec < Decimal("0"):
+            raise ValueError("保全金额不能为负数")
+    else:
+        p_amount_dec = amount
 
     breakdown = []
     standard_fee = Decimal("0")
@@ -420,28 +486,44 @@ def calculate_court_fees(
                     break
 
     actual_fee = (standard_fee / 2).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if is_summary_procedure else standard_fee
+    reduction_amount = (standard_fee - actual_fee).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    reduction_ratio = 0.5 if is_summary_procedure else 1.0
+    statutory_reduction_rule = (
+        "《诉讼费用交纳办法》第十五条：以调解方式结案或者适用简易程序审理的案件，减半交纳案件受理费。"
+        if is_summary_procedure
+        else None
+    )
 
-    # 保全申请费（第十四条第二项）封顶5000元
+    # 保全申请费（第十四条第二项）封顶5000元，基于保全标的额 p_amount_dec 计算
     preservation_fee = Decimal("0")
-    if amount > 0:
-        if amount <= Decimal("1000"):
+    if p_amount_dec > 0:
+        if p_amount_dec <= Decimal("1000"):
             preservation_fee = Decimal("30.00")
-        elif amount <= Decimal("100000"):
-            preservation_fee = Decimal("30.00") + ((amount - Decimal("1000")) * Decimal("0.01")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        elif p_amount_dec <= Decimal("100000"):
+            preservation_fee = Decimal("30.00") + ((p_amount_dec - Decimal("1000")) * Decimal("0.01")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         else:
-            p_fee = Decimal("30.00") + (Decimal("99000") * Decimal("0.01")) + ((amount - Decimal("100000")) * Decimal("0.005")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            p_fee = Decimal("30.00") + (Decimal("99000") * Decimal("0.01")) + ((p_amount_dec - Decimal("100000")) * Decimal("0.005")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             preservation_fee = min(p_fee, Decimal("5000.00"))
+
+    # 诉讼保全责任保险（诉责险）市场参考成本估算
+    preservation_insurance = calculate_preservation_insurance(p_amount_dec)
 
     return {
         "claim_amount": float(amount),
         "case_type": case_type,
         "is_summary_procedure": is_summary_procedure,
         "standard_fee": float(standard_fee),
-        "court_fee": float(actual_fee),
         "actual_fee": float(actual_fee),
+        "court_fee": float(actual_fee),
+        "fee_amount": float(actual_fee),
+        "fee_reduction_ratio": reduction_ratio,
+        "reduction_amount": float(reduction_amount),
+        "statutory_reduction_rule": statutory_reduction_rule,
         "preservation_fee": float(preservation_fee),
+        "preservation_amount": float(p_amount_dec),
+        "preservation_insurance": preservation_insurance,
         "tier_breakdown": breakdown,
-        "rmb_capital": rmb_to_capital(actual_fee)
+        "rmb_capital": rmb_to_capital(actual_fee),
     }
 
 

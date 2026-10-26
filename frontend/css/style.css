@@ -2478,3 +2478,119 @@
     .global-voice-drawer.open {
       right: 0;
     }
+
+/* ==========================================================================
+   办案全流程阶段向导 (Matter Pipeline Stepper) - P1
+   ========================================================================== */
+.case-pipeline-stepper-wrap {
+  background: #FFFFFF;
+  border-bottom: 1px solid var(--border-hairline);
+  padding: 8px 18px 10px;
+  position: sticky;
+  top: 46px;
+  z-index: 94;
+}
+
+.stepper-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.stepper-title-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--primary-navy);
+}
+
+.stepper-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #2E7D32;
+  background: #E8F5E9;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.stepper-steps-track {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.step-card {
+  flex: 1;
+  min-width: 140px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.step-card:hover {
+  background: #F1F5F9;
+  border-color: #CBD5E1;
+}
+
+.step-card.active-step {
+  background: #EFF6FF;
+  border: 1.5px solid #2563EB;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.12);
+}
+
+.step-idx {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary-navy);
+  color: #FFFFFF;
+  font-weight: 700;
+  font-size: 10.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.step-card.active-step .step-idx {
+  background: #2563EB;
+}
+
+.step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--primary-navy);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step-status {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.step-arrow {
+  color: #94A3B8;
+  font-size: 13px;
+  font-weight: bold;
+}

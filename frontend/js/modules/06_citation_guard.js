@@ -699,7 +699,11 @@ export function renderTabCitationGuard() {
         let badgeBg = '#FFF8E1';
         let badgeColor = '#B78103';
         let label = '待核验';
-        if (st === 'LOCAL_MATCH') {
+        if (st === 'HISTORICAL_VALID') {
+          badgeBg = '#E0F2FE';
+          badgeColor = '#0369A1';
+          label = '📜 行为时实体法（2021年前事实）';
+        } else if (st === 'LOCAL_MATCH') {
           badgeBg = '#E8F5E9';
           badgeColor = '#2E7D32';
           label = '本地库比对一致';

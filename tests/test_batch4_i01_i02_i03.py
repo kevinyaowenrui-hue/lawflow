@@ -55,10 +55,16 @@ def test_nine_minutes_article_set(isolated):
                 "SELECT article_no_int FROM articles WHERE law_id = 'nine_minutes_2019'"
             ).fetchall()
         }
+        body = conn.execute(
+            "SELECT content FROM articles WHERE law_id = 'nine_minutes_2019' AND article_no_int = 53"
+        ).fetchone()["content"]
     assert 41 in nos
     assert 46 in nos
     assert 50 in nos
-    assert 53 not in nos
+    assert 53 in nos
+    assert "职业放贷人" in body
+    assert "四、关于担保纠纷案件的审理" not in body
+    assert "会议认为" not in body
 
 
 def test_prosecution_fraud_loan_is_art_22(isolated):
@@ -66,9 +72,12 @@ def test_prosecution_fraud_loan_is_art_22(isolated):
         rows = conn.execute(
             "SELECT article_no_int, content, review_note FROM articles WHERE law_id = 'prosecution_standards_2022' AND article_no_int IN (19, 22)"
         ).fetchall()
-    nos = {r["article_no_int"] for r in rows}
-    assert 22 in nos
-    assert 19 not in nos
+    by_no = {r["article_no_int"]: r["content"] for r in rows}
+    assert 22 in by_no
+    assert 19 in by_no
+    assert "骗取贷款" in by_no[22]
+    assert "擅自设立金融机构" in by_no[19]
+    assert "骗取贷款" not in by_no[19]
 
 
 def test_fts_count_matches_articles_after_init(isolated):
@@ -157,7 +166,8 @@ def test_search_civil_code_692_pending_tag(isolated):
         hit = results[0]
         assert hit.get("article_no_int") == 692 or "692" in str(hit.get("article_no_cn"))
         label = hit.get("verification_label") or hit.get("verification_status") or ""
-        assert "待律师核验" in str(label) or hit.get("verification_status") == "PENDING_HUMAN"
+        assert hit.get("verification_status") in ("VERIFIED", "PENDING_HUMAN")
+        assert "已核验" in str(label) or "待律师核验" in str(label)
 
 
 def test_overview_no_absolute_path_and_has_verification_counts(isolated):
@@ -177,3 +187,27 @@ def test_overview_no_absolute_path_and_has_verification_counts(isolated):
         counts = data.get("verification_counts") or data.get("by_verification_status")
         assert isinstance(counts, dict)
         assert sum(counts.values()) >= 1
+
+
+def test_glued_section_heading_trimmed_but_maritime_items_kept():
+    from gateway.utils.article_text import trim_glued_section_heading
+
+    glued = trim_glued_section_heading(
+        "【职业放贷人】未依法取得放贷资格的，应当依法认定无效。\n"
+        "四、关于担保纠纷案件的审理\n"
+        "会议认为，要注意担保法与物权法的不同规定。\n"
+        "（一）关于担保的一般规则"
+    )
+    assert "职业放贷人" in glued
+    assert "四、关于担保" not in glued
+    assert "会议认为" not in glued
+    maritime = trim_glued_section_heading(
+        "除本法另有规定外，依照下列规定计算赔偿责任限额：\n"
+        "（一）关于人身伤亡的赔偿请求\n"
+        "1.300总吨至500总吨的船舶，赔偿责任限额为500000计算单位。\n"
+        "（二）关于非人身伤亡的赔偿请求\n"
+        "1.300总吨至500总吨的船舶，赔偿责任限额为250000计算单位。"
+    )
+    assert "人身伤亡的赔偿请求" in maritime
+    assert "非人身伤亡的赔偿请求" in maritime
+    assert "250000" in maritime

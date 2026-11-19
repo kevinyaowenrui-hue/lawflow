@@ -46,6 +46,19 @@ def test_sales_contract_judgment_no_loan_hardship_ld_flaws():
     assert not any(f["probe_id"] == "FLAW-01" for f in res["flaw_diagnostics"])
     assert not any(f["probe_id"] == "FLAW-02" for f in res["flaw_diagnostics"])
     assert not any(f["probe_id"] == "FLAW-03" for f in res["flaw_diagnostics"])
+    memo = res["appellate_memo_report"]
+    timeline_blob = "\n".join(t.get("rule_evolution", "") for t in res["judicial_evolution_timeline"])
+    assert "九民纪要" not in memo
+    assert "海富" not in timeline_blob
+    assert "股权回购被认定" not in memo
+
+    loan = analyze_first_instance_judgment_and_precedents(
+        judgment_text="本院认为，被告向原告借款10万元，判决返还借款本金。",
+        claim_amount=100000.0,
+        first_instance_court="某基层人民法院",
+    )
+    assert not any(f["probe_id"] == "FLAW-01" for f in loan["flaw_diagnostics"])
+    assert "股权回购" not in loan["appellate_memo_report"]
 
 
 def test_keyword_judgment_triggers_three_flaws_neutral_wording():
@@ -89,13 +102,17 @@ def test_nine_people_minutes_wording_and_retrieval_hierarchy():
     timeline_blob = "\n".join(t.get("rule_evolution", "") for t in res["judicial_evolution_timeline"])
     assert "严禁套用民间借贷限额" not in timeline_blob
     assert "九民纪要" in timeline_blob or "法发〔2019〕25号" in timeline_blob
+    assert "第五十三条" in timeline_blob
+    assert "请律师核实" not in timeline_blob
+    assert "律师核实原文" not in timeline_blob
 
     memo = res["appellate_memo_report"]
     assert "指导性案例" in memo
     assert "参考性案例" in memo
     assert memo.index("指导性案例") < memo.index("参考性案例")
     assert "人民法院案例库" in memo
-    assert "TODO(律师核实)" in memo
+    assert "rmfyalk.court.gov.cn" in memo
+    assert "TODO(律师核实)" not in memo
     assert "京民终580" not in memo
     assert "京民终580" not in res["appellate_pleading_text"]
 
@@ -131,6 +148,9 @@ def test_appellate_pleading_statutory_elements_no_high_court_preset():
     assert "甲基金" in pleading
     assert "李某某" in pleading
     assert "股权转让纠纷" in pleading
+    assert "向上诉人支付" not in pleading
+    assert "不写谁向谁付款" in pleading
+    assert "一审地位未填写" in pleading
 
 
 def test_appeal_deadline_calc_acceptance():
@@ -140,6 +160,8 @@ def test_appeal_deadline_calc_acceptance():
     assert r2["deadline"] == "2026-11-17"
     r3 = calculate_appeal_deadline("2026-11-02", "ruling", holidays=["2026-11-12"])
     assert r3["deadline"] == "2026-11-13"
+    assert "verified 可能为 false" not in " ".join(r1["notes"])
+    assert "已核验" in " ".join(r1["notes"])
 
 
 def test_api_appeal_audit_requires_first_instance_court():
@@ -203,3 +225,32 @@ def test_api_appeal_export_docx_endpoint():
     doc = docx.Document(storage_path)
     full_text = "\n".join(p.text for p in doc.paragraphs)
     assert "第一百七十三条" in full_text
+
+
+def test_unstated_precedent_is_not_counted_as_appellant_support(monkeypatch):
+    monkeypatch.setattr(
+        "gateway.utils.appeal_and_precedent_engine.load_verified_precedents_from_db",
+        lambda: [{
+            "case_number": "（2020）最高法民终1号",
+            "title": "未填写立场的类案",
+            "court_name": "最高人民法院",
+            "stance": None,
+            "holding_summary": "测试要旨",
+            "verified_at": "2026-01-01",
+        }],
+    )
+    res = analyze_first_instance_judgment_and_precedents(
+        judgment_text="",
+        first_instance_court="某基层人民法院",
+    )
+    assert res["total_pro_precedents"] == 0
+    assert "（2020）最高法民终1号" not in (res.get("appellate_memo_report") or "")
+
+    ui = (os.path.dirname(__file__) and open(
+        os.path.join(os.path.dirname(__file__), "..", "frontend", "js", "modules", "04_appeal_signing.js"),
+        encoding="utf-8",
+    ).read())
+    assert "致命适用法律错误" not in ui
+    assert "一审错误认定" not in ui
+    assert "关键词命中，尚未认定一审错误" in ui
+    assert "没有记为支持上诉人的类案" in ui

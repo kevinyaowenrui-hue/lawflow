@@ -198,8 +198,9 @@ def test_a07_delayed_performance_interest():
         end_date="2026-01-31",
     )
     assert round(res["interest"], 2) == 525.00
-    assert len(res.get("warnings", [])) > 0
-    assert "日利率依据需律师核实" in " ".join(res["warnings"])
+    assert res["days"] == 30
+    assert "届满当日不计入" in res["day_count_note"]
+    assert any("一般债务利息" in w for w in res["warnings"])
     assert "第二百六十四条" in res.get("legal_basis", "")
 
 

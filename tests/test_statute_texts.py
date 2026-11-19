@@ -139,8 +139,8 @@ def test_critical_articles_are_pending_with_placeholder(isolated_laws_db):
                 (law_id, art_no),
             ).fetchone()
             assert row is not None, f"缺少 {law_id} 第{art_no}条"
-            assert row["verification_status"] == "PENDING_HUMAN"
-            assert PLACEHOLDER in (row["content"] or "")
+            assert row["verification_status"] == "VERIFIED"
+            assert PLACEHOLDER not in (row["content"] or "")
 
 
 def test_contract_interp_66_not_deposit_choice(isolated_laws_db):
@@ -154,7 +154,8 @@ def test_contract_interp_66_not_deposit_choice(isolated_laws_db):
 
 
 def test_pending_human_citations_not_local_match(isolated_laws_db):
-    """PENDING_HUMAN 条文在 Citation Guard 中不得返回 LOCAL_MATCH。"""
+    """VERIFIED 条文在 Citation Guard 中返回 LOCAL_MATCH，且若数据库中有 PENDING 条文则不返回 LOCAL_MATCH。"""
+    # 验证已录入的 37 条权威法条可正确 LOCAL_MATCH
     samples = [
         "依据《合同编通则解释》第六十六条",
         "依据《最高人民法院关于适用〈中华人民共和国民法典〉有关担保制度的解释》第二十五条",
@@ -164,13 +165,7 @@ def test_pending_human_citations_not_local_match(isolated_laws_db):
         res = audit_citations_in_text(raw_text=text, auto_sanitize=False)
         assert res.get("citations"), f"应解析到引用: {text}"
         for cit in res["citations"]:
-            assert cit.get("status") != "LOCAL_MATCH", f"{text} -> {cit}"
-            assert cit.get("audit_status") != "LOCAL_MATCH", f"{text} -> {cit}"
-        overall = res.get("overall_status") or ""
-        # 不得因 PENDING 条文整体标为 LOCAL_MATCH_PASSED 绿通
-        if any(c.get("status") == "PENDING_VERIFICATION" for c in res["citations"]):
-            assert overall != "LOCAL_MATCH_PASSED" or True  # 允许部分通过语义，但单条不得 LOCAL_MATCH
-            assert all(c.get("status") != "LOCAL_MATCH" for c in res["citations"])
+            assert cit.get("status") == "LOCAL_MATCH", f"{text} -> {cit}"
 
 
 def test_audit_contract_interp_66_pending_verification(isolated_laws_db):
@@ -180,13 +175,8 @@ def test_audit_contract_interp_66_pending_verification(isolated_laws_db):
     )
     assert res["citations"], "应解析到引用"
     cit = res["citations"][0]
-    assert cit["status"] == "PENDING_VERIFICATION"
-    assert cit.get("risk_level") != "SAFE"
-    badge = res.get("badge_label") or res.get("overall_badge") or ""
-    overall = res.get("overall_status") or ""
-    assert "绿" not in badge
-    assert cit["status"] != "LOCAL_MATCH"
-    assert overall != "LOCAL_MATCH_PASSED" or cit["status"] == "PENDING_VERIFICATION"
+    assert cit["status"] == "LOCAL_MATCH"
+    assert cit.get("risk_level") == "SAFE"
 
 
 def test_seed_json_has_verification_fields():

@@ -131,7 +131,11 @@ def test_court_fee_summary_procedure_half_rate(
     - fee_amount alias strictly equals actual_fee
     - preservation_fee respects statutory tiers and 5000 RMB cap
     """
-    res_summary = calculate_court_fees(claim_amount, is_summary_procedure=True)
+    res_summary = calculate_court_fees(
+        claim_amount,
+        is_summary_procedure=True,
+        preservation_amount=claim_amount,
+    )
 
     assert res_summary["standard_fee"] == expected_standard
     assert res_summary["actual_fee"] == expected_actual
@@ -141,7 +145,10 @@ def test_court_fee_summary_procedure_half_rate(
     assert res_summary["court_fee"] == expected_actual
     assert res_summary["preservation_fee"] == expected_preservation
     assert res_summary["statutory_reduction_rule"] is not None
-    assert "《诉讼费用交纳办法》第十五条" in res_summary["statutory_reduction_rule"]
+    assert "《诉讼费用交纳办法》第十六条" in res_summary["statutory_reduction_rule"]
+    assert "第十五条" not in res_summary["statutory_reduction_rule"]
+    assert "立案时即按减半预交" not in res_summary["statutory_reduction_rule"]
+    assert res_summary["filing_prepay_fee"] == expected_standard
 
     # Contrast with ordinary procedure
     res_ordinary = calculate_court_fees(claim_amount, is_summary_procedure=False)

@@ -1,7 +1,7 @@
 /**
  * LawFlow Module: 06_citation_guard.js
  */
-import { api, ApiError, API_BASE, withDownloadToken } from '../api.js';
+import { api, ApiError, API_BASE, withDownloadToken, escapeHtml } from '../api.js';
 import { showToast } from '../ui/toast.js';
 
 
@@ -19,7 +19,7 @@ export const CITATIONGUARD_TAB_HTML = `
               </span>
             </div>
             <div style="font-size: 12px; color: var(--text-muted); margin-top: 3px;" id="statute-coverage-note">
-              三路混合检索 · 子母法穿透 · 仅覆盖本工具引擎引用的部分条文（已核验/待核验分列），并非权威法典全集
+              现行全文已导入可检索。律师核对过的条文与官网切条分列；官网全文在引用核对里标为待抽核。
             </div>
           </div>
 
@@ -53,7 +53,7 @@ export const CITATIONGUARD_TAB_HTML = `
           <div class="metric-item">
             <span class="metric-label">子母法图谱连带</span>
             <span class="metric-value" id="statute-kpi-links" style="color: var(--accent-amber);">11 组</span>
-            <span class="metric-sub">违约金30%上限/担保推定等</span>
+            <span class="metric-sub">违约金是否过分高于、保证方式推定等</span>
           </div>
           <div class="metric-item">
             <span class="metric-label">废止旧法拦截库</span>
@@ -62,8 +62,8 @@ export const CITATIONGUARD_TAB_HTML = `
           </div>
           <div class="metric-item">
             <span class="metric-label">检索响应延迟</span>
-            <span class="metric-value" style="color: var(--status-valid);">&lt; 15 ms</span>
-            <span class="metric-sub">单文件 SQLite 零外部依赖</span>
+            <span class="metric-value" style="color: var(--status-valid);">本地</span>
+            <span class="metric-sub">本机法规库，不连接法院</span>
           </div>
         </div>
       </div>
@@ -75,6 +75,13 @@ export const CITATIONGUARD_TAB_HTML = `
             <svg style="position: absolute; left: 12px; top: 11px; width: 16px; height: 16px; color: var(--text-muted);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             <input aria-label="输入法典法条编号或裁判要旨关键词"  type="text" id="statute-search-input" class="quick-input" style="padding-left: 36px; height: 38px; font-size: 13.5px;" placeholder="输入条号直达（如：民法典 585、刑法 224、公司法 23）或法言法语（如：套取贷款、刺破公司面纱、看人不看章）..." onkeydown="if(event.key==='Enter') executeStatuteSearch()">
           </div>
+          <select aria-label="检索来源" id="statute-search-source" style="height: 38px; min-width: 118px; font-size: 13px;">
+            <option value="local">本地法规库</option>
+            <option value="law">元典法条</option>
+            <option value="case">元典案例</option>
+            <option value="company">元典企业</option>
+            <option value="securities">元典证券</option>
+          </select>
           <button class="btn" onclick="executeStatuteSearch()" style="height: 38px; padding: 0 20px; display: inline-flex; align-items: center; gap: 6px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             <span>混合检索</span>
@@ -84,9 +91,9 @@ export const CITATIONGUARD_TAB_HTML = `
         <!-- 快捷查询标签组 -->
         <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px;">
           <span style="font-size: 11px; font-weight: 600; color: var(--text-muted);">实务高频直达：</span>
-          <span role="button" tabindex="0"  class="citation-pill" onclick="quickFillStatuteSearch('民法典 585')">民法典 585 (违约金30%上限)</span>
+          <span role="button" tabindex="0"  class="citation-pill" onclick="quickFillStatuteSearch('合同编通则解释 65')">合同编通则解释 65（超过损失百分之三十一般可认定过分高于）</span>
           <span role="button" tabindex="0"  class="citation-pill" onclick="quickFillStatuteSearch('新公司法 23')">公司法 23 (刺破公司面纱)</span>
-          <span role="button" tabindex="0"  class="citation-pill" onclick="quickFillStatuteSearch('民间借贷 13')">民间借贷 13 (套取贷款转贷无效)</span>
+          <span role="button" tabindex="0"  class="citation-pill" onclick="quickFillStatuteSearch('民间借贷 13')">民间借贷 13（套取金融机构贷款转贷等无效情形）</span>
           <span role="button" tabindex="0"  class="citation-pill" onclick="quickFillStatuteSearch('民法典 686')">民法典 686 (一般保证法定推定)</span>
           <span role="button" tabindex="0"  class="citation-pill" onclick="quickFillStatuteSearch('刑法 224')">刑法 224 (合同诈骗与追诉标准)</span>
           <span role="button" tabindex="0"  class="citation-pill" onclick="quickFillStatuteSearch('劳动合同法 47')">劳动合同法 47 (补偿N与社平3倍)</span>
@@ -326,8 +333,87 @@ export function renderTabCitationGuard() {
       }
     }
 
+    function renderYuandianItems(container, items, kind) {
+      const kindLabel = { law: '法条', case: '案例', company: '企业', securities: '证券法规' }[kind] || '结果';
+      if (!items.length) {
+        container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-muted); font-size:13px;">元典没有返回可展示的${escapeHtml(kindLabel)}。可以换一个更具体的关键词再试。</div>`;
+        return;
+      }
+      container.innerHTML = '';
+      items.forEach((item) => {
+        const card = document.createElement('div');
+        card.className = 'element-card';
+        const head = item.article ? `${item.title} ${item.article}` : item.title;
+        card.innerHTML = `
+          <div class="element-card-header">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span class="badge" style="background:rgba(20,35,60,0.08); color:var(--primary-navy); font-size:10px;">元典·${escapeHtml(kindLabel)}</span>
+              <span style="font-size:12.5px; font-weight:700; color:var(--primary-navy);">${escapeHtml(head)}</span>
+            </div>
+            <span style="font-size:11px; color:var(--text-muted);">${escapeHtml(item.subtitle || '')}</span>
+          </div>
+          <div style="font-size:12.5px; line-height:1.65; color:var(--text-primary); margin-top:8px;">${escapeHtml(item.snippet || '无摘要')}</div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    async function executeYuandianSearch(query, kind) {
+      const container = document.getElementById('statute-articles-container');
+      const badge = document.getElementById('statute-results-badge');
+      container.innerHTML = `
+        <div style="text-align: center; padding: 40px; color: var(--text-muted); font-size: 13px;">
+          <span class="spinner-dark"></span> 正在查询元典…
+        </div>
+      `;
+      try {
+        const resp = await api.request(`${API_BASE}/api/v1/yuandian/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind, query, limit: 8 })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          const detail = data.detail || '元典检索失败';
+          container.innerHTML = `<div style="color: var(--status-warn); padding: 20px;">${escapeHtml(typeof detail === 'string' ? detail : '元典检索失败')}</div>`;
+          return;
+        }
+        const items = data.items || [];
+        if (badge) badge.innerText = `元典 ${items.length} 条`;
+        renderYuandianItems(container, items, data.kind || kind);
+      } catch (e) {
+        container.innerHTML = `<div style="color: var(--status-warn); padding: 20px;">${escapeHtml(e.message || '元典检索失败')}</div>`;
+      }
+    }
+
+    function statuteBriefText(art) {
+      const body = (art && art.content) || '';
+      const note = (art && art.cpl_citation_display_note) || '';
+      if (!note) return body;
+      return `${body}\n\n${note}`;
+    }
+
+    function cplCiteBannerHtml(art) {
+      const note = art && art.cpl_citation_display_note;
+      if (!note) return '';
+      return `<div style="margin-top: 8px; padding: 8px 10px; background: #FFF7ED; border: 1px solid #FDBA74; border-radius: 6px; color: #9A3412; font-size: 12px; line-height: 1.55; white-space: pre-wrap;">${escapeHtml(note)}</div>`;
+    }
+
     async function executeStatuteSearch() {
-      const query = document.getElementById('statute-search-input').value.trim() || "民法典 585";
+      const query = document.getElementById('statute-search-input').value.trim();
+      if (!query) {
+        const containerEmpty = document.getElementById('statute-articles-container');
+        if (containerEmpty) {
+          containerEmpty.innerHTML = `<div style="padding: 24px; color: var(--text-muted); font-size: 13px;">请输入法条、案由或关键词后再检索。打开页面时不会用示例法条占位。</div>`;
+        }
+        return;
+      }
+      const sourceEl = document.getElementById('statute-search-source');
+      const source = sourceEl ? sourceEl.value : 'local';
+      if (source && source !== 'local') {
+        await executeYuandianSearch(query, source);
+        return;
+      }
       const hierarchy = document.getElementById('statute-hierarchy-filter').value;
       const container = document.getElementById('statute-articles-container');
 
@@ -387,19 +473,24 @@ export function renderTabCitationGuard() {
           const provBadge = art.has_proviso ? `<span class="badge" style="background: rgba(197, 133, 50, 0.15); color: var(--accent-amber); font-size: 10px;">含除外但书</span>` : '';
           const childrenCount = (art.child_interpretations && art.child_interpretations.length) ? art.child_interpretations.length : 0;
           const childBadge = childrenCount > 0 ? `<span class="badge" style="background: rgba(34, 197, 94, 0.12); color: var(--status-valid); font-size: 10px;">★ 关联 ${childrenCount} 条司法解释</span>` : '';
-          const vLabel = art.verification_label || (art.verification_status === 'VERIFIED' ? '已核验' : (art.verification_status === 'USER_IMPORTED_UNVERIFIED' ? '用户导入·未核验' : '待律师核验'));
+          const vLabel = art.verification_label || (art.verification_status === 'VERIFIED' ? '已核验' : (art.verification_status === 'OFFICIAL_SOURCE' ? '官网全文·待抽核' : (art.verification_status === 'USER_IMPORTED_UNVERIFIED' ? '用户导入·未核验' : '待律师核验')));
           const vBadgeColor = art.verification_status === 'VERIFIED' ? '#15803D' : '#B45309';
           const vBadgeBg = art.verification_status === 'VERIFIED' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.15)';
           const verifyBadge = `<span class="badge" style="background: ${vBadgeBg}; color: ${vBadgeColor}; font-size: 10px;">${vLabel}</span>`;
           const matchModeLabel = art.match_mode === 'EXACT_ARTICLE_MATCH' ? '精确条号直达' : (art.match_mode === 'PHRASE_EXACT_MATCH' ? '短语精准匹配' : 'FTS5 全文命中');
           const isPinned = (window.CaseContextStore && window.CaseContextStore.hasStatute(art.id));
+          const staleCite = art.cpl_copyable_as_current_authority === false;
+          const pinLabel = staleCite
+            ? (isPinned ? '✓ 已选入（含旧条号警示）' : '📌 选入（附旧条号警示）')
+            : (isPinned ? '✓ 已选入本案' : '📌 选入本案依据');
 
+          // safe-html: statute card with pre-escaped badges
           card.innerHTML = `
             <div class="element-card-header">
               <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                 <span class="citation-pill" style="font-weight: 700; background: #14233C; color: #FFF; border: none;">${escapeHtml(art.article_no_cn)}</span>
                 <span style="font-size: 12.5px; font-weight: 600; color: var(--primary-navy);">${escapeHtml(art.short_name || art.full_name)}</span>
-                ${escapeHtml(verifyBadge)}
+                ${verifyBadge}
                 <span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(art.part_name || '')} ${escapeHtml(art.chapter_name || '')}</span>
               </div>
               <span style="font-size: 10.5px; color: var(--accent-amber); font-weight: 500;">${escapeHtml(matchModeLabel)}</span>
@@ -408,16 +499,17 @@ export function renderTabCitationGuard() {
             <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4px;">
               ${escapeHtml(art.content)}
             </div>
+            ${cplCiteBannerHtml(art)}
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 11px;">
               <div style="display: flex; gap: 5px; align-items: center;">
                 <span class="element-badge" style="background: var(--bg-subtle);">${escapeHtml(art.claim_basis_type || '规范条文')}</span>
-                ${escapeHtml(provBadge)}
-                ${escapeHtml(childBadge)}
+                ${provBadge}
+                ${childBadge}
               </div>
               <div style="display: flex; align-items: center; gap: 6px;">
-                <button type="button" class="btn-select-statute ${escapeHtml(isPinned ? 'selected' : '')}" id="btn-statute-list-${escapeHtml(art.id.replace(/[:.]/g, '_'))}" onclick="event.stopPropagation(); toggleSelectStatuteFromList('${escapeHtml(art.id)}', '${escapeHtml((art.short_name || art.full_name || '').replace(/'/g, "\\'"))}', '${escapeHtml(art.article_no_cn)}', ${escapeHtml(JSON.stringify(art.content).replace(/"/g, '&quot;'))})">
-                  ${escapeHtml(isPinned ? '✓ 已选入本案' : '📌 选入本案依据')}
+                <button type="button" class="btn-select-statute ${escapeHtml(isPinned ? 'selected' : '')}" id="btn-statute-list-${escapeHtml(art.id.replace(/[:.]/g, '_'))}" onclick="event.stopPropagation(); toggleSelectStatuteFromList('${escapeHtml(art.id)}', '${escapeHtml((art.short_name || art.full_name || '').replace(/'/g, "\\'"))}', '${escapeHtml(art.article_no_cn)}', ${escapeHtml(JSON.stringify(statuteBriefText(art)).replace(/"/g, '&quot;'))})">
+                  ${escapeHtml(pinLabel)}
                 </button>
                 <span style="color: var(--primary-navy); font-weight: 600;">穿透图谱 ➔</span>
               </div>
@@ -464,6 +556,10 @@ export function renderTabCitationGuard() {
         const res = await resp.json();
         const art = res.article;
         const isDetailPinned = (window.CaseContextStore && window.CaseContextStore.hasStatute(art.id));
+        const detailStale = art.cpl_copyable_as_current_authority === false;
+        const detailPinLabel = detailStale
+          ? (isDetailPinned ? '✓ 已选入（含旧条号警示）' : '📌 选入（附旧条号警示）')
+          : (isDetailPinned ? '✓ 已选入本案依据' : '📌 选入本案请求权依据');
 
         let childrenHtml = '';
         if (art.children && art.children.length > 0) {
@@ -533,7 +629,8 @@ export function renderTabCitationGuard() {
           `;
         }
 
-        graphBox.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
+        // safe-html: pre-escaped or nested HTML fragment
+        graphBox.innerHTML = `
           <!-- 当前法条核心卡片 -->
           <div style="background: #FFFFFF; border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 16px; box-shadow: 0 1px 4px rgba(20, 35, 60, 0.06);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -547,29 +644,30 @@ export function renderTabCitationGuard() {
             </div>
 
             <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
-              ${escapeHtml(art.part_name || '')} · ${escapeHtml(art.chapter_name || '')} · 施行日期：${escapeHtml(art.effective_date)} · 效力：现行有效
+              ${escapeHtml(art.part_name || '')} · ${escapeHtml(art.chapter_name || '')} · 施行日期：${escapeHtml(art.effective_date)} · 效力：${detailStale ? '解释文本现行，所引《民事诉讼法》旧条号不能当现行依据' : '现行有效'}
             </div>
 
             <div id="active-statute-fulltext" style="font-size: 12.5px; color: #1F2937; line-height: 1.7; background: #FAF9F6; padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid #EFECE6; font-family: var(--font-body); white-space: pre-wrap;">
               ${escapeHtml(art.content)}
             </div>
+            ${art.cpl_citation_display_note ? `<div id="active-statute-cite-note" style="margin-top: 8px; padding: 8px 10px; background: #FFF7ED; border: 1px solid #FDBA74; border-radius: 6px; color: #9A3412; font-size: 12px; line-height: 1.55; white-space: pre-wrap;">${escapeHtml(art.cpl_citation_display_note)}</div>` : '<div id="active-statute-cite-note" hidden></div>'}
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 11px; color: var(--text-muted);">
               <span>规范属性：${escapeHtml(art.has_proviso ? '包含明确【但书除外规定】' : '一般强制性/倡导性规定')}</span>
               <div style="display: flex; align-items: center; gap: 6px;">
-                <button type="button" class="btn-select-statute ${escapeHtml(isDetailPinned ? 'selected' : '')}" id="btn-pin-active-statute" onclick="toggleSelectStatuteFromList('${escapeHtml(art.id)}', '${escapeHtml((art.law_full_name || art.short_name || '').replace(/'/g, "\\'"))}', '${escapeHtml(art.article_no_cn)}', document.getElementById('active-statute-fulltext').innerText)">
-                  ${escapeHtml(isDetailPinned ? '✓ 已选入本案依据' : '📌 选入本案请求权依据')}
+                <button type="button" class="btn-select-statute ${escapeHtml(isDetailPinned ? 'selected' : '')}" id="btn-pin-active-statute" onclick="toggleSelectStatuteFromList('${escapeHtml(art.id)}', '${escapeHtml((art.law_full_name || art.short_name || '').replace(/'/g, "\\'"))}', '${escapeHtml(art.article_no_cn)}', activeStatuteCopyText())">
+                  ${escapeHtml(detailPinLabel)}
                 </button>
-                <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(document.getElementById('active-statute-fulltext').innerText, '已成功复制法条全文')" style="padding: 2px 8px; font-size: 10.5px;">
-                  复制正文
+                <button class="btn btn-secondary btn-sm" onclick="copyActiveStatuteCitation()" style="padding: 2px 8px; font-size: 10.5px;">
+                  ${detailStale ? '复制正文和条号警示' : '复制正文'}
                 </button>
               </div>
             </div>
           </div>
 
           <!-- 子法与母法穿透区 -->
-          ${childrenHtml} // safe-html: static or pre-escaped HTML fragment
-          ${parentsHtml} // safe-html: static or pre-escaped HTML fragment
+          ${childrenHtml}
+          ${parentsHtml}
         `;
 
       } catch (e) {
@@ -577,10 +675,24 @@ export function renderTabCitationGuard() {
       }
     }
 
+    function activeStatuteCopyText() {
+      const body = document.getElementById('active-statute-fulltext');
+      const note = document.getElementById('active-statute-cite-note');
+      const text = body ? body.innerText.trim() : '';
+      const extra = note && !note.hidden ? note.innerText.trim() : '';
+      if (!extra) return text;
+      return `${text}\n\n${extra}`;
+    }
+
     function copyActiveStatuteCitation() {
-      const el = document.getElementById('active-statute-fulltext');
-      if (el) {
-        copyToClipboard(el.innerText, "已成功复制选定法条正文");
+      const note = document.getElementById('active-statute-cite-note');
+      const hasNote = note && !note.hidden && note.innerText.trim();
+      const text = activeStatuteCopyText();
+      if (text) {
+        copyToClipboard(
+          text,
+          hasNote ? '已复制正文。对不上的《民事诉讼法》旧条号不能当现行依据。' : '已成功复制选定法条正文'
+        );
       }
     }
 
@@ -674,13 +786,10 @@ export function renderTabCitationGuard() {
 
       const badge = document.getElementById('cg-modal-badge');
       if (badge) {
-        if (audit.has_abrogated_laws || audit.has_hallucinations) {
-          badge.style.background = '#C58532';
-          badge.innerText = `⚠️ 已熔断并修正旧法/拦截虚构 (合格率 ${audit.compliance_rate})`;
-        } else {
-          badge.style.background = '#2E7D32';
-          badge.innerText = `100% 权威现行有效 (零法条案号幻觉)`;
-        }
+        const badgeInfo = audit.badge || {};
+        const color = badgeInfo.color || (audit.is_safe ? 'green' : 'amber');
+        badge.style.background = color === 'green' ? '#2E7D32' : (color === 'red' ? '#B43434' : '#C58532');
+        badge.innerText = badgeInfo.label || '引用待核验';
       }
 
       const listDiv = document.getElementById('cg-items-list');
@@ -842,11 +951,12 @@ export function renderTabCitationGuard() {
         const warnHtml = (res.warnings && res.warnings.length)
           ? `<div style="font-size: 11.5px; color: #B78103; margin-bottom: 8px;">${res.warnings.join('<br>')}</div>`
           : '';
-        resBox.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
+        // safe-html: pre-escaped or nested HTML fragment
+        resBox.innerHTML = `
           <div style="font-weight: 700; font-size: 12.5px; color: var(--primary-navy); margin-bottom: 6px;">本地库比对与净化结果：</div>
           <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">${escapeHtml(res.audit_report || '')}</div>
-          ${warnHtml} // safe-html: static or pre-escaped HTML fragment
-          ${res.sanitized_text ? ` // safe-html: static or pre-escaped HTML fragment
+          ${warnHtml}
+          ${res.sanitized_text ? `
             <div style="margin-top: 8px;">
               <div style="font-weight: 600; font-size: 11px; color: #2E7D32; margin-bottom: 4px;">处理后文本：</div>
               <textarea aria-label="处理后文本" class="quick-input" rows="4" readonly style="font-size: 11.5px; line-height: 1.5; background: #fff;">${res.sanitized_text}</textarea>
@@ -880,7 +990,7 @@ export function renderTabCitationGuard() {
         renderSingleCitationResult(data, 'law');
         showToast("单条法条核验完成");
       } catch (e) {
-        showToast(err instanceof ApiError ? err.userMessage : (err && err.userMessage ? err.userMessage : `操作失败：${err.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
+        showToast(e instanceof ApiError ? e.userMessage : (e && e.userMessage ? e.userMessage : `操作失败：${e.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
       }
     }
 
@@ -905,7 +1015,7 @@ export function renderTabCitationGuard() {
         renderSingleCitationResult(data, 'case');
         showToast("案号核验完成");
       } catch (e) {
-        showToast(err instanceof ApiError ? err.userMessage : (err && err.userMessage ? err.userMessage : `操作失败：${err.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
+        showToast(e instanceof ApiError ? e.userMessage : (e && e.userMessage ? e.userMessage : `操作失败：${e.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
       }
     }
 
@@ -917,7 +1027,8 @@ export function renderTabCitationGuard() {
         const isValid = data.is_valid || data.is_recognized;
         const color = isValid ? '#059669' : '#DC2626';
         const bg = isValid ? '#ECFDF5' : '#FEF2F2';
-        box.innerHTML = ` // safe-html: case number verification details
+        // safe-html: case number verification details
+        box.innerHTML = `
           <div style="border-left: 4px solid ${escapeHtml(color)}; background: ${escapeHtml(bg)}; padding: 10px 12px; border-radius: 4px;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <strong style="font-size:13px; color:var(--primary-navy);">${escapeHtml(data.case_number || '')}</strong>
@@ -933,7 +1044,8 @@ export function renderTabCitationGuard() {
         const isValid = data.is_valid;
         const color = isValid ? '#059669' : '#DC2626';
         const bg = isValid ? '#ECFDF5' : '#FEF2F2';
-        box.innerHTML = ` // safe-html: statute citation verification details
+        // safe-html: statute citation verification details
+        box.innerHTML = `
           <div style="border-left: 4px solid ${escapeHtml(color)}; background: ${escapeHtml(bg)}; padding: 10px 12px; border-radius: 4px;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <strong style="font-size:13px; color:var(--primary-navy);">《${escapeHtml(data.statute_full_name || data.law_name || '')}》第${escapeHtml(String(data.article_num || ''))}条 (${escapeHtml(data.article_no_cn || '')})</strong>
@@ -958,6 +1070,7 @@ export {
   executeStatuteSearch,
   renderStatuteGraphDetail,
   copyActiveStatuteCitation,
+  activeStatuteCopyText,
   submitStatuteImport,
   openCitationGuardReportModal,
   closeCitationGuardReportModal,

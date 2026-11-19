@@ -1,0 +1,799 @@
+[
+  {
+    "law_id": "civil_code_2021",
+    "query": "中华人民共和国民法典",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国民法典",
+        "sxrq": "2021-01-01",
+        "sxx": 3
+      },
+      {
+        "title": "云南省人民代表大会常务委员会关于深入学习宣传和实施《中华人民共和国民法典》的决定",
+        "sxrq": "2020-06-11",
+        "sxx": 3
+      },
+      {
+        "title": "凉山彝族自治州施行《中华人民共和国民法典》婚姻家庭编的变通规定",
+        "sxrq": "2022-05-01",
+        "sxx": 3
+      },
+      {
+        "title": "阿坝藏族羌族自治州施行《中华人民共和国民法典》继承编的变通规定",
+        "sxrq": "2021-04-08",
+        "sxx": 3
+      },
+      {
+        "title": "阿坝藏族羌族自治州施行《中华人民共和国民法典》婚姻家庭编的补充规定",
+        "sxrq": "2021-04-08",
+        "sxx": 3
+      },
+      {
+        "title": "峨边彝族自治县施行《中华人民共和国民法典》婚姻家庭编的补充规定",
+        "sxrq": "2021-04-07",
+        "sxx": 3
+      },
+      {
+        "title": "甘孜藏族自治州施行《中华人民共和国民法典》婚姻家庭编的变通规定",
+        "sxrq": "2021-04-07",
+        "sxx": 3
+      },
+      {
+        "title": "马边彝族自治县施行《中华人民共和国民法典》婚姻家庭编的补充规定",
+        "sxrq": "2021-04-06",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "中华人民共和国民法典",
+    "sxrq": "2021-01-01",
+    "sxx": 3,
+    "bbbs": "ff808081729d1efe01729d50b5c500bf",
+    "paragraphs": 2403,
+    "articles": 1260,
+    "max_no": 1260,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/civil_code_2021.json"
+  },
+  {
+    "law_id": "company_law_2024",
+    "query": "中华人民共和国公司法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国公司法",
+        "sxrq": "2024-07-01",
+        "sxx": 3
+      },
+      {
+        "title": "中华人民共和国公司法",
+        "sxrq": "2018-10-26",
+        "sxx": 2
+      },
+      {
+        "title": "中华人民共和国公司法",
+        "sxrq": "2014-03-01",
+        "sxx": 2
+      },
+      {
+        "title": "国务院关于实施《中华人民共和国公司法》注册资本登记管理制度的规定",
+        "sxrq": "2024-07-01",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于《中华人民共和国公司法》第八十八条第一款不溯及适用的批复",
+        "sxrq": "2024-12-24",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于适用《中华人民共和国公司法》时间效力的若干规定",
+        "sxrq": "2024-07-01",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于适用《中华人民共和国公司法》若干问题的规定（五）",
+        "sxrq": "2021-01-01",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于适用《中华人民共和国公司法》若干问题的规定（四）",
+        "sxrq": "2021-01-01",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "中华人民共和国公司法",
+    "sxrq": "2024-07-01",
+    "sxx": 3,
+    "bbbs": "ff8081818c9108eb018cb6922f750c07",
+    "paragraphs": 711,
+    "articles": 266,
+    "max_no": 266,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/company_law_2024.json"
+  },
+  {
+    "law_id": "criminal_law_2024",
+    "query": "中华人民共和国刑法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国刑法",
+        "sxrq": "2021-03-01",
+        "sxx": 3
+      },
+      {
+        "title": "中华人民共和国刑法",
+        "sxrq": "2009-08-27",
+        "sxx": 2
+      },
+      {
+        "title": "全国人民代表大会常务委员会关于《中华人民共和国刑法》第三十条的解释",
+        "sxrq": "2014-04-24",
+        "sxx": 3
+      },
+      {
+        "title": "全国人民代表大会常务委员会关于《中华人民共和国刑法》第二百六十六条的解释",
+        "sxrq": "2014-04-24",
+        "sxx": 3
+      },
+      {
+        "title": "全国人民代表大会常务委员会关于《中华人民共和国刑法》第三百四十一条、第三百一十二条的解释",
+        "sxrq": "2014-04-24",
+        "sxx": 3
+      },
+      {
+        "title": "全国人民代表大会常务委员会关于《中华人民共和国刑法》第一百五十八条、第一百五十九条的解释",
+        "sxrq": "2014-04-24",
+        "sxx": 3
+      },
+      {
+        "title": "全国人民代表大会常务委员会关于《中华人民共和国刑法》第九十三条第二款的解释",
+        "sxrq": "2009-08-27",
+        "sxx": 3
+      },
+      {
+        "title": "全国人民代表大会常务委员会关于《中华人民共和国刑法》第二百二十八条、第三百四十二条、第四百一十条的解释",
+        "sxrq": "2009-08-27",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "中华人民共和国刑法",
+    "sxrq": "2021-03-01",
+    "sxx": 3,
+    "bbbs": "ff808181796a636a0179822a19640c92",
+    "paragraphs": 1290,
+    "articles": 505,
+    "max_no": 452,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/criminal_law_2024.json"
+  },
+  {
+    "law_id": "civil_procedure_2023",
+    "query": "中华人民共和国民事诉讼法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国民事诉讼法",
+        "sxrq": "2024-01-01",
+        "sxx": 3
+      },
+      {
+        "title": "中华人民共和国民事诉讼法",
+        "sxrq": "2022-01-01",
+        "sxx": 2
+      },
+      {
+        "title": "中华人民共和国民事诉讼法",
+        "sxrq": "2017-07-01",
+        "sxx": 2
+      },
+      {
+        "title": "全国人民代表大会常务委员会关于修改《中华人民共和国民事诉讼法》的决定",
+        "sxrq": "2024-01-01",
+        "sxx": null
+      },
+      {
+        "title": "全国人民代表大会常务委员会关于修改《中华人民共和国民事诉讼法》的决定",
+        "sxrq": "2022-01-01",
+        "sxx": null
+      },
+      {
+        "title": "最高人民法院关于适用《中华人民共和国民事诉讼法》的解释",
+        "sxrq": "2022-04-10",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于适用《中华人民共和国民事诉讼法》执行程序若干问题的解释",
+        "sxrq": "2021-01-01",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于适用《中华人民共和国民事诉讼法》审判监督程序若干问题的解释",
+        "sxrq": "2021-01-01",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "中华人民共和国民事诉讼法",
+    "sxrq": "2024-01-01",
+    "sxx": 3,
+    "bbbs": "ff8081818a21dc13018b425303b7086d",
+    "paragraphs": 773,
+    "articles": 306,
+    "max_no": 306,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/civil_procedure_2023.json"
+  },
+  {
+    "law_id": "labor_contract_2013",
+    "query": "中华人民共和国劳动合同法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国劳动合同法",
+        "sxrq": "2013-07-01",
+        "sxx": 3
+      },
+      {
+        "title": "中华人民共和国劳动合同法实施条例",
+        "sxrq": null,
+        "sxx": 3
+      }
+    ],
+    "picked_title": "中华人民共和国劳动合同法",
+    "sxrq": "2013-07-01",
+    "sxx": 3,
+    "bbbs": "2c909fdd678bf17901678bf74d7106b3",
+    "paragraphs": 257,
+    "articles": 98,
+    "max_no": 98,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/labor_contract_2013.json"
+  },
+  {
+    "law_id": "labor_law",
+    "query": "中华人民共和国劳动法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国劳动法",
+        "sxrq": "2018-12-29",
+        "sxx": 3
+      },
+      {
+        "title": "中华人民共和国劳动法",
+        "sxrq": "2009-08-27",
+        "sxx": 2
+      }
+    ],
+    "picked_title": "中华人民共和国劳动法",
+    "sxrq": "2018-12-29",
+    "sxx": 3,
+    "bbbs": "ff8080816f135f46016f20f16ee11737",
+    "paragraphs": 221,
+    "articles": 107,
+    "max_no": 107,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/labor_law.json"
+  },
+  {
+    "law_id": "admin_procedure_law",
+    "query": "中华人民共和国行政诉讼法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国行政诉讼法",
+        "sxrq": "2017-07-01",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于适用《中华人民共和国行政诉讼法》的解释",
+        "sxrq": "2018-02-08",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于适用《中华人民共和国行政诉讼法》若干问题的解释",
+        "sxrq": "2015-05-01",
+        "sxx": 1
+      }
+    ],
+    "picked_title": "中华人民共和国行政诉讼法",
+    "sxrq": "2017-07-01",
+    "sxx": 3,
+    "bbbs": "2c909fdd678bf17901678bf858550a0f",
+    "paragraphs": 281,
+    "articles": 103,
+    "max_no": 103,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/admin_procedure_law.json"
+  },
+  {
+    "law_id": "labor_mediation_law",
+    "query": "中华人民共和国劳动争议调解仲裁法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国劳动争议调解仲裁法",
+        "sxrq": "2008-05-01",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "中华人民共和国劳动争议调解仲裁法",
+    "sxrq": "2008-05-01",
+    "sxx": 3,
+    "bbbs": "2c909fdd678bf17901678bf64f28039d",
+    "paragraphs": 132,
+    "articles": 54,
+    "max_no": 54,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/labor_mediation_law.json"
+  },
+  {
+    "law_id": "pipl",
+    "query": "中华人民共和国个人信息保护法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国个人信息保护法",
+        "sxrq": "2021-11-01",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "中华人民共和国个人信息保护法",
+    "sxrq": "2021-11-01",
+    "sxx": 3,
+    "bbbs": "ff8081817b6472a3017b656cc2040044",
+    "paragraphs": 196,
+    "articles": 74,
+    "max_no": 74,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/pipl.json"
+  },
+  {
+    "law_id": "anti_unfair_competition",
+    "query": "中华人民共和国反不正当竞争法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国反不正当竞争法",
+        "sxrq": "2025-10-15",
+        "sxx": 3
+      },
+      {
+        "title": "中华人民共和国反不正当竞争法",
+        "sxrq": "2019-04-23",
+        "sxx": 2
+      },
+      {
+        "title": "中华人民共和国反不正当竞争法",
+        "sxrq": "2018-01-01",
+        "sxx": 2
+      },
+      {
+        "title": "天津市实施《中华人民共和国反不正当竞争法》办法",
+        "sxrq": "2012-05-09",
+        "sxx": 3
+      },
+      {
+        "title": "辽宁省实施《中华人民共和国反不正当竞争法》规定",
+        "sxrq": null,
+        "sxx": 1
+      },
+      {
+        "title": "江苏省实施《中华人民共和国反不正当竞争法》办法",
+        "sxrq": null,
+        "sxx": 3
+      },
+      {
+        "title": "福建省实施《中华人民共和国反不正当竞争法》办法",
+        "sxrq": "2012-03-31",
+        "sxx": 1
+      },
+      {
+        "title": "山东省实施《中华人民共和国反不正当竞争法》办法",
+        "sxrq": "2012-01-13",
+        "sxx": 1
+      }
+    ],
+    "picked_title": "中华人民共和国反不正当竞争法",
+    "sxrq": "2025-10-15",
+    "sxx": 3,
+    "bbbs": "ff808181971552b40197b1016efc5437",
+    "paragraphs": 111,
+    "articles": 41,
+    "max_no": 41,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/anti_unfair_competition.json"
+  },
+  {
+    "law_id": "data_security_law",
+    "query": "中华人民共和国数据安全法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国数据安全法",
+        "sxrq": "2021-09-01",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "中华人民共和国数据安全法",
+    "sxrq": "2021-09-01",
+    "sxx": 3,
+    "bbbs": "ff80818179f5e0800179f885c7e70392",
+    "paragraphs": 91,
+    "articles": 55,
+    "max_no": 55,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/data_security_law.json"
+  },
+  {
+    "law_id": "cybersecurity_law",
+    "query": "中华人民共和国网络安全法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国网络安全法",
+        "sxrq": "2026-01-01",
+        "sxx": 3
+      },
+      {
+        "title": "中华人民共和国网络安全法",
+        "sxrq": "2017-06-01",
+        "sxx": 2
+      },
+      {
+        "title": "全国人民代表大会常务委员会关于修改《中华人民共和国网络安全法》的决定",
+        "sxrq": "2026-01-01",
+        "sxx": null
+      }
+    ],
+    "picked_title": "中华人民共和国网络安全法",
+    "sxrq": "2026-01-01",
+    "sxx": 3,
+    "bbbs": "021e7d7684474107b8f3febbb1c4f8b5",
+    "paragraphs": 162,
+    "articles": 81,
+    "max_no": 81,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/cybersecurity_law.json"
+  },
+  {
+    "law_id": "consumer_protection_law",
+    "query": "中华人民共和国消费者权益保护法",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "中华人民共和国消费者权益保护法",
+        "sxrq": "2014-03-15",
+        "sxx": 3
+      },
+      {
+        "title": "中华人民共和国消费者权益保护法实施条例",
+        "sxrq": "2024-07-01",
+        "sxx": 3
+      },
+      {
+        "title": "北京市实施《中华人民共和国消费者权益保护法》办法",
+        "sxrq": "1998-01-01",
+        "sxx": 3
+      },
+      {
+        "title": "内蒙古自治区实施《中华人民共和国消费者权益保护法》办法",
+        "sxrq": "2022-07-01",
+        "sxx": 3
+      },
+      {
+        "title": "内蒙古自治区实施《中华人民共和国消费者权益保护法》办法",
+        "sxrq": "2004-07-01",
+        "sxx": 2
+      },
+      {
+        "title": "吉林省实施《中华人民共和国消费者权益保护法》办法",
+        "sxrq": null,
+        "sxx": 1
+      },
+      {
+        "title": "江苏省实施《中华人民共和国消费者权益保护法》办法",
+        "sxrq": "1996-10-18",
+        "sxx": 1
+      },
+      {
+        "title": "浙江省实施《中华人民共和国消费者权益保护法》办法",
+        "sxrq": "2017-05-01",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "中华人民共和国消费者权益保护法",
+    "sxrq": "2014-03-15",
+    "sxx": 3,
+    "bbbs": "2c909fdd678bf17901678bf7670606ef",
+    "paragraphs": 158,
+    "articles": 63,
+    "max_no": 63,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/consumer_protection_law.json"
+  },
+  {
+    "law_id": "contract_interp_2023",
+    "query": "合同编通则若干问题的解释",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "最高人民法院关于适用《中华人民共和国民法典》合同编通则若干问题的解释",
+        "sxrq": "2023-12-05",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "最高人民法院关于适用《中华人民共和国民法典》合同编通则若干问题的解释",
+    "sxrq": "2023-12-05",
+    "sxx": 3,
+    "bbbs": "ff8081818c24e05b018c814e6de45ab5",
+    "paragraphs": 195,
+    "articles": 69,
+    "max_no": 69,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/contract_interp_2023.json"
+  },
+  {
+    "law_id": "guarantee_interp_2021",
+    "query": "有关担保制度的解释",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "最高人民法院关于适用《中华人民共和国民法典》有关担保制度的解释",
+        "sxrq": "2021-01-01",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "最高人民法院关于适用《中华人民共和国民法典》有关担保制度的解释",
+    "sxrq": "2021-01-01",
+    "sxx": 3,
+    "bbbs": "ff80808177e757ac01780077d2291b77",
+    "paragraphs": 200,
+    "articles": 71,
+    "max_no": 71,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/guarantee_interp_2021.json"
+  },
+  {
+    "law_id": "private_lending_2020",
+    "status": "imported",
+    "source_url": "http://gongbao.court.gov.cn/Details/94b6623974526df7d2430a3c73f050.html",
+    "articles": 31,
+    "max_no": 31,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/private_lending_2020.json"
+  },
+  {
+    "law_id": "general_provisions_interp",
+    "query": "总则编若干问题的解释",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "最高人民法院关于适用《中华人民共和国民法典》总则编若干问题的解释",
+        "sxrq": "2022-03-01",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "最高人民法院关于适用《中华人民共和国民法典》总则编若干问题的解释",
+    "sxrq": "2022-03-01",
+    "sxx": 3,
+    "bbbs": "ff80818181cdceb30181d2c0af9e2339",
+    "paragraphs": 87,
+    "articles": 39,
+    "max_no": 39,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/general_provisions_interp.json"
+  },
+  {
+    "law_id": "temporal_effect_rules",
+    "query": "民法典〉时间效力的若干规定",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "最高人民法院关于适用《中华人民共和国民法典》时间效力的若干规定",
+        "sxrq": "2021-01-01",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "最高人民法院关于适用《中华人民共和国民法典》时间效力的若干规定",
+    "sxrq": "2021-01-01",
+    "sxx": 3,
+    "bbbs": "ff80808177e757ac017800561d541abb",
+    "paragraphs": 42,
+    "articles": 28,
+    "max_no": 28,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/temporal_effect_rules.json"
+  },
+  {
+    "law_id": "civil_procedure_interp",
+    "query": "适用《中华人民共和国民事诉讼法》的解释",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "最高人民法院关于适用《中华人民共和国民事诉讼法》的解释",
+        "sxrq": "2022-04-10",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于适用《中华人民共和国民事诉讼法》的解释",
+        "sxrq": "2021-01-01",
+        "sxx": 2
+      },
+      {
+        "title": "最高人民法院关于适用《中华人民共和国民事诉讼法》的解释",
+        "sxrq": "2015-02-04",
+        "sxx": 2
+      },
+      {
+        "title": "最高人民法院关于修改《最高人民法院关于适用〈中华人民共和国民事诉讼法〉的解释》的决定",
+        "sxrq": "2022-04-10",
+        "sxx": null
+      }
+    ],
+    "picked_title": "最高人民法院关于适用《中华人民共和国民事诉讼法》的解释",
+    "sxrq": "2022-04-10",
+    "sxx": 3,
+    "bbbs": "ff80818181cdceb30181d801c31c4070",
+    "paragraphs": 1122,
+    "articles": 550,
+    "max_no": 550,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/civil_procedure_interp.json"
+  },
+  {
+    "law_id": "labor_dispute_interp_1",
+    "query": "审理劳动争议案件适用法律问题的解释",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "最高人民法院关于审理劳动争议案件适用法律问题的解释（二）",
+        "sxrq": "2025-09-01",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于审理劳动争议案件适用法律问题的解释（一）",
+        "sxrq": "2021-01-01",
+        "sxx": 3
+      }
+    ],
+    "picked_title": "最高人民法院关于审理劳动争议案件适用法律问题的解释（一）",
+    "sxrq": "2021-01-01",
+    "sxx": 3,
+    "bbbs": "ff80808177e75f88017800739d621b12",
+    "paragraphs": 131,
+    "articles": 54,
+    "max_no": 54,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/labor_dispute_interp_1.json"
+  },
+  {
+    "law_id": "evidence_rules",
+    "query": "民事诉讼证据的若干规定",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "最高人民法院关于生态环境侵权民事诉讼证据的若干规定",
+        "sxrq": "2026-08-15",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于知识产权民事诉讼证据的若干规定",
+        "sxrq": "2020-11-18",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于民事诉讼证据的若干规定",
+        "sxrq": "2020-05-01",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于生态环境侵权民事诉讼证据的若干规定",
+        "sxrq": "2023-09-01",
+        "sxx": 2
+      },
+      {
+        "title": "最高人民法院关于民事诉讼证据的若干规定",
+        "sxrq": "2002-04-01",
+        "sxx": 2
+      }
+    ],
+    "picked_title": "最高人民法院关于民事诉讼证据的若干规定",
+    "sxrq": "2020-05-01",
+    "sxx": 3,
+    "bbbs": "ff808081777d0c940177ccd29d894ded",
+    "paragraphs": 269,
+    "articles": 100,
+    "max_no": 100,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/evidence_rules.json"
+  },
+  {
+    "law_id": "nine_minutes_2019",
+    "status": "imported",
+    "source_url": "https://www.court.gov.cn/zixun/xiangqing/199691.html",
+    "articles": 130,
+    "max_no": 130,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/nine_minutes_2019.json"
+  },
+  {
+    "law_id": "additional_parties_2020",
+    "query": "民事执行中变更、追加当事人若干问题的规定",
+    "status": "imported",
+    "candidates": [
+      {
+        "title": "最高人民法院关于民事执行中变更、追加当事人若干问题的规定",
+        "sxrq": "2021-01-01",
+        "sxx": 3
+      },
+      {
+        "title": "最高人民法院关于民事执行中变更、追加当事人若干问题的规定",
+        "sxrq": "2016-12-01",
+        "sxx": 2
+      }
+    ],
+    "picked_title": "最高人民法院关于民事执行中变更、追加当事人若干问题的规定",
+    "sxrq": "2021-01-01",
+    "sxx": 3,
+    "bbbs": "ff80818179f5d52f0179fa3029fe0647",
+    "paragraphs": 55,
+    "articles": 35,
+    "max_no": 35,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/additional_parties_2020.json"
+  },
+  {
+    "law_id": "case_retrieval_2020",
+    "status": "imported",
+    "source_url": "https://www.court.gov.cn/fabu/xiangqing/243981.html",
+    "articles": 14,
+    "max_no": 14,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/case_retrieval_2020.json"
+  },
+  {
+    "law_id": "prosecution_standards_2022",
+    "status": "imported",
+    "source_url": "https://www.spp.gov.cn/spp/xwfbh/wsfbt/202204/t20220429_555906.shtml",
+    "articles": 85,
+    "max_no": 85,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/prosecution_standards_2022.json"
+  },
+  {
+    "law_id": "labor_arbitration_rules",
+    "status": "imported",
+    "source_url": "https://www.gov.cn/gongbao/content/2017/content_5232371.htm",
+    "articles": 81,
+    "max_no": 81,
+    "missing_sample": [],
+    "ok": true,
+    "file": "data/legal/corpus/labor_arbitration_rules.json"
+  }
+]

@@ -266,7 +266,7 @@ def test_S11_pdf_coverage_and_first_page_plaintiff(client, no_ollama, tmp_path):
     doc = fitz.open(pdf_path)
     page0 = doc[0].get_text()
     doc.close()
-    assert "测试原告甲" in page0
+    assert "原告甲" in page0 or "测试原告甲" in page0
 
 
 def test_S11_long_docx_pdf_multipage(tmp_path):

@@ -33,5 +33,8 @@ ENV GATEWAY_PORT=5221
 
 EXPOSE 5221
 
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD curl -f http://127.0.0.1:5221/health || exit 1
+
 # 挂载 fonts/ 后刷新字体缓存，再启动网关
 CMD ["sh", "-c", "fc-cache -f 2>/dev/null || true; exec uvicorn gateway.main:app --host 0.0.0.0 --port 5221"]

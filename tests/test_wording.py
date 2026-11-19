@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""批次10 S-20：禁用绝对化/虚假背书表述；代表性接口与起诉状页脚含统一免责声明。"""
+"""批次10 S-20：禁用绝对化/虚假背书表述。接口响应仍带免责声明；提交法院的起诉状页脚不再写入。"""
 from __future__ import annotations
 
 import os
@@ -131,6 +131,7 @@ def test_litigation_package_and_docx_footer_disclaimer(client, monkeypatch):
         json={
             "cause_of_action": "民间借贷纠纷",
             "claim_amount": 200000,
+            "claims": ["判令被告偿还借款本金人民币20万元"],
             "raw_case_notes": "2023年1月1日被告向原告借款20万元，约定借期一年，到期未还。",
             "court_name": "北京市朝阳区人民法院",
             "plaintiff": {
@@ -171,4 +172,4 @@ def test_litigation_package_and_docx_footer_disclaimer(client, monkeypatch):
         for p in section.footer.paragraphs:
             footer_text.append(p.text or "")
     blob = "\n".join(footer_text)
-    assert DISCLAIMER in blob, f"页脚未含免责声明: {blob!r}"
+    assert DISCLAIMER not in blob, f"提交件页脚不应含软件声明: {blob!r}"

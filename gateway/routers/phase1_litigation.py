@@ -30,27 +30,33 @@ from docxtpl import DocxTemplate
 import httpx
 import pymupdf as fitz
 
+from fastapi.responses import FileResponse, Response
+from urllib.parse import quote
+from gateway.utils.ics_deadline_exporter import build_lawyer_deadline_ics
 from gateway.utils.cn_legal_calc import (
     rmb_to_capital,
+    calculate_private_lending_segmented_interest,
+    is_prc_non_working_day,
     validate_and_parse_idcard,
     validate_and_parse_uscc,
     calculate_court_fees,
     calculate_preservation_insurance,
     calculate_lpr_interest,
     calculate_labor_compensation,
+    LABOR_ARBITRATION_LIMITATION_NOTE,
+    SALES_COMPLAINT_OVERDUE_RATE_DESC,
     calculate_statute_of_limitations,
     calculate_preservation_renewal,
     verify_statutory_validity,
     calculate_settlement_npv_and_recovery,
     calculate_appeal_deadline,
+    calculate_enforcement_application_deadline,
     calculate_delayed_performance_interest,
     calculate_penalty_adjustment_reference,
 )
 from gateway.utils.text_utils import (
     normalize_court_name,
     normalize_arbitration_committee,
-    extract_agreed_annual_rate,
-    extract_first_date_iso,
     format_date_cn,
 )
 
@@ -70,6 +76,32 @@ from gateway.core.paths import get_base_dir, get_generated_dir
 PLACEHOLDER = "【待填写】"
 
 
+def _filled_or_placeholder(value: Optional[str]) -> str:
+    text = (value or "").strip()
+    return text or PLACEHOLDER
+
+
+def _write_plain_docx(output_path: str, title: str, paragraphs: List[str]) -> None:
+    """生成可编辑的中文草稿，不把待填写栏写成已经查明的事实。"""
+    import docx as python_docx
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt
+
+    doc = python_docx.Document()
+    heading = doc.add_paragraph()
+    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = heading.add_run(title)
+    run.bold = True
+    run.font.size = Pt(16)
+    run.font.name = "宋体"
+    for text in paragraphs:
+        p = doc.add_paragraph()
+        r = p.add_run(text)
+        r.font.name = "仿宋_GB2312"
+        r.font.size = Pt(12)
+    doc.save(output_path)
+
+
 def _templates_dir() -> str:
     return str(get_base_dir() / "templates")
 
@@ -85,17 +117,58 @@ def _find_soffice() -> Optional[str]:
     if _SOFFICE_SEARCHED:
         return _SOFFICE_CACHED_PATH
 
-    for static_cand in (
+    # 1. 显式环境变量指定的自定义路径
+    env_cand = os.getenv("LIBREOFFICE_PATH") or os.getenv("SOFFICE_PATH")
+    if env_cand and os.path.isfile(env_cand):
+        _SOFFICE_CACHED_PATH = env_cand
+        _SOFFICE_SEARCHED = True
+        return env_cand
+
+    # 2. Windows 注册表 App Paths 智能寻址（无需在系统 PATH 中，支持非 C 盘自定义安装路径）
+    if os.name == "nt":
+        try:
+            import winreg
+            for subkey in (
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\soffice.exe",
+                r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\soffice.exe",
+            ):
+                try:
+                    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, subkey) as k:
+                        val, _ = winreg.QueryValueEx(k, "")
+                        if val and os.path.isfile(val):
+                            _SOFFICE_CACHED_PATH = val
+                            _SOFFICE_SEARCHED = True
+                            return val
+                except (OSError, WindowsError):
+                    pass
+        except Exception as reg_err:
+            logger.debug(f"通过注册表探测 LibreOffice 失败: {reg_err}")
+
+    # 3. 常见系统安装路径穷举（涵盖常见多盘符与 Linux/macOS）
+    static_cands = [
         r"C:\Program Files\LibreOffice\program\soffice.exe",
         r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+        r"D:\Program Files\LibreOffice\program\soffice.exe",
+        r"D:\LibreOffice\program\soffice.exe",
+        r"D:\Libreoffice\program\soffice.exe",
+        r"E:\Program Files\LibreOffice\program\soffice.exe",
+        r"E:\LibreOffice\program\soffice.exe",
+        r"E:\Libreoffice\program\soffice.exe",
+        r"F:\Program Files\LibreOffice\program\soffice.exe",
+        r"F:\LibreOffice\program\soffice.exe",
+        r"F:\Libreoffice\program\soffice.exe",
         "/usr/bin/soffice",
         "/usr/bin/libreoffice",
-    ):
+        "/usr/local/bin/soffice",
+        "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+    ]
+    for static_cand in static_cands:
         if os.path.isfile(static_cand):
             _SOFFICE_CACHED_PATH = static_cand
             _SOFFICE_SEARCHED = True
             return static_cand
 
+    # 4. 系统 PATH 环境变量
     for cand in (
         shutil.which("soffice"),
         shutil.which("libreoffice"),
@@ -191,7 +264,7 @@ def _pymupdf_fit_lines(doc: "fitz.Document", text_rect, lines: List[str], fontsi
     return best
 
 
-def _pymupdf_paginated_render(paragraphs: List[str], pdf_path: str) -> bool:
+def _pymupdf_paginated_render(paragraphs: List[str], pdf_path: str, include_disclaimer: bool = False) -> bool:
     """
     按行分页写入 PDF：检查 insert_textbox 返回值，溢出则新开一页继续，直至写完。
     """
@@ -221,12 +294,14 @@ def _pymupdf_paginated_render(paragraphs: List[str], pdf_path: str) -> bool:
         remaining = remaining[consumed:]
 
     total_pages = doc.page_count
-    for pno in range(total_pages):
-        page = doc[pno]
+    if include_disclaimer:
         from gateway.utils.disclaimer import disclaimer_pdf_footer_line
-        footer_rect = fitz.Rect(margin_x, page_height - 48, page_width - margin_x, page_height - 12)
-        footer_str = disclaimer_pdf_footer_line(page_no=pno + 1, total_pages=total_pages)
-        page.insert_textbox(footer_rect, footer_str, fontsize=6.5, fontname="china-s", align=1)
+
+        for pno in range(total_pages):
+            page = doc[pno]
+            footer_rect = fitz.Rect(margin_x, page_height - 48, page_width - margin_x, page_height - 12)
+            footer_str = disclaimer_pdf_footer_line(page_no=pno + 1, total_pages=total_pages)
+            page.insert_textbox(footer_rect, footer_str, fontsize=6.5, fontname="china-s", align=1)
 
     doc.save(pdf_path)
     doc.close()
@@ -238,25 +313,125 @@ def _pymupdf_paginated_render(paragraphs: List[str], pdf_path: str) -> bool:
 # ==============================================================================
 # 最近一次 convert_docx_to_pdf 使用的引擎（供一键成套返回 engine_status）
 _LAST_PDF_ENGINE: str = "local_pymupdf"
+_LAST_PDF_ERROR: str = ""
 
 
 def get_last_pdf_engine() -> str:
     return _LAST_PDF_ENGINE
 
 
-async def convert_docx_to_pdf(docx_path: str, pdf_path: str, title: str = "司法公文", text_summary: str = "") -> bool:
+def get_last_pdf_error() -> str:
+    return _LAST_PDF_ERROR
+
+
+_INTERNAL_DRAFT_TYPES = {"律师函", "民事答辩状"}
+
+
+def _stamp_internal_draft_disclaimers(generated_docs: List[Dict[str, Any]]) -> None:
+    """提交包已经落盘之后，才给单独导出的内部底稿加软件声明。"""
+    from gateway.utils.disclaimer import add_disclaimer_to_docx
+
+    for doc in generated_docs:
+        if doc.get("doc_type") not in _INTERNAL_DRAFT_TYPES:
+            continue
+        path = doc.get("path") or ""
+        if not path or not os.path.isfile(path):
+            continue
+        try:
+            add_disclaimer_to_docx(path)
+        except Exception as exc:
+            logger.warning("内部底稿页脚声明写入失败: %s", exc)
+            doc["disclaimer_error"] = f"内部底稿声明写入失败：{exc}"
+
+
+def _attach_word_to_matter(
+    matter_id: Optional[str],
+    generated_docs: List[Dict[str, Any]],
+    package_id: str,
+) -> List[str]:
+    if not matter_id:
+        return []
+    from gateway.utils.matter_vault_db import add_document_to_matter
+
+    attached: List[str] = []
+    for doc in generated_docs:
+        path = doc.get("path") or ""
+        if not str(path).lower().endswith(".docx") or not os.path.isfile(path):
+            continue
+        try:
+            saved = add_document_to_matter(
+                matter_id,
+                {
+                    "doc_type": "pleading",
+                    "title": doc.get("doc_type") or os.path.basename(path),
+                    "file_path": path,
+                    "file_size": os.path.getsize(path),
+                    "text_content": "",
+                    "metadata": {
+                        "filename": doc.get("filename_docx"),
+                        "package_id": package_id,
+                        "source": "generate-litigation-package",
+                    },
+                },
+            )
+            if saved.get("doc_id"):
+                attached.append(saved["doc_id"])
+        except Exception as exc:
+            logger.warning("文书挂入案件材料失败: %s", exc)
+    return attached
+
+
+def _pdf_bundle(ok: bool, name: str, path: str) -> Dict[str, Any]:
+    """转换或水印失败时不给出下载地址，并带回可展示的失败原因。"""
+    error = None if ok else (get_last_pdf_error() or "PDF 转换失败")
+    return {
+        "filename_pdf": name if ok else None,
+        "pdf_path": path if ok else None,
+        "pdf_url": f"/api/documents/download/{name}" if ok else None,
+        "pdf_ok": bool(ok),
+        "pdf_error": error,
+    }
+
+
+def _apply_requested_pdf_disclaimer(pdf_path: str, include_disclaimer: bool) -> bool:
+    """提交件不加水印。需要水印时，失败必须返回 False，不能当成转换成功。"""
+    global _LAST_PDF_ERROR
+    if not include_disclaimer:
+        return True
+    from gateway.utils.disclaimer import stamp_disclaimer_on_pdf
+
+    try:
+        stamp_disclaimer_on_pdf(pdf_path)
+        return True
+    except Exception as exc:
+        _LAST_PDF_ERROR = f"PDF 水印失败：{exc}"
+        logger.error(_LAST_PDF_ERROR)
+        return False
+
+
+async def convert_docx_to_pdf(
+    docx_path: str,
+    pdf_path: str,
+    title: str = "司法公文",
+    text_summary: str = "",
+    include_disclaimer: bool = False,
+) -> bool:
     """
     优先 LibreOffice (soffice)；其次 Stirling-PDF（仅配置的一个地址，且需探测缓存可用）；
     最后 PyMuPDF 按行分页兜底。全部失败时返回 False，不得生成缺页/空壳 PDF。
+    include_disclaimer 仅用于单独导出的内部底稿。提交件保持 False。
+    水印失败时返回 False，不得把文件当成转换成功。
     """
-    global _LAST_PDF_ENGINE
-    from gateway.utils.disclaimer import stamp_disclaimer_on_pdf
+    global _LAST_PDF_ENGINE, _LAST_PDF_ERROR
     from gateway.core.service_probe import is_stirling_available, stirling_pdf_url
+
+    _LAST_PDF_ERROR = ""
 
     # 1. LibreOffice
     if _convert_docx_via_soffice(docx_path, pdf_path):
+        if not _apply_requested_pdf_disclaimer(pdf_path, include_disclaimer):
+            return False
         logger.info(f"LibreOffice 成功将 {docx_path} 转换为 {pdf_path}")
-        stamp_disclaimer_on_pdf(pdf_path)
         _LAST_PDF_ENGINE = "libreoffice"
         return True
 
@@ -277,8 +452,9 @@ async def convert_docx_to_pdf(docx_path: str, pdf_path: str, title: str = "司�
                     if resp.status_code == 200 and len(resp.content) > 100:
                         with open(pdf_path, "wb") as pdf_file:
                             pdf_file.write(resp.content)
+                        if not _apply_requested_pdf_disclaimer(pdf_path, include_disclaimer):
+                            return False
                         logger.info(f"Stirling-PDF 成功将 {docx_path} 转换为 {pdf_path}")
-                        stamp_disclaimer_on_pdf(pdf_path)
                         _LAST_PDF_ENGINE = "stirling"
                         return True
         except Exception as e:
@@ -287,17 +463,20 @@ async def convert_docx_to_pdf(docx_path: str, pdf_path: str, title: str = "司�
     # 3. PyMuPDF 按行分页兜底
     try:
         paragraphs = _extract_docx_paragraphs(docx_path, text_summary=text_summary)
-        ok = _pymupdf_paginated_render(paragraphs, pdf_path)
+        ok = _pymupdf_paginated_render(paragraphs, pdf_path, include_disclaimer=include_disclaimer)
         if ok:
+            if not _apply_requested_pdf_disclaimer(pdf_path, include_disclaimer):
+                return False
             logger.info(f"PyMuPDF 分页渲染成功: {pdf_path}")
-            stamp_disclaimer_on_pdf(pdf_path)
             _LAST_PDF_ENGINE = "local_pymupdf"
             return True
         logger.error("PyMuPDF 分页渲染失败：未生成有效 PDF")
+        _LAST_PDF_ERROR = "PDF 转换失败：未生成有效 PDF"
         _LAST_PDF_ENGINE = "local_pymupdf"
         return False
     except Exception as e:
         logger.error(f"PDF 转换异常: {e}")
+        _LAST_PDF_ERROR = f"PDF 转换失败：{e}"
         _LAST_PDF_ENGINE = "local_pymupdf"
         if os.path.isfile(pdf_path):
             try:
@@ -363,9 +542,11 @@ def _resolve_party(party: "PartyInfo", role: str, missing_fields: List[str]) -> 
         "address": _or_placeholder(party.address, missing_fields, f"{role}.address"),
         "phone": _or_placeholder(party.phone, missing_fields, f"{role}.phone"),
         "party_type": party_type,
-        "ethnicity": party.ethnicity or "汉族",
+        "ethnicity": (party.ethnicity or "").strip() or (PLACEHOLDER if party_type == "natural" else ""),
         "id_card_or_uscc": pid or PLACEHOLDER,
     }
+    if party_type == "natural" and result["ethnicity"] == PLACEHOLDER:
+        missing_fields.append(f"{role}.ethnicity")
     if not pid:
         missing_fields.append(f"{role}.id_card_or_uscc")
 
@@ -408,6 +589,66 @@ def _resolve_party(party: "PartyInfo", role: str, missing_fields: List[str]) -> 
     return result
 
 
+def _usable_claim_lines(raw: Optional[List[str]]) -> List[str]:
+    lines: List[str] = []
+    for item in raw or []:
+        text = str(item).strip()
+        if text and text != PLACEHOLDER:
+            lines.append(text)
+    return lines
+
+
+def _normalize_iso_date(value: Optional[str]) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    raw = raw.replace("年", "-").replace("月", "-").replace("日", "").replace(".", "-").replace("/", "-")
+    parts = [part for part in raw.split("-") if part != ""]
+    if len(parts) != 3:
+        return ""
+    try:
+        return f"{int(parts[0]):04d}-{int(parts[1]):02d}-{int(parts[2]):02d}"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _ready_settled_interest(item: Optional["SettledInterestInput"]) -> Optional[Dict[str, Any]]:
+    """01 已经算出本金、起止日，并且有利率或那一笔说明时才采用。没有截止日则不用。"""
+    if item is None:
+        return None
+    start = _normalize_iso_date(item.start_date)
+    end = _normalize_iso_date(item.end_date)
+    try:
+        principal = float(item.principal) if item.principal is not None else 0.0
+    except (TypeError, ValueError):
+        principal = 0.0
+    statement = (item.formal_statement or "").strip()
+    rate = None
+    if item.annual_rate is not None:
+        try:
+            rate = float(item.annual_rate)
+        except (TypeError, ValueError):
+            rate = None
+    if principal <= 0 or not start or not end:
+        return None
+    if rate is None and not statement:
+        return None
+    total = None
+    if item.interest_total is not None:
+        try:
+            total = float(item.interest_total)
+        except (TypeError, ValueError):
+            total = None
+    return {
+        "principal": principal,
+        "start_date": start,
+        "end_date": end,
+        "annual_rate": rate,
+        "interest_total": total,
+        "formal_statement": statement,
+    }
+
+
 def _build_claims_for_cause(
     req: "GenerateLitigationPackageReq",
     agreed_rate: Optional[float],
@@ -415,27 +656,16 @@ def _build_claims_for_cause(
     start_date_display: str,
     interest_meta: Dict[str, Any],
 ) -> List[str]:
-    """用户诉请原样写入；利息诉请按约定/上限格式化；不追加暂计金额。"""
+    """用户诉请原样写入；不把【待填写】当成正式请求，也不追加暂计利息金额。"""
     claims: List[str] = []
     for raw in req.claims or []:
         c = str(raw).strip()
-        if not c:
+        if not c or c == PLACEHOLDER:
             continue
-        # 劳动争议用语规范化
+        # 劳动争议用语规范化。诉讼请求正文保持律师原文，不把【待填写】或笔记日期改写成利息金额。
         if "劳动" in req.cause_of_action:
             c = c.replace("判令被告", "裁决被申请人").replace("判令", "裁决")
             c = c.replace("原告", "申请人").replace("被告", "被申请人")
-        # 利息诉请：有约定利率时改写为规范表述
-        if "利息" in c and ("借贷" in req.cause_of_action or agreed_rate is not None):
-            rate = interest_meta.get("applied_rate")
-            if rate is not None:
-                note = ""
-                if interest_meta.get("capped"):
-                    note = f"（约定年利率{agreed_rate:g}%超过法定上限，按上限年利率{rate:g}%主张）"
-                c = (
-                    f"判令被告支付利息（以{req.claim_amount:,.2f}元为基数，按年利率{rate:g}%，"
-                    f"自{start_date_display}起计算至实际清偿之日止）{note}"
-                )
         # 律师费旁注
         if "律师费" in c and "需有合同约定" not in c:
             c = f"{c.rstrip('；;。.')}（需有合同约定或法律依据）"
@@ -452,7 +682,11 @@ class RMBCapitalReq(BaseModel):
 
 class IDCardReq(BaseModel):
     id_card: str = Field(..., examples=["110101199003072375"])
-    is_cadre: bool = Field(default=False, description="针对女性，是否为管理/干部岗位（干部55岁退休，工人50岁）")
+    is_cadre: bool = Field(default=False, description="女性原55周岁退休岗位（管理/技术）填 true；工人岗位填 false。男性忽略此项。")
+    receives_pension: Optional[bool] = Field(
+        default=None,
+        description="是否已依法享受养老保险待遇或领取退休金。未填则不认定劳务关系。",
+    )
 
 class USCCReq(BaseModel):
     uscc: str = Field(..., examples=["91440300708461136T"])
@@ -461,6 +695,8 @@ class CourtFeeReq(BaseModel):
     claim_amount: float = Field(..., ge=0, examples=[250000.0])
     case_type: str = Field(default="property")
     is_summary_procedure: bool = Field(default=False)
+    is_mediation_or_withdrawal: bool = Field(default=False, description="是否调解结案或申请撤诉（受理费减半）")
+    is_counterclaim: bool = Field(default=False, description="是否提起反诉（受理费减半）")
     divorce_base_fee: Optional[float] = Field(
         default=100.0,
         ge=50,
@@ -470,8 +706,38 @@ class CourtFeeReq(BaseModel):
     preservation_amount: Optional[float] = Field(
         default=None,
         ge=0,
-        description="保全申请金额，留空默认等于诉讼标的额",
+        description="保全申请金额。不传则不计保全费和诉责险，不得默认等于诉讼标的。",
     )
+    personality_base_fee: float = Field(default=300, ge=100, le=500, description="人格权案件每件基础收费，100至500元")
+    execution_flat_fee: float = Field(default=50, ge=50, le=500, description="没有执行金额时的申请费，50至500元")
+
+
+class PrivateLendingSegmentedReq(BaseModel):
+    principal: float = Field(..., gt=0, description="借款本金金额（元）", examples=[100000.0])
+    start_date: str = Field(..., description="计息起始日期（YYYY-MM-DD）", examples=["2019-01-01"])
+    end_date: str = Field(..., description="计息截止日期（YYYY-MM-DD）", examples=["2024-05-01"])
+    agreed_annual_rate: float = Field(..., ge=0, description="合同约定年利率（如 0.15 或 15.0 表示 15%）", examples=[0.18])
+    filing_date_lpr_1y: Optional[float] = Field(
+        default=None,
+        description="仅合同成立于2020-08-20之前时填写起诉时一年期LPR，如0.0345或3.45。不填则用起诉日期检索。不会默认按3%计算。",
+    )
+    contract_date: Optional[str] = Field(default=None, description="合同成立日。不填则按计息起算日检索保护上限。")
+    filing_date: Optional[str] = Field(default=None, description="起诉日期。合同早于2020-08-20且未填起诉时利率时必填。")
+    include_delayed_performance_days: int = Field(default=0, ge=0, description="迟延履行加倍部分计算天数（天）", examples=[0])
+
+
+class DeadlineExportIcsReq(BaseModel):
+    case_name: Optional[str] = Field(default="民事纠纷案件", description="案件名称或案号", examples=["(2026)京01民初888号"])
+    court_name: Optional[str] = Field(default=None, description="受理法院名称", examples=["北京市第一中级人民法院"])
+    appeal_service_date: Optional[str] = Field(default=None, description="裁判文书送达日期 (YYYY-MM-DD)", examples=["2026-04-10"])
+    appeal_judgment_type: Optional[str] = Field(default="judgment", description="裁判类型: judgment(判决15天) 或 ruling(裁定10天)")
+    preservation_start_date: Optional[str] = Field(default=None, description="财产保全采取起始日期 (YYYY-MM-DD)", examples=["2025-05-10"])
+    preservation_type: Optional[str] = Field(
+        default="bank_deposit",
+        description="保全财产类型: bank_deposit(银行存款1年), movable_property(动产2年), real_estate(不动产/股权3年)"
+    )
+    custom_events: Optional[List[Dict[str, Any]]] = Field(default=None, description="自定义补充办案日历事件列表")
+    download_as_file: bool = Field(default=False, description="是否直接返回 .ics 文件流供浏览器下载")
 
 
 class PreservationInsuranceReq(BaseModel):
@@ -537,7 +803,8 @@ class LaborCalcReq(BaseModel):
     monthly_salary: float = Field(..., examples=[12000.0])
     hire_date: str = Field(..., examples=["2021-03-01"])
     termination_date: str = Field(..., examples=["2024-05-15"])
-    local_avg_salary: Optional[float] = Field(default=None)
+    local_avg_salary: Optional[float] = Field(default=None, description="手填的当地职工月平均工资。内置省份表未核验，不能用于封顶。")
+    prior_30days_notice: bool = Field(default=False, description="解除前是否已提前三十日书面通知")
     termination_reason: Optional[Literal[
         "expiry_termination",
         "employer_dismissal_with_notice",
@@ -551,7 +818,7 @@ class PartyInfo(BaseModel):
     id_card_or_uscc: str = Field(default="", examples=["110101199003072375"])
     gender: Optional[str] = Field(default=None, examples=["男"])
     birth: Optional[str] = Field(default=None, examples=["1990年3月7日"])
-    ethnicity: Optional[str] = Field(default="汉族", examples=["汉族"])
+    ethnicity: Optional[str] = Field(default=None, examples=["汉族"])
     address: str = Field(default="", examples=["北京市朝阳区建国门外大街1号"])
     phone: Optional[str] = Field(default=None, examples=["13800000000"])
     legal_rep: Optional[str] = Field(default=None, examples=["李某某"])
@@ -606,33 +873,52 @@ SubDocType = Literal[
     "id_credential_attachment",
     "lawyer_license_attachment",
     "evidence_bundle_cover",
+    "demand_letter",
+    "answer_brief",
+    "labor_compensation_calc",
 ]
+
+
+class SettledInterestInput(BaseModel):
+    """当前案件里 01 已经算好的那一笔民间借贷利息。没有截止日时不要用来写金额。"""
+    principal: Optional[float] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    annual_rate: Optional[float] = Field(default=None, description="年利率百分数，例如 3.45")
+    interest_total: Optional[float] = None
+    formal_statement: Optional[str] = None
+
 
 class GenerateLitigationPackageReq(BaseModel):
     cause_of_action: str = Field(
-        default="民间借贷纠纷",
-        description="案由：民间借贷纠纷 / 劳动人事争议 / 买卖合同纠纷 / 通用民事纠纷",
-        examples=["民间借贷纠纷"]    )
+        default="",
+        description="案由。不预填民间借贷纠纷。",
+        examples=["民间借贷纠纷"],
+    )
     plaintiff: PartyInfo
     defendant: PartyInfo
     claims: List[str] = Field(
         default_factory=list,
         description="诉讼请求列表（原样写入文书）",
     )
-    claim_amount: float = Field(default=200000.0)
+    claim_amount: float = Field(default=0.0)
     raw_case_notes: str = Field(
         ...,
         description="律师碎片化案情笔记（AI将自动提炼并引用民法典或劳动合同法法条）",
         examples=["2022年3月5日，被告李四因公司资金周转，向原告借款20万元，原告当天通过招商银行网银全额转入被告账户。被告出具借条承诺1年内还清，年化利率15%。借款到期后原告多次通过微信及电话催促还款，被告拒不偿还本金和利息。"]    )
-    court_name: str = Field(default="北京市朝阳区人民法院", examples=["北京市朝阳区人民法院"])
+    court_name: str = Field(default="", examples=["北京市朝阳区人民法院"])
     arbitration_committee: Optional[str] = Field(
         default=None,
         description="劳动争议致送机关全称；未填时按地区补全为××劳动人事争议仲裁委员会",
     )
-    lawyer_name: str = Field(default="王律师", examples=["王律师"])
-    law_firm: str = Field(default="北京市京师律师事务所", examples=["北京市京师律师事务所"])
-    lawyer_phone: str = Field(default="13900008888", examples=["13900008888"])
-    lawyer_license: str = Field(default="11101201510123456", examples=["11101201510123456"])
+    lawyer_name: str = Field(default="", examples=["承办律师姓名"])
+    law_firm: str = Field(default="", examples=["律师事务所全称"])
+    lawyer_phone: str = Field(default="", examples=["承办律师电话"])
+    lawyer_license: str = Field(default="", examples=["律师执业证号"])
+    monthly_salary: Optional[float] = Field(default=None, description="劳动争议月工资，未填则补偿清单不计算金额")
+    hire_date: Optional[str] = Field(default=None, description="入职日期 YYYY-MM-DD")
+    termination_date: Optional[str] = Field(default=None, description="解除或终止日期 YYYY-MM-DD")
+    termination_reason: Optional[str] = Field(default=None, description="解除原因，传给劳动补偿计算器")
     auto_generate_sub_docs: bool = Field(default=True, description="是否一并生成授权委托书、送达地址确认书、身份证明或保全申请书（兼容参数）")
     sub_documents: Optional[List[SubDocType]] = Field(
         default=None,
@@ -642,10 +928,16 @@ class GenerateLitigationPackageReq(BaseModel):
         default="spc_mobile",
         description="压缩包结构格式：spc_mobile（最高人民法院移动微法院4类目录标准）或 flat（传统单层扁平结构）",
     )
+    matter_id: Optional[str] = Field(default=None, description="在办案件编号。传入后才检查利冲结论、管辖确认和案由是否一致")
+    procedure: Optional[str] = Field(default=None, description="arbitration 时不得生成法院起诉状")
     evidences: Optional[List[EvidenceItem]] = Field(default=None, description="证据和证据来源，证人姓名和住所")
     copies: Optional[int] = Field(default=None, description="起诉状副本份数，默认等于被告人数")
     agreed_annual_rate: Optional[float] = Field(default=None, description="约定年利率（百分数）")
     contract_date: Optional[str] = Field(default=None, description="合同成立日 YYYY-MM-DD")
+    settled_interest: Optional[SettledInterestInput] = Field(
+        default=None,
+        description="当前案件 01 精算：本金、起息日、截止日和利率。没有截止日时不写入利息金额。",
+    )
 
 
 # ==============================================================================
@@ -660,7 +952,11 @@ async def api_rmb_capital(req: RMBCapitalReq):
 @router.post("/api/v1/phase1/calc/idcard", summary="18位身份证解析与法定退休年龄判断")
 @router.post("/api/calc/idcard", include_in_schema=False)
 async def api_idcard(req: IDCardReq):
-    return validate_and_parse_idcard(req.id_card, is_cadre=req.is_cadre)
+    return validate_and_parse_idcard(
+        req.id_card,
+        is_cadre=req.is_cadre,
+        receives_pension=req.receives_pension,
+    )
 
 
 @router.post("/api/v1/phase1/calc/uscc", summary="18位统一社会信用代码校验与解析 (GB 32100-2015)")
@@ -676,11 +972,187 @@ async def api_court_fees(req: CourtFeeReq):
             claim_amount=req.claim_amount,
             case_type=req.case_type,
             is_summary_procedure=req.is_summary_procedure,
+            is_mediation_or_withdrawal=req.is_mediation_or_withdrawal,
+            is_counterclaim=req.is_counterclaim,
             divorce_base_fee=req.divorce_base_fee if req.divorce_base_fee is not None else 100.0,
             preservation_amount=req.preservation_amount,
+            personality_base_fee=req.personality_base_fee,
+            execution_flat_fee=req.execution_flat_fee,
         )
     except ValueError as e:
         raise _http_422(str(e)) from e
+
+@router.post("/api/v1/phase1/calc/private-lending-segmented", summary="民间借贷 2020-08-20 跨期分段利息精算")
+@router.post("/api/calc/private-lending-segmented", include_in_schema=False)
+async def api_private_lending_segmented(req: PrivateLendingSegmentedReq):
+    try:
+        return calculate_private_lending_segmented_interest(
+            principal=req.principal,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            agreed_annual_rate=req.agreed_annual_rate,
+            filing_date_lpr_1y=req.filing_date_lpr_1y,
+            include_delayed_performance_days=req.include_delayed_performance_days,
+            contract_date=req.contract_date,
+            filing_date=req.filing_date,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
+
+
+@router.post("/api/v1/phase1/deadlines/export-ics", summary="办案关键期限 .ics 日历导出引擎")
+async def api_export_deadlines_ics(req: DeadlineExportIcsReq):
+    """
+    一键生成并导出符合 RFC 5545 标准的 .ics 日历日程文件。
+    支持自动计算：
+    1. 15日（判决）/ 10日（裁定）上诉期（遇法定节假日自动顺延，遇调休补班工作日不顺延）；
+    2. 银行存款(1年)、动产(2年)、不动产/股权(3年)财产保全届满前 30日、15日、7日三级续封预警日程；
+    3. 自定义诉讼事件批量导入（开庭日、举证期限等）。
+    """
+    from datetime import datetime, date, timedelta
+    events: List[Dict[str, Any]] = []
+    case_title = req.case_name or "智律办案案件"
+    loc = req.court_name or ""
+
+    # 1. 上诉期计算与日程
+    if req.appeal_service_date:
+        try:
+            jt = req.appeal_judgment_type or "judgment"
+            appeal_res = calculate_appeal_deadline(
+                service_date=req.appeal_service_date,
+                judgment_type=jt,
+                treat_weekend_as_holiday=True,
+            )
+            deadline_str = appeal_res["deadline"]
+            jt_name = "判决书（15日）" if "judgment" in jt.lower() else "裁定书（10日）"
+            events.append({
+                "title": f"【上诉期届满】{case_title}",
+                "deadline": deadline_str,
+                "description": (
+                    f"案由/案号：{case_title}\n"
+                    f"送达日期：{req.appeal_service_date}\n"
+                    f"文书类型：{jt_name}\n"
+                    f"法律依据：{appeal_res.get('legal_basis', '《民事诉讼法》第一百七十一条')}\n"
+                    f"核算说明：期间届满日已自动顺延节假日（遇到调休补班正常上班）。请主办律师核对是否已按时递交上诉状及交纳上诉费。"
+                ),
+                "location": loc,
+                "category": "上诉期限",
+            })
+            # 上诉期届满前1天紧急提醒
+            d_dline = datetime.strptime(deadline_str, "%Y-%m-%d").date()
+            d_prev = d_dline - timedelta(days=1)
+            events.append({
+                "title": f"【上诉期倒数第1天】{case_title}",
+                "deadline": d_prev.strftime("%Y-%m-%d"),
+                "description": f"明日（{deadline_str}）上诉期届满！请务必今日确认上诉状已成功送达法院立案庭或已网上传递。",
+                "location": loc,
+                "category": "上诉期限预警",
+            })
+        except Exception as e:
+            logger.warning(f"上诉期日程生成异常: {e}")
+
+    # 2. 财产保全续封预警日程
+    if req.preservation_start_date:
+        try:
+            ptype = req.preservation_type or "bank_deposit"
+            pres_res = calculate_preservation_renewal(
+                preservation_type=ptype,
+                start_date=req.preservation_start_date,
+            )
+            exp_date_str = pres_res["expire_date"]
+            p_name = pres_res.get("type_name", "财产保全")
+            d_exp = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
+
+            # 届满前 30 天
+            d_30 = d_exp - timedelta(days=30)
+            events.append({
+                "title": f"【保全续封30日前预警】{case_title} ({p_name})",
+                "deadline": d_30.strftime("%Y-%m-%d"),
+                "description": (
+                    f"案由/案号：{case_title}\n"
+                    f"保全财产类型：{p_name}\n"
+                    f"保全采取日期：{req.preservation_start_date}\n"
+                    f"保全届满日期：{exp_date_str}\n"
+                    f"实务提示：距保全届满尚余30日，请主办律师联系委托人核实是否需要申请续行财产保全，并起草《续行财产保全申请书》。"
+                ),
+                "location": loc,
+                "category": "财产保全续封",
+            })
+
+            # 届满前 15 天
+            d_15 = d_exp - timedelta(days=15)
+            events.append({
+                "title": f"【保全续封15日前提醒】{case_title} ({p_name})",
+                "deadline": d_15.strftime("%Y-%m-%d"),
+                "description": (
+                    f"案由/案号：{case_title}\n"
+                    f"保全届满日期：{exp_date_str}\n"
+                    f"实务提示：距保全届满尚余15日，请联系承办法官确认续保案号并向执行局/立案庭递交续封申请与担保材料。"
+                ),
+                "location": loc,
+                "category": "财产保全续封",
+            })
+
+            # 届满前 7 天（法定红线）
+            d_7 = d_exp - timedelta(days=7)
+            events.append({
+                "title": f"【保全续封7日前最后时限】{case_title} ({p_name})",
+                "deadline": d_7.strftime("%Y-%m-%d"),
+                "description": (
+                    f"【紧急红线提示】《最高人民法院关于人民法院办理财产保全若干问题的规定》第十八条明确规定："
+                    f"申请保全人申请续行保全的，应当在保全期限届满七日前向人民法院提出书面申请！今日系最后提交时限！"
+                ),
+                "location": loc,
+                "category": "财产保全法定红线",
+            })
+
+            # 届满当日
+            events.append({
+                "title": f"【保全效力届满日】{case_title} ({p_name})",
+                "deadline": exp_date_str,
+                "description": f"本日系保全效力届满日。请确认法院已出具续行保全裁定书并完成续冻/续查封手续。",
+                "location": loc,
+                "category": "财产保全届满",
+            })
+        except Exception as e:
+            logger.warning(f"保全续封日程生成异常: {e}")
+
+    # 3. 追加自定义事件
+    if req.custom_events:
+        for ce in req.custom_events:
+            if isinstance(ce, dict) and (ce.get("date") or ce.get("deadline")):
+                events.append(ce)
+
+    if not events:
+        events.append({
+            "title": f"办案备忘：{case_title}",
+            "deadline": date.today().strftime("%Y-%m-%d"),
+            "description": "LawFlow 智律工作台办案备忘录提醒",
+            "location": loc,
+            "category": "诉讼备忘",
+        })
+
+    ics_content = build_lawyer_deadline_ics(events, calendar_name=f"LawFlow期限提醒-{case_title}")
+
+    if req.download_as_file:
+        cal_filename = f"{sanitize_filename(case_title)}_办案期限.ics"
+        return Response(
+            content=ics_content,
+            media_type="text/calendar; charset=utf-8",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{quote(cal_filename)}"
+            }
+        )
+
+    return {
+        "status": "success",
+        "case_name": case_title,
+        "event_count": len(events),
+        "events": events,
+        "ics_content": ics_content,
+        "note": "可将 ics_content 保存为 .ics 文件直接导入手机或电脑日历软件。"
+    }
+
 
 
 @router.post("/api/v1/phase1/calc/preservation-insurance", summary="诉讼保全责任保险（诉责险）市场参考成本估算")
@@ -729,6 +1201,7 @@ async def api_labor_calc(req: LaborCalcReq):
             hire_date=req.hire_date,
             termination_date=req.termination_date,
             local_avg_salary=req.local_avg_salary,
+            prior_30days_notice=req.prior_30days_notice,
             termination_reason=req.termination_reason,
         )
     except ValueError as e:
@@ -748,6 +1221,9 @@ class StatuteLimitationsReq(BaseModel):
     )
     damage_date: Optional[str] = Field(default=None, description="权利受到损害之日")
     holidays: Optional[List[str]] = Field(default=None, description="额外法定节假日 YYYY-MM-DD 列表")
+    employment_ongoing: bool = Field(default=False, description="劳动关系是否仍在存续")
+    wage_arrears: bool = Field(default=False, description="请求是否为拖欠劳动报酬")
+    employment_end_date: Optional[str] = Field(default=None, description="劳动关系终止日，劳动报酬争议自该日起一年")
 
 class PreservationRenewalReq(BaseModel):
     preservation_type: Literal["bank_deposit", "movable_property", "real_estate_equity"] = Field(
@@ -766,6 +1242,20 @@ class StatuteValidityReq(BaseModel):
 @router.post("/api/calc/statute-limitations", include_in_schema=False)
 async def api_statute_limitations(req: StatuteLimitationsReq):
     try:
+        if req.cause_type == "labor_arbitration_1y":
+            from gateway.utils.procedural_periods import calculate_labor_arbitration_limitation
+            interruptions = []
+            for event in req.interruption_events or []:
+                if isinstance(event, dict) and event.get("date"):
+                    interruptions.append(str(event["date"]))
+            return calculate_labor_arbitration_limitation(
+                start_date=req.start_date,
+                employment_ongoing=req.employment_ongoing,
+                wage_arrears=req.wage_arrears,
+                employment_end_date=req.employment_end_date,
+                interruption_dates=interruptions,
+                today_date=req.today_date,
+            )
         return calculate_statute_of_limitations(
             start_date=req.start_date,
             cause_type=req.cause_type,
@@ -853,7 +1343,11 @@ class AppealDeadlineReq(BaseModel):
     holidays: Optional[List[str]] = Field(default=None, description="额外法定节假日 YYYY-MM-DD 列表；默认读 data/legal/holidays_cn.json")
     treat_weekend_as_holiday: bool = Field(
         default=True,
-        description="周六日是否顺延；口径 TODO(律师核实)，默认 True",
+        description="未调休的周六、周日是否顺延。依据《民事诉讼法》第八十五条，默认顺延；国务院调休补班日不顺延。",
+    )
+    party_without_domicile: bool = Field(
+        default=False,
+        description="当事人在中华人民共和国领域内没有住所时，判决和裁定的上诉期均为三十日（《民事诉讼法》第二百八十六条）。",
     )
 
 
@@ -906,6 +1400,107 @@ async def api_appeal_deadline(req: AppealDeadlineReq):
             judgment_type=req.judgment_type,
             holidays=req.holidays,
             treat_weekend_as_holiday=req.treat_weekend_as_holiday,
+            party_without_domicile=req.party_without_domicile,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
+
+
+class DefenseDeadlineReq(BaseModel):
+    service_date: str = Field(..., description="收到起诉状副本之日 YYYY-MM-DD")
+    holidays: Optional[List[str]] = None
+    treat_weekend_as_holiday: bool = True
+
+
+class EvidencePeriodReq(BaseModel):
+    anchor_date: str = Field(..., description="起算日；mode=notice_due_date 时填写通知书上的届满日")
+    mode: Literal["first_ordinary_minimum", "second_new_evidence_minimum", "court_designated", "notice_due_date"] = "first_ordinary_minimum"
+    period_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    holidays: Optional[List[str]] = None
+    treat_weekend_as_holiday: bool = True
+
+
+@router.post("/api/v1/phase1/calc/defense-deadline", summary="答辩期（《民事诉讼法》第128条，十五日）")
+async def api_defense_deadline(req: DefenseDeadlineReq):
+    from gateway.utils.procedural_periods import calculate_defense_answer_deadline
+    try:
+        return calculate_defense_answer_deadline(
+            req.service_date,
+            holidays=req.holidays,
+            treat_weekend_as_holiday=req.treat_weekend_as_holiday,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
+
+
+@router.post("/api/v1/phase1/calc/evidence-period", summary="举证期限下限或法院指定天数")
+async def api_evidence_period(req: EvidencePeriodReq):
+    from gateway.utils.procedural_periods import calculate_evidence_period
+    try:
+        return calculate_evidence_period(
+            req.anchor_date,
+            period_days=req.period_days,
+            mode=req.mode,
+            holidays=req.holidays,
+            treat_weekend_as_holiday=req.treat_weekend_as_holiday,
+        )
+    except ValueError as e:
+        raise _http_422(str(e)) from e
+
+
+class LaborAwardDeadlineReq(BaseModel):
+    receipt_date: str = Field(..., description="收到劳动仲裁裁决书之日 YYYY-MM-DD")
+    path: Literal["worker_final_15", "either_party_nonfinal_15", "employer_revoke_30"]
+
+
+class ArbitrationSetAsideReq(BaseModel):
+    receipt_date: str = Field(..., description="收到商事仲裁裁决书之日 YYYY-MM-DD")
+
+
+@router.post("/api/v1/phase1/calc/labor-award-deadline", summary="收到劳动裁决后的起诉或撤销期限")
+async def api_labor_award_deadline(req: LaborAwardDeadlineReq):
+    from gateway.utils.procedural_periods import calculate_labor_award_court_deadline
+    try:
+        return calculate_labor_award_court_deadline(req.receipt_date, req.path)
+    except ValueError as e:
+        raise _http_422(str(e)) from e
+
+
+@router.post("/api/v1/phase1/calc/arbitration-set-aside", summary="申请撤销商事仲裁裁决的三个月期限")
+async def api_arbitration_set_aside(req: ArbitrationSetAsideReq):
+    from gateway.utils.procedural_periods import calculate_arbitration_set_aside_deadline
+    try:
+        return calculate_arbitration_set_aside_deadline(req.receipt_date)
+    except ValueError as e:
+        raise _http_422(str(e)) from e
+
+
+class EnforcementDeadlineReq(BaseModel):
+    anchor_date: str = Field(..., examples=["2024-03-11"], description="起算日期 YYYY-MM-DD")
+    anchor_type: Literal[
+        "performance_last_day",
+        "last_installment",
+        "effective_date",
+        "effective_plus_days",
+    ] = Field(default="performance_last_day")
+    performance_days: int = Field(default=10, ge=0, le=3650, description="生效之日起的履行天数，仅 effective_plus_days 使用")
+    today_date: Optional[str] = Field(default=None)
+    treat_weekend_as_holiday: bool = Field(
+        default=True,
+        description="未调休的周六、周日是否顺延。依据《民事诉讼法》第八十五条，默认顺延。",
+    )
+
+
+@router.post("/api/v1/phase1/calc/enforcement-deadline", summary="申请执行期间届满日（《民事诉讼法》第250条）")
+@router.post("/api/calc/enforcement-deadline", include_in_schema=False)
+async def api_enforcement_deadline(req: EnforcementDeadlineReq):
+    try:
+        return calculate_enforcement_application_deadline(
+            anchor_date=req.anchor_date,
+            anchor_type=req.anchor_type,
+            performance_days=req.performance_days,
+            today_date=req.today_date,
+            treat_weekend_as_holiday=req.treat_weekend_as_holiday,
         )
     except ValueError as e:
         raise _http_422(str(e)) from e
@@ -915,6 +1510,7 @@ async def api_appeal_deadline(req: AppealDeadlineReq):
 # 移动微法院在线诉讼配套支撑材料生成与公文包 ZIP 归档引擎
 # ==============================================================================
 _PACKAGE_ARCHIVE_REGISTRY: Dict[str, Dict[str, Tuple[str, str]]] = {}
+_CITATION_BLOCKED_FILES: set = set()
 
 
 def _create_law_firm_letter_docx(
@@ -928,8 +1524,9 @@ def _create_law_firm_letter_docx(
     cause_of_action: str,
     court_name: str,
     sign_date: str,
+    letter_no: str = "",
 ) -> None:
-    """生成正式《律师事务所公函》（含案由、委派律师、律所、受诉法院）。"""
+    """生成正式《律师事务所公函》（含案由、委派律师、律所、受诉法院、函号）。"""
     import docx as python_docx
     from docx.shared import Pt, Inches, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -944,7 +1541,7 @@ def _create_law_firm_letter_docx(
     # 律所抬头红标
     p_header = doc.add_paragraph()
     p_header.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r_firm = p_header.add_run(law_firm or "北京市京师律师事务所")
+    r_firm = p_header.add_run((law_firm or "").strip() or PLACEHOLDER)
     r_firm.font.name = "黑体"
     r_firm.font.size = Pt(20)
     r_firm.font.bold = True
@@ -959,11 +1556,10 @@ def _create_law_firm_letter_docx(
     r_title.font.size = Pt(16)
     r_title.font.bold = True
 
-    # 函号预留
-    current_year = datetime.now().year
+    # 函号：本所前缀 + 年度流水。没有前缀时不写示例字号。
     p_no = doc.add_paragraph()
     p_no.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    r_no = p_no.add_run(f"（{current_year}）京律函字第【待填写】号")
+    r_no = p_no.add_run((letter_no or "").strip() or "【待填写函号前缀】")
     r_no.font.name = "仿宋_GB2312"
     r_no.font.size = Pt(11)
 
@@ -1030,8 +1626,6 @@ def _create_law_firm_letter_docx(
     r_s3.font.size = Pt(12)
 
     doc.save(output_path)
-    from gateway.utils.disclaimer import add_disclaimer_to_docx
-    add_disclaimer_to_docx(output_path)
 
 
 def _create_id_credential_attachment_docx(
@@ -1138,8 +1732,6 @@ def _create_id_credential_attachment_docx(
     r_foot.font.size = Pt(11)
 
     doc.save(output_path)
-    from gateway.utils.disclaimer import add_disclaimer_to_docx
-    add_disclaimer_to_docx(output_path)
 
 
 def _create_lawyer_license_attachment_docx(
@@ -1237,8 +1829,6 @@ def _create_lawyer_license_attachment_docx(
     r_foot.font.size = Pt(11)
 
     doc.save(output_path)
-    from gateway.utils.disclaimer import add_disclaimer_to_docx
-    add_disclaimer_to_docx(output_path)
 
 
 def _create_evidence_bundle_cover_docx(
@@ -1344,8 +1934,6 @@ def _create_evidence_bundle_cover_docx(
     r_foot.font.size = Pt(11)
 
     doc.save(output_path)
-    from gateway.utils.disclaimer import add_disclaimer_to_docx
-    add_disclaimer_to_docx(output_path)
 
 
 def classify_litigation_file(filename: str) -> str:
@@ -1418,6 +2006,69 @@ def build_litigation_archive(
     return zip_filename, zip_path
 
 
+_DEMO_LAWYER_NAME = "王律师"
+_DEMO_LICENSE = "11101201510123456"
+_DEMO_PHONE = "13900008888"
+_KEPT_FIRM_NAME = "北京市京师律师事务所"
+
+
+class LetterPrefixReq(BaseModel):
+    prefix: str = Field(default="", description="本所公函函号前缀，例如京师函。留空则公函写【待填写函号前缀】")
+
+
+def _is_demo_identity_combo(name: str, license_no: str, phone: str) -> bool:
+    """演示身份是组合：姓名为王律师，并且执业证或手机是示例号码。"""
+    if (name or "").strip() != _DEMO_LAWYER_NAME:
+        return False
+    return (license_no or "").strip() == _DEMO_LICENSE or (phone or "").strip() == _DEMO_PHONE
+
+
+def _counsel_for_package(req: GenerateLitigationPackageReq) -> Dict[str, str]:
+    """名册层会丢掉京师所全称。用户或名册里的真实全称写回文书，演示组合除外。"""
+    from gateway.utils.firm_roster import counsel_for_documents, default_counsel
+
+    counsel = counsel_for_documents(
+        req.lawyer_name, req.law_firm, req.lawyer_license, req.lawyer_phone,
+    )
+    raw_name = (req.lawyer_name or "").strip()
+    raw_firm = (req.law_firm or "").strip()
+    raw_license = (req.lawyer_license or "").strip()
+    raw_phone = (req.lawyer_phone or "").strip()
+    if raw_firm == _KEPT_FIRM_NAME and not _is_demo_identity_combo(raw_name, raw_license, raw_phone):
+        counsel["law_firm"] = _KEPT_FIRM_NAME
+        return counsel
+    if raw_firm:
+        return counsel
+    picked = default_counsel() or {}
+    roster_firm = str(picked.get("law_firm") or "").strip()
+    roster_demo = _is_demo_identity_combo(
+        str(picked.get("lawyer_name") or ""),
+        str(picked.get("license_no") or ""),
+        str(picked.get("phone") or ""),
+    )
+    if roster_firm == _KEPT_FIRM_NAME and not roster_demo and not (counsel.get("law_firm") or "").strip():
+        counsel["law_firm"] = _KEPT_FIRM_NAME
+    return counsel
+
+
+@router.get("/api/v1/phase1/letter-prefix", summary="读取本所公函函号前缀")
+async def api_get_letter_prefix():
+    from gateway.utils.letter_sequence import get_letter_prefix
+
+    return {"status": "success", "prefix": get_letter_prefix()}
+
+
+@router.post("/api/v1/phase1/letter-prefix", summary="保存本所公函函号前缀")
+async def api_set_letter_prefix(req: LetterPrefixReq):
+    from gateway.utils.letter_sequence import set_letter_prefix
+
+    try:
+        prefix = set_letter_prefix(req.prefix)
+    except ValueError as exc:
+        raise _http_422(str(exc)) from exc
+    return {"status": "success", "prefix": prefix}
+
+
 # ==============================================================================
 # 核心大模型案情法言法语润色与诉讼文书包一键流水线
 # ==============================================================================
@@ -1429,6 +2080,37 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
     2. 主起诉状/仲裁申请书 (.docx + .pdf)
     3. 配套法律公文包（授权委托书、法定代表人身份证明、送达地址确认书、保全申请书或补偿金清单）
     """
+    if not (req.cause_of_action or "").strip():
+        raise _http_422("请填写案由。不会按民间借贷纠纷生成。")
+    if not _usable_claim_lines(req.claims):
+        raise _http_422("请填写诉讼请求。不会把【待填写】写成正式诉讼请求。")
+    from gateway.utils.practice_workflow import (
+        assert_generatable_cause,
+        cause_matches_matter,
+        court_generation_block,
+        drafting_block_reason,
+    )
+    try:
+        document_preset = assert_generatable_cause(req.cause_of_action)
+    except ValueError as exc:
+        raise _http_422(str(exc)) from exc
+    if (req.procedure or "") == "arbitration" and document_preset != "劳动人事争议":
+        raise _http_422("程序是商事仲裁。不能生成法院起诉状，也不使用微法院四分卷。请改走仲裁材料清单。")
+    if req.matter_id:
+        from gateway.utils.matter_vault_db import get_matter_by_id
+        linked = get_matter_by_id(req.matter_id)
+        if not linked:
+            raise HTTPException(status_code=404, detail="案件空间不存在")
+        blocked = drafting_block_reason(linked.get("practice") or {})
+        if blocked:
+            raise HTTPException(status_code=409, detail=blocked)
+        if not cause_matches_matter(req.cause_of_action, linked):
+            raise _http_422("文书案由和案件里的请求不一致。不会改用民间借贷。")
+        forum_block = court_generation_block(linked.get("practice") or {}, req.cause_of_action)
+        if forum_block:
+            raise _http_422(forum_block)
+    filing_route = "labor_arbitration" if document_preset == "劳动人事争议" else "court"
+    recommended_archive = "flat" if filing_route != "court" else req.archive_format
     timestamp = int(time.time())
     package_id = f"pkg-{uuid.uuid4().hex[:10]}"
     filing_date_str = datetime.now().strftime("%Y年%m月%d日")
@@ -1439,7 +2121,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
     defendant = _resolve_party(req.defendant, "defendant", missing_fields)
 
     court_full = normalize_court_name(req.court_name)
-    is_labor = "劳动" in req.cause_of_action
+    is_labor = document_preset == "劳动人事争议" or "劳动" in req.cause_of_action
     arbitration_full = ""
     if is_labor:
         region_hint = (req.court_name or "").replace("人民法院", "").replace("法院", "").strip()
@@ -1499,56 +2181,95 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
     citation_audit = audit_citations_in_text(facts_polished, auto_sanitize=True)
     if citation_audit.get("has_abrogated_laws") and citation_audit.get("sanitized_text"):
         facts_polished = citation_audit["sanitized_text"]
+    download_blocked = bool(citation_audit.get("has_hallucinations"))
+    download_ack_required = (not download_blocked) and citation_audit.get("overall_status") in (
+        "PARTIALLY_VERIFIED",
+        "ABROGATED_INTERCEPTED",
+        "NO_CITATIONS",
+    )
 
     statute_pattern = re.compile(r"《(?:中华人民共和国)?(?:民法典|劳动合同法|民事诉讼法)[^》]+》[第\d条款、及]+")
     statute_citations = statute_pattern.findall(facts_polished)
 
-    court_fees = calculate_court_fees(req.claim_amount)
+    court_fees = None
+    if req.claim_amount and req.claim_amount > 0:
+        try:
+            court_fees = calculate_court_fees(req.claim_amount)
+        except ValueError as fee_err:
+            missing_fields.append(f"court_fees:{fee_err}")
+    else:
+        missing_fields.append("claim_amount")
 
-    # 利息：约定利率 + private_lending_cap 上限，不再默认 4 倍 LPR
+    # 利息只采用当前案件里 01 已算出的本金、起止日和利率。没有截止日时不写金额，也不把笔记第一个日期当起息日。
+    settled = _ready_settled_interest(req.settled_interest)
     interest_statement = ""
-    start_date_str = extract_first_date_iso(req.raw_case_notes) or req.contract_date or "2023-01-01"
-    start_date_display = format_date_cn(start_date_str)
+    start_date_str = ""
+    end_date_iso = ""
     total_interest_val = 0.0
     agreed_rate = req.agreed_annual_rate
-    if agreed_rate is None:
-        agreed_rate = extract_agreed_annual_rate(req.raw_case_notes)
-    interest_meta: Dict[str, Any] = {"applied_rate": agreed_rate, "capped": False}
+    if agreed_rate is None and settled and settled.get("annual_rate") is not None:
+        agreed_rate = settled["annual_rate"]
+    interest_meta: Dict[str, Any] = {
+        "applied_rate": agreed_rate,
+        "capped": False,
+        "agreed_rate": agreed_rate,
+        "from_settled_calc": False,
+    }
 
-    if "借贷" in req.cause_of_action:
-        contract_date = req.contract_date or start_date_str
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        try:
-            lpr_calc = calculate_lpr_interest(
-                principal=req.claim_amount,
-                start_date=start_date_str,
-                end_date=end_date,
-                fixed_annual_rate=agreed_rate if agreed_rate is not None else None,
-                rule_mode="private_lending_cap",
-                contract_date=contract_date,
-            )
-            interest_statement = lpr_calc.get("complaint_statement", "")
-            total_interest_val = float(lpr_calc.get("total_interest", 0.0))
-            # 从分段取实际执行年利率
-            segs = lpr_calc.get("segments") or []
-            applied = None
-            capped = False
-            for seg in segs:
-                if seg.get("applied_annual_rate") is not None:
-                    applied = float(seg["applied_annual_rate"])
-                if seg.get("is_rate_capped"):
-                    capped = True
-            if applied is None and agreed_rate is not None:
-                applied = float(agreed_rate)
-            interest_meta = {"applied_rate": applied, "capped": capped, "agreed_rate": agreed_rate}
-        except Exception as e:
-            logger.warning(f"利息精算失败: {e}")
-            interest_meta = {"applied_rate": agreed_rate, "capped": False, "agreed_rate": agreed_rate}
+    if document_preset == "民间借贷纠纷" and settled:
+        start_date_str = settled["start_date"]
+        end_date_iso = settled["end_date"]
+        interest_meta["from_settled_calc"] = True
+        if settled.get("annual_rate") is not None:
+            interest_meta["applied_rate"] = settled["annual_rate"]
+        if settled.get("formal_statement"):
+            interest_statement = settled["formal_statement"]
+            if settled.get("interest_total") is not None:
+                total_interest_val = float(settled["interest_total"])
+        elif settled.get("annual_rate") is not None:
+            try:
+                lpr_calc = calculate_lpr_interest(
+                    principal=settled["principal"],
+                    start_date=start_date_str,
+                    end_date=end_date_iso,
+                    fixed_annual_rate=settled["annual_rate"],
+                    rule_mode="private_lending_cap",
+                    contract_date=req.contract_date or start_date_str,
+                )
+                interest_statement = lpr_calc.get("complaint_statement") or ""
+                total_interest_val = float(
+                    settled["interest_total"] if settled.get("interest_total") is not None else lpr_calc.get("total_interest") or 0.0
+                )
+                segs = lpr_calc.get("segments") or []
+                applied = settled.get("annual_rate")
+                capped = False
+                for seg in segs:
+                    if seg.get("applied_annual_rate") is not None:
+                        applied = float(seg["applied_annual_rate"])
+                    if seg.get("is_rate_capped"):
+                        capped = True
+                interest_meta = {
+                    "applied_rate": applied,
+                    "capped": capped,
+                    "agreed_rate": agreed_rate,
+                    "from_settled_calc": True,
+                }
+            except Exception as e:
+                logger.warning("利息精算失败: %s", e)
+                interest_statement = ""
+                total_interest_val = 0.0
+                interest_meta["from_settled_calc"] = False
+                missing_fields.append("interest_calc")
+    elif document_preset == "民间借贷纠纷":
+        missing_fields.append("interest_end_date")
 
+    if interest_statement and interest_statement in (facts_polished or ""):
+        interest_statement = ""
+
+    start_date_display = format_date_cn(start_date_str) if start_date_str else ""
     claims_final = _build_claims_for_cause(req, agreed_rate, start_date_str, start_date_display, interest_meta)
     if not claims_final:
-        claims_final = [PLACEHOLDER]
-        missing_fields.append("claims")
+        raise _http_422("请填写诉讼请求。不会把【待填写】写成正式诉讼请求。")
 
     evidences = []
     if req.evidences:
@@ -1582,22 +2303,35 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
     common_party.update(_party_ctx("applicant", plaintiff))
     common_party.update(_party_ctx("respondent", defendant))
 
-    if "借贷" in req.cause_of_action:
+    if req.claim_amount and req.claim_amount > 0:
+        amount_text = f"{req.claim_amount:,.2f}"
+        amount_capital = rmb_to_capital(req.claim_amount)
+    else:
+        amount_text = PLACEHOLDER
+        amount_capital = PLACEHOLDER
+
+    if document_preset == "民间借贷纠纷":
         main_tpl = "civil_complaint_loan_template.docx"
         doc_label = "民事起诉状(民间借贷版)"
         context_main = {
             **common_party,
             "claims": claims_final,
-            "loan_principal": f"{req.claim_amount:,.2f}",
-            "loan_principal_capital": rmb_to_capital(req.claim_amount),
-            "interest_start_date": start_date_display,
+            "loan_principal": amount_text,
+            "loan_principal_capital": amount_capital,
+            "interest_start_date": format_date_cn(start_date_str) if start_date_str else PLACEHOLDER,
             "interest_annual_rate": (
-                f"{interest_meta['applied_rate']:g}" if interest_meta.get("applied_rate") is not None else PLACEHOLDER
+                f"{interest_meta['applied_rate']:g}"
+                if interest_meta.get("from_settled_calc") and interest_meta.get("applied_rate") is not None
+                else PLACEHOLDER
             ),
-            "interest_base": f"{req.claim_amount:,.2f}",
-            "interest_end_date": filing_date_str,
-            "total_interest": f"{total_interest_val:,.2f}" if total_interest_val else PLACEHOLDER,
-            "total_interest_capital": rmb_to_capital(total_interest_val) if total_interest_val else PLACEHOLDER,
+            "interest_base": f"{settled['principal']:,.2f}" if settled else amount_text,
+            "interest_end_date": format_date_cn(end_date_iso) if end_date_iso else PLACEHOLDER,
+            "total_interest": (
+                f"{total_interest_val:,.2f}" if interest_meta.get("from_settled_calc") and total_interest_val else PLACEHOLDER
+            ),
+            "total_interest_capital": (
+                rmb_to_capital(total_interest_val) if interest_meta.get("from_settled_calc") and total_interest_val else PLACEHOLDER
+            ),
             "lawyer_fee_note": "需有合同约定或法律依据",
             "facts_and_reasons": facts_polished,
             "interest_calc_statement": interest_statement,
@@ -1617,18 +2351,18 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "arbitration_committee": arbitration_full,
             "filing_date": filing_date_str,
             "evidences": evidences,
-            "arbitration_limitation_note": "仲裁时效一般为1年，具体以律师核实为准",
+            "arbitration_limitation_note": LABOR_ARBITRATION_LIMITATION_NOTE,
         }
-    elif "买卖" in req.cause_of_action:
+    elif document_preset == "买卖合同纠纷" or "买卖" in req.cause_of_action:
         main_tpl = "civil_complaint_sales_template.docx"
         doc_label = "民事起诉状(买卖合同版)"
         context_main = {
             **common_party,
             "claims": claims_final,
-            "contract_arrears": f"{req.claim_amount:,.2f}",
-            "contract_arrears_capital": rmb_to_capital(req.claim_amount),
+            "contract_arrears": amount_text,
+            "contract_arrears_capital": amount_capital,
             "liquidated_damages": PLACEHOLDER,
-            "overdue_rate_desc": "按照全国银行间同业拆借中心公布的一年期贷款市场报价利率（LPR）及合同约定或依法可主张的标准计算",
+            "overdue_rate_desc": SALES_COMPLAINT_OVERDUE_RATE_DESC,
             "facts_and_reasons": facts_polished,
             "court_name": court_full,
             "filing_date": filing_date_str,
@@ -1659,12 +2393,10 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
     doc.render(context_main)
     doc.save(main_docx_path)
     _highlight_placeholders_in_docx(main_docx_path)
-    from gateway.utils.disclaimer import add_disclaimer_to_docx
-    add_disclaimer_to_docx(main_docx_path)
 
     pdf_ok = await convert_docx_to_pdf(main_docx_path, main_pdf_path, title=doc_label, text_summary=facts_polished)
     if not pdf_ok:
-        logger.error(f"主文书 PDF 转换失败: {main_docx_path}")
+        logger.error("主文书 PDF 未成功: %s %s", main_docx_path, get_last_pdf_error())
 
     generated_docs.append({
         "doc_type": doc_label,
@@ -1672,20 +2404,32 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         "filename_docx": main_docx_name,
         "path": main_docx_path,
         "docx_url": f"/api/documents/download/{main_docx_name}",
-        "filename_pdf": main_pdf_name if pdf_ok else None,
-        "pdf_path": main_pdf_path if pdf_ok else None,
-        "pdf_url": f"/api/documents/download/{main_pdf_name}" if pdf_ok else None,
+        **_pdf_bundle(pdf_ok, main_pdf_name, main_pdf_path),
     })
 
     # 附属文书列表判定（A-18：保全申请书仅在显式勾选 property_preservation 时生成）
-    if req.sub_documents is not None:
-        target_sub_docs = set(req.sub_documents)
+    explicit_subdocs = req.sub_documents is not None
+    if explicit_subdocs:
+        target_sub_docs = set(req.sub_documents or [])
     elif req.auto_generate_sub_docs:
         target_sub_docs = {"power_of_attorney", "service_address"}
         if plaintiff.get("party_type") == "legal":
             target_sub_docs.add("legal_rep_certificate")
     else:
         target_sub_docs = set()
+    counsel = _counsel_for_package(req)
+    lawyer_name_out = _filled_or_placeholder(counsel["lawyer_name"])
+    law_firm_out = _filled_or_placeholder(counsel["law_firm"])
+    lawyer_phone_out = _filled_or_placeholder(counsel["lawyer_phone"])
+    lawyer_license_out = _filled_or_placeholder(counsel["lawyer_license"])
+    lawyer_ready = lawyer_name_out != PLACEHOLDER and law_firm_out != PLACEHOLDER
+    if target_sub_docs & {"power_of_attorney", "law_firm_letter", "demand_letter", "service_address"}:
+        if lawyer_name_out == PLACEHOLDER:
+            missing_fields.append("lawyer_name")
+        if law_firm_out == PLACEHOLDER:
+            missing_fields.append("law_firm")
+        if lawyer_license_out == PLACEHOLDER:
+            missing_fields.append("lawyer_license")
 
     if "power_of_attorney" in target_sub_docs:
         poa_tpl = os.path.join(_templates_dir(), "power_of_attorney_template.docx")
@@ -1701,10 +2445,10 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "client_phone": plaintiff.get("phone") or PLACEHOLDER,
             "opponent_name": defendant["name"],
             "cause_of_action": req.cause_of_action,
-            "lawyer_name": req.lawyer_name,
-            "law_firm": req.law_firm,
-            "lawyer_license": req.lawyer_license,
-            "lawyer_phone": req.lawyer_phone,
+            "lawyer_name": lawyer_name_out,
+            "law_firm": law_firm_out,
+            "lawyer_license": lawyer_license_out,
+            "lawyer_phone": lawyer_phone_out,
             "court_name": court_full,
             "authorization_scope": "□一般代理  □特别授权（□代为承认、放弃、变更诉讼请求 □进行和解 □提起反诉或上诉）",
             "sign_date": filing_date_str,
@@ -1717,9 +2461,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "filename_docx": poa_docx_name,
             "path": poa_docx_path,
             "docx_url": f"/api/documents/download/{poa_docx_name}",
-            "filename_pdf": poa_pdf_name if poa_pdf_ok else None,
-            "pdf_path": poa_pdf_path if poa_pdf_ok else None,
-            "pdf_url": f"/api/documents/download/{poa_pdf_name}" if poa_pdf_ok else None,
+            **_pdf_bundle(poa_pdf_ok, poa_pdf_name, poa_pdf_path),
         })
 
     if "service_address" in target_sub_docs:
@@ -1733,9 +2475,9 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "cause_of_action": req.cause_of_action,
             "recipient_name": plaintiff["name"],
             "recipient_id": plaintiff["id_card_or_uscc"],
-            "lawyer_name": req.lawyer_name,
-            "law_firm": req.law_firm,
-            "lawyer_phone": req.lawyer_phone,
+            "lawyer_name": lawyer_name_out,
+            "law_firm": law_firm_out,
+            "lawyer_phone": lawyer_phone_out,
             "mail_address": plaintiff["address"],
             "postal_code": PLACEHOLDER,
             "mobile_phone": plaintiff.get("phone") or PLACEHOLDER,
@@ -1751,9 +2493,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "filename_docx": addr_docx_name,
             "path": addr_docx_path,
             "docx_url": f"/api/documents/download/{addr_docx_name}",
-            "filename_pdf": addr_pdf_name if addr_pdf_ok else None,
-            "pdf_path": addr_pdf_path if addr_pdf_ok else None,
-            "pdf_url": f"/api/documents/download/{addr_pdf_name}" if addr_pdf_ok else None,
+            **_pdf_bundle(addr_pdf_ok, addr_pdf_name, addr_pdf_path),
         })
 
     if "legal_rep_certificate" in target_sub_docs:
@@ -1783,9 +2523,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
                 "filename_docx": rep_docx_name,
                 "path": rep_docx_path,
                 "docx_url": f"/api/documents/download/{rep_docx_name}",
-                "filename_pdf": rep_pdf_name if rep_pdf_ok else None,
-                "pdf_path": rep_pdf_path if rep_pdf_ok else None,
-                "pdf_url": f"/api/documents/download/{rep_pdf_name}" if rep_pdf_ok else None,
+                **_pdf_bundle(rep_pdf_ok, rep_pdf_name, rep_pdf_path),
             })
 
     if "property_preservation" in target_sub_docs:
@@ -1804,8 +2542,8 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "respondent_name": defendant["name"],
             "respondent_id": defendant["id_card_or_uscc"],
             "respondent_address": defendant["address"],
-            "preservation_amount": f"{req.claim_amount:,.2f}",
-            "preservation_amount_capital": rmb_to_capital(req.claim_amount),
+            "preservation_amount": amount_text,
+            "preservation_amount_capital": amount_capital,
             "cause_of_action": req.cause_of_action,
             "property_clues": f"1. 被申请人名下银行基本存款账户；\n2. 被申请人名下位于 {defendant['address']} 之不动产或经营设备。",
             "guarantee_method": PLACEHOLDER,
@@ -1824,9 +2562,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "filename_docx": preserv_docx_name,
             "path": preserv_docx_path,
             "docx_url": f"/api/documents/download/{preserv_docx_name}",
-            "filename_pdf": preserv_pdf_name if preserv_pdf_ok else None,
-            "pdf_path": preserv_pdf_path if preserv_pdf_ok else None,
-            "pdf_url": f"/api/documents/download/{preserv_pdf_name}" if preserv_pdf_ok else None,
+            **_pdf_bundle(preserv_pdf_ok, preserv_pdf_name, preserv_pdf_path),
         })
 
     if "evidence_catalog" in target_sub_docs:
@@ -1851,30 +2587,51 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
                 "filename_docx": ev_docx_name,
                 "path": ev_docx_path,
                 "docx_url": f"/api/documents/download/{ev_docx_name}",
-                "filename_pdf": ev_pdf_name if ev_pdf_ok else None,
-                "pdf_path": ev_pdf_path if ev_pdf_ok else None,
-                "pdf_url": f"/api/documents/download/{ev_pdf_name}" if ev_pdf_ok else None,
+                **_pdf_bundle(ev_pdf_ok, ev_pdf_name, ev_pdf_path),
             })
 
-    if is_labor and (req.auto_generate_sub_docs or "labor_compensation_calc" in target_sub_docs):
+    if is_labor and ("labor_compensation_calc" in target_sub_docs or (not explicit_subdocs and req.auto_generate_sub_docs)):
         labor_tpl = os.path.join(_templates_dir(), "labor_compensation_calc_template.docx")
         labor_docx_name = f"经济补偿金计算清单_{safe_party_name}_{timestamp}.docx"
         labor_docx_path = os.path.join(str(get_generated_dir()), labor_docx_name)
-        labor_calc = calculate_labor_compensation(12000, "2021-03-01", datetime.now().strftime("%Y-%m-%d"))
+        labor_ready = bool(req.monthly_salary and req.hire_date and req.termination_date)
+        if labor_ready:
+            labor_calc = calculate_labor_compensation(
+                req.monthly_salary,
+                req.hire_date,
+                req.termination_date,
+                termination_reason=req.termination_reason or "expiry_termination",
+            )
+            labor_context = {
+                "hire_date": req.hire_date,
+                "termination_date": req.termination_date,
+                "tenure_str": labor_calc["tenure_str"],
+                "monthly_salary": f"{req.monthly_salary:,.2f}",
+                "compensation_months": f"{labor_calc['compensation_months']}",
+                "amount_n": f"{labor_calc['tiers']['N']['amount']:,.2f}",
+                "amount_plus_1_notice": f"{labor_calc['tiers']['N+1']['notice_pay']:,.2f}",
+                "amount_2n": f"{labor_calc['tiers']['2N']['amount']:,.2f}",
+                "cap_reason": labor_calc["cap_reason"],
+            }
+        else:
+            missing_fields.append("labor_salary_and_dates")
+            labor_context = {
+                "hire_date": PLACEHOLDER,
+                "termination_date": PLACEHOLDER,
+                "tenure_str": PLACEHOLDER,
+                "monthly_salary": PLACEHOLDER,
+                "compensation_months": PLACEHOLDER,
+                "amount_n": PLACEHOLDER,
+                "amount_plus_1_notice": PLACEHOLDER,
+                "amount_2n": PLACEHOLDER,
+                "cap_reason": "未提供月工资、入职日和解除日，本清单不计算经济补偿或赔偿金。请到实务精算填写后再生成，不要使用示例工资。",
+            }
         doc_labor = DocxTemplate(labor_tpl)
         doc_labor.render({
             "applicant_name": plaintiff["name"],
             "respondent_name": defendant["name"],
-            "hire_date": PLACEHOLDER,
-            "termination_date": filing_date_str,
-            "tenure_str": labor_calc["tenure_str"],
-            "monthly_salary": PLACEHOLDER,
-            "compensation_months": f"{labor_calc['compensation_months']}",
-            "amount_n": f"{labor_calc['tiers']['N']['amount']:,.2f}",
-            "amount_plus_1_notice": f"{labor_calc['tiers']['N+1']['notice_pay']:,.2f}",
-            "amount_2n": f"{labor_calc['tiers']['2N']['amount']:,.2f}",
-            "cap_reason": labor_calc["cap_reason"],
             "filing_date": filing_date_str,
+            **labor_context,
         })
         doc_labor.save(labor_docx_path)
         generated_docs.append({
@@ -1890,7 +2647,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
 
     # 移动微法院在线诉讼配套支撑材料（当 auto_generate_sub_docs 或显式选择相应材料时生成）
     # 1. 01_起诉状及身份证明：原告主体资格证明材料说明页
-    if req.auto_generate_sub_docs or "id_credential_attachment" in target_sub_docs:
+    if "id_credential_attachment" in target_sub_docs or (not explicit_subdocs and req.auto_generate_sub_docs):
         id_cred_docx_name = f"原告身份证明材料说明页_{safe_party_name}_{timestamp}.docx"
         id_cred_docx_path = os.path.join(str(get_generated_dir()), id_cred_docx_name)
         _create_id_credential_attachment_docx(
@@ -1911,22 +2668,24 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         })
 
     # 2. 02_委托代理材料：律师事务所公函
-    if req.auto_generate_sub_docs or "law_firm_letter" in target_sub_docs or ("power_of_attorney" in target_sub_docs and req.law_firm):
+    if "law_firm_letter" in target_sub_docs or (not explicit_subdocs and lawyer_ready and "power_of_attorney" in target_sub_docs):
         firm_letter_docx_name = f"律师事务所公函_{safe_party_name}_{timestamp}.docx"
         firm_letter_docx_path = os.path.join(str(get_generated_dir()), firm_letter_docx_name)
         firm_letter_pdf_name = f"律师事务所公函_{safe_party_name}_{timestamp}.pdf"
         firm_letter_pdf_path = os.path.join(str(get_generated_dir()), firm_letter_pdf_name)
+        from gateway.utils.letter_sequence import next_letter_number
         _create_law_firm_letter_docx(
             output_path=firm_letter_docx_path,
-            law_firm=req.law_firm,
-            lawyer_name=req.lawyer_name,
-            lawyer_license=req.lawyer_license,
-            lawyer_phone=req.lawyer_phone,
+            law_firm=law_firm_out,
+            lawyer_name=lawyer_name_out,
+            lawyer_license=lawyer_license_out,
+            lawyer_phone=lawyer_phone_out,
             client_name=plaintiff["name"],
             opponent_name=defendant["name"],
             cause_of_action=req.cause_of_action,
             court_name=court_full if not is_labor else arbitration_full,
             sign_date=filing_date_str,
+            letter_no=next_letter_number(),
         )
         letter_pdf_ok = await convert_docx_to_pdf(firm_letter_docx_path, firm_letter_pdf_path, title="律师事务所公函")
         generated_docs.append({
@@ -1935,21 +2694,19 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "filename_docx": firm_letter_docx_name,
             "path": firm_letter_docx_path,
             "docx_url": f"/api/documents/download/{firm_letter_docx_name}",
-            "filename_pdf": firm_letter_pdf_name if letter_pdf_ok else None,
-            "pdf_path": firm_letter_pdf_path if letter_pdf_ok else None,
-            "pdf_url": f"/api/documents/download/{firm_letter_pdf_name}" if letter_pdf_ok else None,
+            **_pdf_bundle(letter_pdf_ok, firm_letter_pdf_name, firm_letter_pdf_path),
         })
 
     # 3. 02_委托代理材料：律师执业证复印件说明页
-    if req.auto_generate_sub_docs or "lawyer_license_attachment" in target_sub_docs or ("power_of_attorney" in target_sub_docs and req.lawyer_license):
+    if "lawyer_license_attachment" in target_sub_docs or (not explicit_subdocs and lawyer_license_out != PLACEHOLDER):
         lawyer_lic_docx_name = f"律师执业证复印件说明页_{safe_party_name}_{timestamp}.docx"
         lawyer_lic_docx_path = os.path.join(str(get_generated_dir()), lawyer_lic_docx_name)
         _create_lawyer_license_attachment_docx(
             output_path=lawyer_lic_docx_path,
-            lawyer_name=req.lawyer_name,
-            law_firm=req.law_firm,
-            lawyer_license=req.lawyer_license,
-            lawyer_phone=req.lawyer_phone,
+            lawyer_name=lawyer_name_out,
+            law_firm=law_firm_out,
+            lawyer_license=lawyer_license_out,
+            lawyer_phone=lawyer_phone_out,
             court_name=court_full if not is_labor else arbitration_full,
             sign_date=filing_date_str,
         )
@@ -1965,7 +2722,7 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         })
 
     # 4. 04_证据清单与证据材料：初步证据材料合卷说明页
-    if req.auto_generate_sub_docs or "evidence_bundle_cover" in target_sub_docs:
+    if "evidence_bundle_cover" in target_sub_docs or (not explicit_subdocs and req.auto_generate_sub_docs):
         ev_cover_docx_name = f"初步证据材料合卷说明页_{safe_party_name}_{timestamp}.docx"
         ev_cover_docx_path = os.path.join(str(get_generated_dir()), ev_cover_docx_name)
         _create_evidence_bundle_cover_docx(
@@ -1988,6 +2745,93 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
             "pdf_url": None,
         })
 
+    court_for_letter = court_full if not is_labor else arbitration_full
+    if "demand_letter" in target_sub_docs:
+        demand_name = f"律师函_{safe_party_name}_{timestamp}.docx"
+        demand_path = os.path.join(str(get_generated_dir()), demand_name)
+        notes = (req.raw_case_notes or "").strip() or PLACEHOLDER
+        claim_lines = "\n".join(claims_final) if claims_final else PLACEHOLDER
+        _write_plain_docx(
+            demand_path,
+            "律师函（草稿，须承办律师修改后发出）",
+            [
+                f"致：{defendant['name']}",
+                f"委托人：{plaintiff['name']}",
+                f"案由：{req.cause_of_action}",
+                f"拟致送机关：{court_for_letter}",
+                "",
+                "一、委托人陈述的事实要点",
+                notes,
+                "以上文字来自承办律师录入，本函不将其写成已经查实的事实。",
+                "",
+                "二、委托人拟提出的要求",
+                claim_lines,
+                f"金额：{amount_text}（大写：{amount_capital}）",
+                "",
+                "三、回复期限",
+                "请于收到本函之日起【待填写】日内书面回复。这一栏不是法定期间，由承办律师按个案填写。",
+                "",
+                "四、声明",
+                "本函是办案草稿，不构成对受函人的最终法律意见，也不能代替起诉状、仲裁申请书或法院文书。",
+                "",
+                f"律师事务所：{law_firm_out}",
+                f"承办律师：{lawyer_name_out}    执业证号：{lawyer_license_out}",
+                f"联系电话：{lawyer_phone_out}",
+                f"日期：{filing_date_str}",
+            ],
+        )
+        generated_docs.append({
+            "doc_type": "律师函",
+            "category": "02_委托代理材料",
+            "filename_docx": demand_name,
+            "path": demand_path,
+            "docx_url": f"/api/documents/download/{demand_name}",
+            "filename_pdf": None,
+            "pdf_path": None,
+            "pdf_url": None,
+        })
+
+    if "answer_brief" in target_sub_docs:
+        answer_name = f"民事答辩状_{safe_party_name}_{timestamp}.docx"
+        answer_path = os.path.join(str(get_generated_dir()), answer_name)
+        _write_plain_docx(
+            answer_path,
+            "民事答辩状（草稿）",
+            [
+                f"答辩人：{defendant['name']}",
+                f"证件号码：{defendant.get('id_card_or_uscc') or PLACEHOLDER}",
+                f"住所：{defendant.get('address') or PLACEHOLDER}",
+                f"联系电话：{defendant.get('phone') or PLACEHOLDER}",
+                f"被答辩人：{plaintiff['name']}",
+                f"案由：{req.cause_of_action}",
+                f"案号：{PLACEHOLDER}",
+                f"致送：{court_for_letter}",
+                "",
+                "答辩意见",
+                "一、对起诉事实的意见",
+                "【待填写。不要把对方起诉状复述成答辩人已经承认的事实。】",
+                "二、答辩请求",
+                "【待填写】",
+                "",
+                "此致",
+                court_for_letter,
+                f"答辩人：{defendant['name']}",
+                f"日期：{filing_date_str}",
+                "",
+                "说明：答辩期见《中华人民共和国民事诉讼法》（2023修正）第一百二十八条，自收到起诉状副本之日起十五日。本状不计算答辩期，请用实务精算中的答辩期计算器，并以送达回证为准。",
+            ],
+        )
+        generated_docs.append({
+            "doc_type": "民事答辩状",
+            "category": "01_起诉状及身份证明",
+            "filename_docx": answer_name,
+            "path": answer_path,
+            "docx_url": f"/api/documents/download/{answer_name}",
+            "filename_pdf": None,
+            "pdf_path": None,
+            "pdf_url": None,
+        })
+
     # 构建移动微法院标准 ZIP 包与传统扁平 ZIP 包
     spc_zip_name, spc_zip_path = build_litigation_archive(
         package_id=package_id,
@@ -2003,11 +2847,22 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         timestamp=timestamp,
         archive_format="flat",
     )
+    _stamp_internal_draft_disclaimers(generated_docs)
+    matter_document_ids = _attach_word_to_matter(req.matter_id, generated_docs, package_id)
 
     _PACKAGE_ARCHIVE_REGISTRY[package_id] = {
         "spc_mobile": (spc_zip_name, spc_zip_path),
         "flat": (flat_zip_name, flat_zip_path),
     }
+    if download_blocked:
+        _CITATION_BLOCKED_FILES.add(spc_zip_name)
+        _CITATION_BLOCKED_FILES.add(flat_zip_name)
+        for doc in generated_docs:
+            for key in ("filename_docx", "filename_pdf"):
+                if doc.get(key):
+                    _CITATION_BLOCKED_FILES.add(doc[key])
+            doc["docx_url"] = None
+            doc["pdf_url"] = None
 
     archive_categories: Dict[str, List[str]] = {
         "01_起诉状及身份证明": [],
@@ -2048,17 +2903,27 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
         "facts_and_reasons_polished": facts_polished,
         "statute_citations": list(set(statute_citations)),
         "citation_audit": citation_audit,
+        "download_blocked": download_blocked,
+        "download_ack_required": download_ack_required,
+        "download_block_reason": (
+            "引用熔断未通过：文书中有未排除的虚构法条或案号，不能下载。请改写事实与理由后重新生成。"
+            if download_blocked else None
+        ),
         "court_fees_estimate": court_fees,
         "retirement_check": p_id_info.get("retirement_note"),
         "missing_fields": missing_fields,
+        "matter_document_ids": matter_document_ids,
         "generated_documents": generated_docs,
         "main_docx_path": main_docx_path,
         "main_pdf_path": main_pdf_path if pdf_ok else None,
-        "package_zip_name": spc_zip_name,
-        "package_zip_url": f"/api/documents/download/{spc_zip_name}",
-        "package_flat_zip_name": flat_zip_name,
-        "package_flat_zip_url": f"/api/documents/download/{flat_zip_name}",
-        "package_download_url": f"/api/v1/phase1/package/{package_id}/download?format={req.archive_format}",
+        "package_zip_name": None if download_blocked else spc_zip_name,
+        "package_zip_url": None if download_blocked else f"/api/documents/download/{spc_zip_name}",
+        "package_flat_zip_name": None if download_blocked else flat_zip_name,
+        "package_flat_zip_url": None if download_blocked else f"/api/documents/download/{flat_zip_name}",
+        "package_download_url": None if download_blocked else f"/api/v1/phase1/package/{package_id}/download?format={recommended_archive}",
+        "filing_route": filing_route,
+        "recommended_archive_format": recommended_archive,
+        "micro_court_package": filing_route == "court",
         "archive_categories": archive_categories,
         "llm_mode": llm_mode,
         "engine_status": engine_status,
@@ -2071,6 +2936,11 @@ async def generate_litigation_package(req: GenerateLitigationPackageReq):
 @router.get("/api/documents/download/{filename}", summary="文书下载接口")
 async def download_doc(filename: str, request: Request = None):
     safe_name = validate_download_filename(filename)
+    if safe_name in _CITATION_BLOCKED_FILES:
+        raise HTTPException(
+            status_code=409,
+            detail="引用熔断未通过：文书含未排除的虚构法条或案号，不能下载。",
+        )
     try:
         file_path = safe_join(str(get_generated_dir()), safe_name)
     except HTTPException:
@@ -2128,6 +2998,11 @@ async def download_litigation_package_zip(
 
     if not zip_path or not os.path.isfile(zip_path):
         raise HTTPException(status_code=404, detail=f"未找到案卷包 {package_id} 对应的 ZIP 归档文件")
+    if zip_name in _CITATION_BLOCKED_FILES:
+        raise HTTPException(
+            status_code=409,
+            detail="引用熔断未通过：文书含未排除的虚构法条或案号，不能下载。",
+        )
 
     try:
         from gateway.utils.matter_vault_db import record_audit_log
@@ -2158,7 +3033,7 @@ class AppealAuditRequest(BaseModel):
     agreed_repurchase_rate: Optional[float] = Field(default=None, description="合同约定年化回购溢价/违约金率")
     first_instance_court: str = Field(..., description="作出一审判决之法院名称（必填，无默认）")
     first_instance_errors: Optional[List[str]] = Field(default=None, description="一审争议与错误倾向")
-    use_demo: bool = Field(default=False, description="为 true 时载入 data/demo/appeal_demo.json")
+    use_demo: bool = Field(default=False, description="仅测试用：为 true 时载入 data/demo/appeal_demo.json；正式界面不提供")
     appellant: Optional[PartyInfo] = Field(default=None, description="上诉人完整身份信息")
     appellee: Optional[PartyInfo] = Field(default=None, description="被上诉人完整身份信息")
     first_instance_case_no: Optional[str] = Field(default=None, description="原审案号")
@@ -2276,5 +3151,108 @@ async def api_appeal_export_docx(req: AppealExportDocxRequest):
         raise
     except Exception as e:
         logger.error(f"导出二审文书Docx失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="导出二审文书Word文档异常，请稍后重试")
+
+
+class ElementComplaintReq(BaseModel):
+    cause: str = Field(default="民间借贷纠纷")
+    matter_id: Optional[str] = None
+    plaintiff_name: str = ""
+    plaintiff_id_or_uscc: str = ""
+    plaintiff_phone: str = ""
+    plaintiff_address: str = ""
+    defendant_name: str = ""
+    defendant_id_or_uscc: str = ""
+    defendant_phone: str = ""
+    defendant_address: str = ""
+    principal_amount: Optional[str] = None
+    facts_and_reasons: str = ""
+    court_name: str = ""
+
+
+def _element_fields_from_request(req: ElementComplaintReq) -> Dict[str, Any]:
+    fields: Dict[str, Any] = {
+        "plaintiff_name": req.plaintiff_name,
+        "plaintiff_id_or_uscc": req.plaintiff_id_or_uscc,
+        "plaintiff_phone": req.plaintiff_phone,
+        "plaintiff_address": req.plaintiff_address,
+        "defendant_name": req.defendant_name,
+        "defendant_id_or_uscc": req.defendant_id_or_uscc,
+        "defendant_phone": req.defendant_phone,
+        "defendant_address": req.defendant_address,
+        "principal_amount": req.principal_amount or "",
+        "facts_and_reasons": req.facts_and_reasons,
+        "court_name": req.court_name,
+        "current_date_cn": datetime.now().strftime("%Y年%m月%d日"),
+    }
+    if req.principal_amount:
+        try:
+            fields["principal_capital"] = rmb_to_capital(req.principal_amount)
+        except Exception:
+            fields["principal_capital"] = ""
+    if req.matter_id:
+        try:
+            from gateway.utils.matter_vault_db import get_matter_by_id
+            matter = get_matter_by_id(req.matter_id) or {}
+        except Exception:
+            matter = {}
+        p_info = matter.get("plaintiff_info") or {}
+        d_info = matter.get("defendant_info") or {}
+        gaps = {
+            "plaintiff_name": p_info.get("name") or matter.get("plaintiff_name"),
+            "plaintiff_id_or_uscc": p_info.get("id_card_or_uscc") or p_info.get("id"),
+            "plaintiff_phone": p_info.get("phone"),
+            "plaintiff_address": p_info.get("address"),
+            "defendant_name": d_info.get("name") or matter.get("defendant_name"),
+            "defendant_id_or_uscc": d_info.get("id_card_or_uscc") or d_info.get("id"),
+            "defendant_phone": d_info.get("phone"),
+            "defendant_address": d_info.get("address"),
+            "principal_amount": matter.get("principal_amount"),
+            "facts_and_reasons": matter.get("case_summary"),
+            "court_name": matter.get("court_name"),
+        }
+        for key, val in gaps.items():
+            if not str(fields.get(key) or "").strip() and val not in (None, ""):
+                fields[key] = val
+        if fields.get("principal_amount") and not fields.get("principal_capital"):
+            try:
+                fields["principal_capital"] = rmb_to_capital(fields["principal_amount"])
+            except Exception:
+                logger.warning("案件本金无法转换成人民币大写，大写栏留空", exc_info=True)
+                fields["principal_capital"] = ""
+    return fields
+
+
+@router.post("/api/v1/phase1/generate-spc-element-complaint", summary="生成要素式起诉状或劳动仲裁要素表")
+async def api_generate_spc_element_complaint(req: Optional[ElementComplaintReq] = None):
+    """把立案表单或案件空间里已有的当事人、金额、事实写入要素表。劳动争议输出仲裁申请要素，不伪装成起诉状。"""
+    if req is None:
+        req = ElementComplaintReq()
+    try:
+        from gateway.utils.spc_element_complaint_builder import build_spc_element_complaint_docx
+        cause = req.cause or "民间借贷纠纷"
+        if cause == "劳动人事争议":
+            cause = "劳动争议"
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        safe_cause = sanitize_filename(cause) or "民事"
+        filename = f"要素式文书_{safe_cause}_{timestamp}.docx"
+        if cause == "民间借贷纠纷":
+            filename = f"最高法要素式起诉状_民间借贷示范文本_{timestamp}.docx"
+        out_path = safe_join(str(get_generated_dir()), filename)
+        build_spc_element_complaint_docx(
+            target_path=out_path,
+            fields=_element_fields_from_request(req),
+            cause=cause,
+        )
+        return {
+            "status": "success",
+            "filename": filename,
+            "download_url": f"/api/documents/download/{filename}",
+            "file_size": os.path.getsize(out_path),
+            "cause": cause,
+            "standard_basis": "民间借贷要素参照法〔2024〕46号示范文本；其余案由为本所要素底稿，须律师按最新示范文本核对",
+        }
+    except Exception as e:
+        logger.error(f"生成要素式起诉状失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="生成要素式民事起诉状模板异常，请检查存储权限")
 

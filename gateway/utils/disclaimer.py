@@ -3,9 +3,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, MutableMapping
+import logging
+import os
+from typing import Any, MutableMapping
+
+logger = logging.getLogger("lawflow.disclaimer")
 
 DISCLAIMER = "本输出由软件自动生成，仅供执业律师参考，不构成法律意见，须经律师审核后使用。"
+
+
+class DisclaimerStampError(Exception):
+    """PDF 免责声明没有写上。调用方不得把这种情况显示成转换成功。"""
 
 
 def add_disclaimer(result: dict) -> dict:
@@ -67,16 +75,19 @@ def disclaimer_pdf_footer_line(page_no: int = 0, total_pages: int = 0) -> str:
 
 
 def stamp_disclaimer_on_pdf(pdf_path: str) -> None:
-    """在 PDF 每页底部写入 DISCLAIMER（若已含全文则跳过）。"""
+    """在 PDF 每页底部写入 DISCLAIMER。失败时抛出 DisclaimerStampError，不吞掉。"""
+    if not pdf_path or not os.path.isfile(pdf_path):
+        message = "PDF 水印失败：文件不存在"
+        logger.warning(message)
+        raise DisclaimerStampError(message)
     try:
         import pymupdf as fitz
-    except ImportError:
-        return
-    if not pdf_path:
-        return
-    import os
-    if not os.path.isfile(pdf_path):
-        return
+    except ImportError as exc:
+        message = "PDF 水印失败：未安装 pymupdf"
+        logger.warning(message)
+        raise DisclaimerStampError(message) from exc
+
+    doc = None
     try:
         doc = fitz.open(pdf_path)
         total = doc.page_count
@@ -95,10 +106,15 @@ def stamp_disclaimer_on_pdf(pdf_path: str) -> None:
                 align=1,
             )
         doc.saveIncr()
-        doc.close()
+    except DisclaimerStampError:
+        raise
     except Exception as doc_err:
-        logger.warning(f"添加 PDF 免责声明水印失败: {doc_err}")
-        try:
-            doc.close()
-        except Exception as close_err:
-            logger.debug(f"关闭 PDF 失败: {close_err}")
+        message = f"PDF 水印失败：{doc_err}"
+        logger.warning(message)
+        raise DisclaimerStampError(message) from doc_err
+    finally:
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception as close_err:
+                logger.debug("关闭 PDF 失败: %s", close_err)

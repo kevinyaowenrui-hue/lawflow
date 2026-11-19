@@ -188,3 +188,88 @@ def structure_evidence_text(raw_text: str) -> Dict[str, Any]:
         "detected_amounts": sorted(list(set(moneys)), reverse=True)[:5],
         "char_count": len(raw_text)
     }
+
+
+def easyocr_items(results) -> List[dict]:
+    """把 EasyOCR detail=1 的结果收成水平外接矩形。"""
+    items: List[dict] = []
+    for row in results or []:
+        if not row or len(row) < 2:
+            continue
+        box, text = row[0], str(row[1] or "").strip()
+        if not text or not box:
+            continue
+        xs = [float(p[0]) for p in box]
+        ys = [float(p[1]) for p in box]
+        items.append({"text": text, "x0": min(xs), "y0": min(ys), "x1": max(xs), "y1": max(ys)})
+    return items
+
+
+def _group_ocr_lines(items: List[dict]) -> List[List[dict]]:
+    """按行聚类。同一行里离得远的字块用换行隔开，避免两栏号码粘成一个身份证号。"""
+    pending = sorted(items, key=lambda it: ((it["y0"] + it["y1"]) / 2, it["x0"]))
+    lines: List[dict] = []
+    for it in pending:
+        cy = (it["y0"] + it["y1"]) / 2
+        height = max(it["y1"] - it["y0"], 1.0)
+        placed = False
+        for line in lines:
+            if abs(cy - line["cy"]) <= max(line["h"], height) * 0.6:
+                line["items"].append(it)
+                line["cy"] = (line["cy"] * line["n"] + cy) / (line["n"] + 1)
+                line["h"] = max(line["h"], height)
+                line["n"] += 1
+                placed = True
+                break
+        if not placed:
+            lines.append({"cy": cy, "h": height, "n": 1, "items": [it]})
+    grouped: List[List[dict]] = []
+    for line in lines:
+        grouped.append(sorted(line["items"], key=lambda it: it["x0"]))
+    return grouped
+
+
+def sensitive_rects_from_ocr_items(
+    items: List[dict],
+    patterns: List[re.Pattern],
+    page_width: float,
+    page_height: float,
+    image_width: float,
+    image_height: float,
+) -> List[dict]:
+    """在 OCR 字块里找身份证号、银行卡号、手机号，返回 PDF 页面坐标矩形。"""
+    if not items or image_width <= 0 or image_height <= 0:
+        return []
+    scale_x = page_width / image_width
+    scale_y = page_height / image_height
+    found: List[dict] = []
+    for line_items in _group_ocr_lines(items):
+        text = ""
+        spans = []
+        prev_x1 = None
+        for it in line_items:
+            height = max(it["y1"] - it["y0"], 1.0)
+            if prev_x1 is not None and it["x0"] - prev_x1 > max(12.0, height * 0.8):
+                text += "\n"
+            start = len(text)
+            text += it["text"]
+            spans.append((start, len(text), it))
+            prev_x1 = it["x1"]
+        for pattern in patterns:
+            for match in pattern.finditer(text):
+                for start, end, it in spans:
+                    overlap_s = max(start, match.start())
+                    overlap_e = min(end, match.end())
+                    if overlap_s >= overlap_e:
+                        continue
+                    local_s = overlap_s - start
+                    local_e = overlap_e - start
+                    width = max(it["x1"] - it["x0"], 1.0)
+                    n = max(end - start, 1)
+                    x0 = it["x0"] + width * (local_s / n)
+                    x1 = it["x0"] + width * (local_e / n)
+                    found.append({
+                        "rect": (x0 * scale_x, it["y0"] * scale_y, x1 * scale_x, it["y1"] * scale_y),
+                        "text": match.group(0),
+                    })
+    return found

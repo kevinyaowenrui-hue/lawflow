@@ -6,6 +6,7 @@ LawFlow 智律工作台全系统端到端实证（TestClient，不依赖 live uv
 from __future__ import annotations
 
 import asyncio
+import json
 
 import docx as python_docx
 import pymupdf as fitz
@@ -310,8 +311,27 @@ def test_rag_search(client):
     assert r.status_code == 200, r.text
     assert len(r.json().get("results", [])) > 0
 
+    demo = client.post("/api/v1/phase3/rag/search", json={
+        "query": "二倍工资",
+        "corpus_type": "private_cases",
+        "top_k": 3,
+    })
+    assert demo.status_code == 200, demo.text
+    blob = demo.text
+    assert "全国各高级法院" not in blob
+    assert "全额支持" not in blob
+    cases = demo.json().get("winning_cases") or []
+    assert cases
+    assert all(item.get("is_demo") is True for item in cases)
 
-def test_create_signing_link(client):
+
+def test_create_signing_link(client, monkeypatch):
+    monkeypatch.setenv("DOCUSEAL_URL", "http://127.0.0.1:3000")
+    monkeypatch.setenv("DOCUSEAL_WEBHOOK_SECRET", "test-webhook-secret")
+    monkeypatch.setenv("DOCUSEAL_API_TOKEN", "test-api-token")
+    from tests.test_signing import install_docuseal_stub
+
+    install_docuseal_stub(monkeypatch)
     r = client.post("/api/v1/phase3/create-signing-link", json={
         "agreement_title": "民事借贷纠纷专项法律服务委托代理合同",
         "client_name": "李四",
@@ -325,11 +345,16 @@ def test_create_signing_link(client):
     assert r.status_code == 200, r.text
     assert r.json().get("status") == "success"
     assert r.json().get("envelope_id")
+    assert r.json().get("is_demo") is False
 
 
 def test_signing_webhook(client, monkeypatch):
-    # 批次 S-13：未配置 webhook secret 时返回 503；配置后才可完成回调
+    monkeypatch.setenv("DOCUSEAL_URL", "http://127.0.0.1:3000")
     monkeypatch.setenv("DOCUSEAL_WEBHOOK_SECRET", "test-webhook-secret")
+    monkeypatch.setenv("DOCUSEAL_API_TOKEN", "test-api-token")
+    from tests.test_signing import install_docuseal_stub
+
+    install_docuseal_stub(monkeypatch)
     create = client.post("/api/v1/phase3/create-signing-link", json={
         "agreement_title": "民事借贷纠纷专项法律服务委托代理合同",
         "client_name": "李四",
@@ -449,7 +474,18 @@ def test_deep_matrix_blue_team(client):
     scorecard = matrix_blue.get("scorecard", {})
     assert len(elements) >= 5
     assert len(conflicts) >= 3
-    assert scorecard.get("is_litigation_ready") is True
+    assert scorecard.get("is_litigation_ready") is False
+    assert "不能据此决定起诉" in (scorecard.get("status_label") or "")
+    ledger = matrix_blue.get("verifiability_ledger") or {}
+    assert "无任何纯抽象臆断" not in ledger.get("grounding_coverage", "")
+    assert "14.60" not in ledger.get("redline_risk_status", "")
+    assert "建议调减" not in ledger.get("redline_risk_status", "")
+    blob = json.dumps(matrix_blue, ensure_ascii=False)
+    assert "高利贷无效" not in blob
+    assert "第十六条" in blob
+    assert "第十七条是原告无正当理由拒不到庭" in blob
+    assert "第一百四十条" in blob
+    assert "不要把《民事诉讼法解释》第九十条当成沉默规则" in blob
 
 
 def test_deep_matrix_red_team(client):
@@ -599,6 +635,16 @@ def test_analyze_custom_loan(client):
     assert len(custom_loan_res.get("detected_conflicts", [])) >= 1
     assert len(custom_loan_res.get("timeline_events", [])) >= 2
     assert len(custom_loan_res.get("raw_documents", [])) >= 3
+    assert custom_loan_res.get("scorecard", {}).get("is_litigation_ready") is False
+    loan_blob = json.dumps(custom_loan_res, ensure_ascii=False)
+    assert "核减至合同成立时一年期LPR 4倍" not in loan_blob
+    assert "不要把整个利息约定说成无效" in loan_blob
+    assert "第二十九条" in loan_blob
+    assert "2023-03-01" not in loan_blob
+    assert any("第六百六十七条" in (e.get("claim_basis") or "") for e in custom_loan_res["matrix_elements"])
+    assert isinstance(custom_loan_res.get("related_statutes"), list)
+    assert "多次催告" not in loan_blob
+    assert "坐死合意" not in loan_blob
 
 
 def test_analyze_custom_red_team(client):
@@ -636,6 +682,11 @@ def test_analyze_custom_sales(client):
     sale_elements = r_sale.json().get("matrix_elements", [])
     assert len(sale_elements) >= 3
     assert any("民法典" in e.get("claim_basis", "") for e in sale_elements)
+    sale_blob = json.dumps(r_sale.json(), ensure_ascii=False)
+    assert "坐实表见代理" not in sale_blob
+    assert "已按期足额交付" not in sale_blob
+    assert "第一百七十条" in sale_blob
+    assert "第一百七十二条" in sale_blob
 
 
 def test_analyze_delegates_custom(client):
@@ -776,6 +827,7 @@ def test_litigation_package_embeds_citation_audit(client):
     r_pkg_with_guard = client.post("/api/v1/phase1/generate-litigation-package", json={
         "cause_of_action": "民间借贷纠纷",
         "claim_amount": 200000.0,
+        "claims": ["判令被告偿还借款本金20万元"],
         "raw_case_notes": "原告借给被告20万，被告出具借条，到期未还，约定利息未结清。请求判令还本付息并支付违约金。",
         "court_name": "北京市朝阳区",
         "plaintiff": {

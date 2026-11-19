@@ -7,7 +7,9 @@ import { showToast } from '../ui/toast.js';
 
 // safe-html: static tab template
 export const EVIDENCE_TAB_HTML = `      
-      <!-- 上方极简证据清洗与打码操作台 -->
+      <!-- 厚卷才展开合卷。默认先做证据目录。 -->
+      <details id="ev-thick-file-tools">
+        <summary style="cursor:pointer; font-size:13px; font-weight:700; color:var(--primary-navy); margin-bottom:8px;">厚卷才需要：合卷打码、脱敏和转码</summary>
       <div class="quick-lookup-bar quick-lookup-2col">
         <!-- 合卷与打码 -->
         <div class="quick-tool-col">
@@ -49,6 +51,7 @@ export const EVIDENCE_TAB_HTML = `
           </button>
         </div>
       </div>
+      </details>
 
       <!-- 下方双栏阅读器 (左输入、右输出) -->
       <div class="split-grid-50-50">
@@ -67,14 +70,24 @@ export const EVIDENCE_TAB_HTML = `
             <div style="font-size: 12.5px; font-weight: 700; color: var(--primary-navy); margin-bottom: 6px;">
               庭审提纲案情与诉辩主张
             </div>
+            <div class="form-row">
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label class="form-label">案件名称</label>
+                <input aria-label="庭审提纲案件名称" type="text" id="to-case-title" placeholder="本案名称" class="quick-input">
+              </div>
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label class="form-label">案由</label>
+                <input aria-label="庭审提纲案由" type="text" id="to-cause" placeholder="本案案由" class="quick-input">
+              </div>
+            </div>
             <div class="form-group" style="margin-bottom: 8px;">
               <label class="form-label">原告起诉请求与主张事实</label>
-              <input aria-label="to p claims"  type="text" id="to-p-claims" value="原告已按期完成系统开发并开通账号，被告验收合格试运行但拒付尾款20万。">
+              <input aria-label="to p claims"  type="text" id="to-p-claims" value="" placeholder="填写本案原告主张，不要沿用其他案件的示例">
             </div>
 
             <div class="form-group" style="margin-bottom: 8px;">
               <label class="form-label">被告答辩意见与抗辩主张</label>
-              <textarea aria-label="to d defense"  id="to-d-defense" rows="2">被告主张系统经常出现死机现象，未达验收标准；且原告逾期交付超30天，主张5万元违约金抵扣。</textarea>
+              <textarea aria-label="to d defense"  id="to-d-defense" rows="2" placeholder="填写本案被告答辩"></textarea>
             </div>
 
             <button class="btn btn-secondary btn-sm" id="btn-trial-outline" onclick="runTrialOutlineAgent()" style="width: 100%;">
@@ -104,13 +117,16 @@ export const EVIDENCE_TAB_HTML = `
             <div id="cr-view-single">
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">待审合同名称</label>
-                <input aria-label="cr contract title"  type="text" id="cr-contract-title" value="商业技术开发与采购合同" />
+                <input aria-label="cr contract title"  type="text" id="cr-contract-title" value="" placeholder="填写本合同名称，不要用示例合同名" />
               </div>
 
               <div class="form-row" style="margin-bottom: 8px;">
                 <div class="form-group" style="flex: 1; margin-bottom: 0;">
                   <label class="form-label">审查立场视角</label>
                   <select aria-label="cr perspective"  id="cr-perspective">
+                    <option value="">请选择立场（买方 / 卖方）</option>
+                    <option value="买方">买方（买受人）立场 (重点防范标的瑕疵与延期交付风险)</option>
+                    <option value="卖方">卖方（出卖人）立场 (重点防范迟延付款与单方恶意扣款)</option>
                     <option value="乙方防御版">乙方防御版 (最大限度防范单方扣款与无限连带责任)</option>
                     <option value="甲方强势版">甲方强势版 (扩大解约权与高额违约金)</option>
                     <option value="中立版">中立版 (商业公允平衡)</option>
@@ -120,8 +136,8 @@ export const EVIDENCE_TAB_HTML = `
                 <div class="form-group" style="flex: 1; margin-bottom: 0;">
                   <label class="form-label">红线手册 (Playbook)</label>
                   <select aria-label="cr playbook"  id="cr-playbook" onchange="onPlaybookChange()">
-                    <option value="tech_service" selected>软件与技术服务红线库 (5项)</option>
-                    <option value="general">通用商业合同红线库 (5项)</option>
+                    <option value="tech_service">软件与技术服务红线库 (5项)</option>
+                    <option value="general" selected>通用商业合同红线库 (5项)</option>
                     <option value="procurement">大宗买卖与采购红线库 (4项)</option>
                     <option value="labor">企业劳动用工红线库 (3项)</option>
                   </select>
@@ -147,7 +163,7 @@ export const EVIDENCE_TAB_HTML = `
 
               <div class="form-group" style="margin-bottom: 10px;">
                 <label class="form-label">待审合同条文正文</label>
-                <textarea aria-label="cr contract text"  id="cr-contract-text" rows="3">第七条 违约责任：乙方如延期交付超过3日，每日应向甲方支付合同总价款5%的惩罚性违约金；甲方有权随时单方解除合同且无需退还首期款项。发生争议由甲方所在地人民法院管辖。</textarea>
+                <textarea aria-label="cr contract text" id="cr-contract-text" rows="8" style="min-height:8.5em;" placeholder="粘贴待审合同正文"></textarea>
               </div>
 
               <div style="display: flex; gap: 8px;">
@@ -167,34 +183,26 @@ export const EVIDENCE_TAB_HTML = `
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <span style="font-size: 11.5px; color: var(--text-secondary);">跨文档双版本对齐与条款变更审阅</span>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="loadVersionDiffPreset()" style="font-size: 11px; padding: 2px 7px;">
-                  📄 填入标准借款合同母本 vs 修改稿
+                  清空比对正文
                 </button>
               </div>
 
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">基准母本/标准模板合同名称</label>
-                <input aria-label="diff base title"  type="text" id="diff-base-title" value="《企业间借款合同·律所标准母本版》" />
+                <input aria-label="diff base title" type="text" id="diff-base-title" value="" placeholder="基准合同名称" />
               </div>
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">基准母本条款正文</label>
-                <textarea aria-label="diff base text"  id="diff-base-text" rows="3" style="font-size: 11.5px; font-family: var(--font-mono);">第一条 借款金额：借款金额为人民币5,000,000.00元整。
-第二条 借款期限：借款期限自2025年1月10日起至2026年1月9日止。
-第三条 借款利息：年利率固定为12%，按季度结息。
-第四条 保证担保：丙方承担不可撤销的连带保证责任，保证范围包括本金、利息、违约金及律师费。
-第五条 争议解决：因履行本合同引起的争议，由原告所在地人民法院管辖。</textarea>
+                <textarea aria-label="diff base text" id="diff-base-text" rows="8" style="min-height:8.5em; font-size: 11.5px; font-family: var(--font-mono);" placeholder="粘贴基准母本条款"></textarea>
               </div>
 
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">待审版本/相对方修改稿名称</label>
-                <input aria-label="diff target title"  type="text" id="diff-target-title" value="《企业间借款合同·借款人修订草案》" />
+                <input aria-label="diff target title" type="text" id="diff-target-title" value="" placeholder="待审版本名称" />
               </div>
               <div class="form-group" style="margin-bottom: 10px;">
                 <label class="form-label">相对方修订条款正文</label>
-                <textarea aria-label="diff target text"  id="diff-target-text" rows="3" style="font-size: 11.5px; font-family: var(--font-mono);">第一条 借款金额：借款金额为人民币5,000,000.00元整。
-第二条 借款期限：借款期限经双方协商延长至2026年7月9日止。
-第三条 借款利息：年利率固定为6%，到期一次性还本付息。
-第五条 争议解决：发生争议由中国国际经济贸易仲裁委员会北京分会仲裁。
-第六条 提前还款：借款人提前偿还本金的，不承担任何违约赔偿责任。</textarea>
+                <textarea aria-label="diff target text" id="diff-target-text" rows="8" style="min-height:8.5em; font-size: 11.5px; font-family: var(--font-mono);" placeholder="粘贴相对方修订条款"></textarea>
               </div>
 
               <div style="display: flex; gap: 8px;">
@@ -235,15 +243,13 @@ export const EVIDENCE_TAB_HTML = `
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">案由与举证人</label>
                 <div style="display: flex; gap: 8px;">
-                  <input aria-label="案由"  type="text" id="ev-catalog-cause" placeholder="案由" value="民间借贷纠纷" style="flex: 1;" class="quick-input" />
-                  <input aria-label="举证人"  type="text" id="ev-catalog-plaintiff" placeholder="举证人" value="原告" style="flex: 1;" class="quick-input" />
+                  <input aria-label="案由"  type="text" id="ev-catalog-cause" placeholder="本案案由" value="" style="flex: 1;" class="quick-input" />
+                  <input aria-label="举证人"  type="text" id="ev-catalog-plaintiff" placeholder="举证人姓名或名称" value="" style="flex: 1;" class="quick-input" />
                 </div>
               </div>
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">原始证据碎片清单 / 提取文本</label>
-                <textarea aria-label="ev catalog notes"  id="ev-catalog-notes" rows="3" class="quick-input">1. 《借款协议及转账凭证》：证明借款本金交付及利息约定事实；
-2. 《催款微信聊天记录与通话录音》：证明原告多次催要、借款人认可借贷事实且时效中断；
-3. 《连带责任保证承诺函》：证明丙方自愿承担不可撤销连带保证责任。</textarea>
+                <textarea aria-label="ev catalog notes"  id="ev-catalog-notes" rows="3" class="quick-input" placeholder="每行一条：证据名称 | 证明目的 | 页码 | 原件或复印件 | 关联争点。例如：借条 | 证明借贷合意 | 第1-2页 | 原件 | 是否成立借款"></textarea>
               </div>
               <button class="btn btn-sm" style="width: 100%; background: var(--primary-navy);" onclick="runAutoEvidenceCatalogUI()">
                 ⚡ 生成证据目录
@@ -255,25 +261,36 @@ export const EVIDENCE_TAB_HTML = `
               <div class="form-row" style="margin-bottom: 8px;">
                 <div class="form-group" style="flex: 1.5; margin-bottom: 0;">
                   <label class="form-label">对方出示证据名称</label>
-                  <input aria-label="ev cross name"  type="text" id="ev-cross-name" value="被告提交的手写收据复印件" class="quick-input" />
+                  <input aria-label="ev cross name"  type="text" id="ev-cross-name" value="" placeholder="对方出示的证据名称" class="quick-input" />
                 </div>
                 <div class="form-group" style="flex: 1; margin-bottom: 0;">
                   <label class="form-label">证据种类</label>
                   <select aria-label="ev cross category"  id="ev-cross-category" class="quick-input">
                     <option value="书证" selected>书证</option>
+                    <option value="物证">物证</option>
                     <option value="电子数据">电子数据</option>
                     <option value="证人证言">证人证言</option>
                     <option value="视听资料">视听资料</option>
+                    <option value="当事人陈述">当事人陈述</option>
+                    <option value="鉴定意见">鉴定意见</option>
+                    <option value="勘验笔录">勘验笔录</option>
                   </select>
                 </div>
               </div>
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">对方证明目的</label>
-                <input aria-label="ev cross purpose"  type="text" id="ev-cross-purpose" value="证明原告已收取10万元货款并结清争议标的" class="quick-input" />
+                <input aria-label="ev cross purpose"  type="text" id="ev-cross-purpose" value="" placeholder="对方想证明什么" class="quick-input" />
+              </div>
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label class="form-label">质证规则</label>
+                <select aria-label="质证规则" id="ev-cross-track" class="quick-input">
+                  <option value="">民事三性（谁主张谁举证）</option>
+                  <option value="labor">劳动争议（用人单位对工资、考勤、解除合法性举证）</option>
+                </select>
               </div>
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">我方当事人真实情况与反驳事实</label>
-                <textarea aria-label="ev cross facts"  id="ev-cross-facts" rows="2" class="quick-input">原告从未收到该款项，收据签名不是原告字迹，被告拒不出示原件，系伪造凭据。</textarea>
+                <textarea aria-label="ev cross facts"  id="ev-cross-facts" rows="2" class="quick-input" placeholder="我方掌握的相反事实，例如原件未出示、签名不是本人"></textarea>
               </div>
               <button class="btn btn-sm" style="width: 100%; background: var(--primary-navy);" onclick="runCrossExaminationUI()">
                 ⚡ 生成质证意见
@@ -284,15 +301,15 @@ export const EVIDENCE_TAB_HTML = `
             <div id="evtool-pane-attack" style="display: none;">
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">我方关键证据名称</label>
-                <input aria-label="ev attack name"  type="text" id="ev-attack-name" value="银行电子转账回执单（附言为往来款）" class="quick-input" />
+                <input aria-label="ev attack name"  type="text" id="ev-attack-name" value="" placeholder="我方证据名称" class="quick-input" />
               </div>
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">我方证明目的</label>
-                <input aria-label="ev attack purpose"  type="text" id="ev-attack-purpose" value="证明原告已向被告全额出借款项50万元" class="quick-input" />
+                <input aria-label="ev attack purpose"  type="text" id="ev-attack-purpose" value="" placeholder="我方想证明什么" class="quick-input" />
               </div>
               <div class="form-group" style="margin-bottom: 8px;">
                 <label class="form-label">证据原始文本或瑕疵摘录</label>
-                <textarea aria-label="ev attack snippet"  id="ev-attack-snippet" rows="2" class="quick-input">回单转账附言备注为『往来款』而非『借款』，且收款账户为第三方个人。</textarea>
+                <textarea aria-label="ev attack snippet"  id="ev-attack-snippet" rows="2" class="quick-input" placeholder="摘录证据上对方可能抓住的原文或瑕疵"></textarea>
               </div>
               <button class="btn btn-sm" style="width: 100%; background: #991B1B;" onclick="runAdversarialAttackUI()">
                 ⚡ 红队攻击
@@ -479,7 +496,8 @@ export function renderTabEvidence() {
           `;
         }
 
-        resBox.innerHTML = ` // safe-html: skipBlock 列表项已 escapeHtml
+        // safe-html: skipBlock 列表项已 escapeHtml
+        resBox.innerHTML = `
           已成功合卷${escapeHtml(statusNote)}！总页数：${escapeHtml(d.total_pages)} 页 | 文件：${escapeHtml(d.merged_pdf_filename)}
           <a href="${escapeHtml(withDownloadToken(d.download_url))}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载合卷 PDF</a>
           ${skipBlock}
@@ -509,11 +527,17 @@ export function renderTabEvidence() {
           body: JSON.stringify({ pdf_filename: filename, redact_idcard: true, redact_bankcard: true })
         });
         const d = await resp.json();
-        resBox.innerHTML = `
-          已完成脱敏涂黑！遮蔽条数：${escapeHtml(d.redactions_count)} 处 (${escapeHtml(d.redacted_items.join('、'))})
+        const items = (d.redacted_items || []).join('、');
+        const lead = d.status === 'partial' ? '脱敏未完成。' : '已完成脱敏涂黑。';
+        let html = `
+          ${escapeHtml(lead)}遮蔽条数：${escapeHtml(String(d.redactions_count))} 处 (${escapeHtml(items)})
           <a href="${escapeHtml(withDownloadToken(d.download_url))}" class="btn btn-secondary btn-sm" style="margin-left: 8px;" download>下载脱敏 PDF</a>
         `;
-        showToast("敏感信息合规脱敏涂黑成功");
+        if (d.scanned_pdf_warning) {
+          html += `<div style="margin-top:8px;color:#92400E;">${escapeHtml(d.scanned_pdf_warning)}</div>`;
+        }
+        resBox.innerHTML = html;
+        showToast(d.status === 'partial' ? (d.scanned_pdf_warning || '脱敏未完成') : '敏感信息合规脱敏涂黑成功');
       } catch (e) {
         resBox.innerHTML = `脱敏失败: ${escapeHtml(e)}`;
       }
@@ -525,11 +549,21 @@ export function renderTabEvidence() {
       btn.innerHTML = `<span class="spinner"></span> 正在拆解焦点与盘问预案...`;
       btn.disabled = true;
 
+      const claims = (document.getElementById('to-p-claims')?.value || '').trim();
+      const defense = (document.getElementById('to-d-defense')?.value || '').trim();
+      const caseTitle = (document.getElementById('to-case-title')?.value || '').trim();
+      const cause = (document.getElementById('to-cause')?.value || '').trim();
+      if (!caseTitle || !cause || !claims || !defense) {
+        showToast("请填写本案名称、案由、原告主张和被告答辩。不要用其他案件的提纲。");
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+        return;
+      }
       const payload = {
-        case_title: "买卖合同与承揽纠纷一审出庭提纲",
-        cause_of_action: "买卖与技术合同纠纷",
-        plaintiff_claims_and_facts: document.getElementById('to-p-claims').value,
-        defendant_defense: document.getElementById('to-d-defense').value
+        case_title: caseTitle,
+        cause_of_action: cause,
+        plaintiff_claims_and_facts: claims,
+        defendant_defense: defense
       };
 
       try {
@@ -542,7 +576,7 @@ export function renderTabEvidence() {
         btn.innerHTML = origHtml;
         btn.disabled = false;
         document.getElementById('to-outline-result').innerText = d.trial_outline_markdown;
-        showToast("五模块庭审提纲生成成功");
+        showToast(d.status === 'template' ? "这是通用提纲，必须按本案改写，不能直接当出庭稿" : "五模块庭审提纲已生成，请核对后再使用");
       } catch (e) {
         btn.innerHTML = origHtml;
         btn.disabled = false;
@@ -639,10 +673,29 @@ export function renderTabEvidence() {
       btn.innerHTML = `<span class="spinner-dark"></span> 审查中...`;
       btn.disabled = true;
 
-      const title = document.getElementById('cr-contract-title').value.trim() || "商业技术开发与采购合同";
+      const title = document.getElementById('cr-contract-title').value.trim();
+      if (!title) {
+        showToast("请填写本合同名称");
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+        return;
+      }
       const perspective = document.getElementById('cr-perspective').value;
       const playbookKey = document.getElementById('cr-playbook').value;
       const contractText = document.getElementById('cr-contract-text').value.trim();
+
+      if (!perspective || !perspective.trim()) {
+        showToast("审查前必须选择立场（买方 / 卖方）");
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+        return;
+      }
+      if (!contractText) {
+        showToast("请粘贴合同正文。空文本不能出具审查结论。");
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+        return;
+      }
 
       switchPhase2RightTab('redline');
       const container = document.getElementById('cr-result-container');
@@ -672,8 +725,32 @@ export function renderTabEvidence() {
 
         const rev = d.review || {};
         const clauses = rev.clause_reviews || [];
-        const riskLevel = rev.overall_risk_level || '中';
-        const score = rev.playbook_compliance_score || 80;
+        const disclaimerHtml = `
+          <div style="margin-top: 16px; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; padding: 12px; font-size: 11px; color: #92400E; line-height: 1.6;">
+            <strong>【免责提示】</strong>本审查结果由法律工作台基于合同文本自动生成，依据检索日期时有效的公开法律法规和司法解释（来源：国家法律法规数据库 flk.npc.gov.cn、最高人民法院网站），仅对所提交的文本作风险提示，未核实交易背景、当事人资信和履行事实，也不包括合同所附但未提交的文件。风险等级为规则化判断，可能存在误报或漏报；涉及具体金额、期限阈值的，为产品经验值，并非法定标准。法律法规可能修订，请以官方最新文本为准。<strong>本意见仅供参考，不构成正式法律意见。</strong>重大交易或争议请咨询执业律师。
+          </div>
+        `;
+        if (d.status !== 'success' || !clauses.length) {
+          const summary = rev.review_summary || '模型未给出可用的条款审查，请再试一次';
+          const offline = summary.includes('未连接') || summary.includes('规则模式');
+          container.innerHTML = `
+            <div style="background: #FFF7ED; border: 1px solid #FFEDD5; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: #C2410C;">
+                <span>⚠️</span>
+                <span>${escapeHtml(offline ? '未连接大模型，未生成修改稿' : '未审查')}</span>
+              </div>
+              <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px; line-height: 1.6; white-space: pre-wrap;">
+                ${escapeHtml(summary)}
+              </div>
+            </div>
+            ${disclaimerHtml} // safe-html: 固定免责声明，不含用户输入
+          `;
+          showToast(offline ? '未连接大模型，只标出正文里实际写到的内容，未生成修改稿' : summary);
+          return;
+        }
+        const riskLevel = rev.overall_risk_level || '未标明';
+        const score = typeof rev.playbook_compliance_score === 'number' ? rev.playbook_compliance_score : null;
+        const scoreLabel = score === null ? '未评分' : `${score} 分`;
 
         let riskBadgeBg = '#FEF3C7';
         let riskColor = '#D97706';
@@ -695,7 +772,7 @@ export function renderTabEvidence() {
                   风险等级: ${riskLevel}
                 </span>
                 <span class="badge" style="background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE;">
-                  红线遵从度: ${score} 分
+                  红线遵从度: ${scoreLabel}
                 </span>
                 <span class="badge" style="background: #F1F5F9; color: var(--text-secondary); border: 1px solid var(--border-hairline);">
                   立场: ${escapeHtml(d.perspective || perspective)}
@@ -707,15 +784,12 @@ export function renderTabEvidence() {
               </button>
             </div>
             <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px; line-height: 1.5; border-top: 1px dashed var(--border-hairline); padding-top: 8px;">
-              <strong>综合策略：</strong>${escapeHtml(rev.review_summary || '已对齐审查红线手册，重构高风险条款。')}
+              <strong>综合策略：</strong>${escapeHtml(rev.review_summary || '已整理模型返回的条款意见，请律师逐条核对。')}
             </div>
           </div>
         `;
 
-        if (clauses.length === 0) {
-          html += `<div style="padding: 20px; text-align: center; color: var(--text-muted);">未发现偏离红线条款，合同表述较为合规。</div>`;
-        } else {
-          clauses.forEach((c, idx) => {
+        clauses.forEach((c, idx) => {
             const dev = c.playbook_deviation || 'OUT_OF_SCOPE_DEVIATION';
             let devBadgeHtml = `<span class="badge-deviation">⚠ 偏离标准红线</span>`;
             if (dev === 'CRITICAL_BREACH') {
@@ -772,15 +846,17 @@ export function renderTabEvidence() {
                 </div>
               </div>
             `;
-          });
-        }
+        });
 
+        html += disclaimerHtml;
         container.innerHTML = html;
         showToast("合同红线与三栏审查对比完成");
       } catch (e) {
         btn.innerHTML = origHtml;
         btn.disabled = false;
-        container.innerHTML = `<div style="padding: 20px; color: var(--status-warn);">审查失败: ${escapeHtml(e)}</div>`;
+        const reason = (e && e.userMessage) || (e && e.message) || '审查没有完成，请再试一次。';
+        container.innerHTML = `<div style="padding: 20px; color: var(--status-warn);">${escapeHtml(reason)}</div>`;
+        showToast(reason, 'error');
       }
     }
 
@@ -822,15 +898,37 @@ export function renderTabEvidence() {
         }
         showToast("原合同上传成功，导出审查文档时将执行原位修订！");
       } catch (e) {
-        showToast(err instanceof ApiError ? err.userMessage : (err && err.userMessage ? err.userMessage : `操作失败：${err.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
+        showToast(e instanceof ApiError ? e.userMessage : (e && e.userMessage ? e.userMessage : `操作失败：${e.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
       }
     }
 
     async function exportRedlineDocx() {
-      const title = document.getElementById('cr-contract-title').value.trim() || "商业技术开发与采购合同";
+      const title = document.getElementById('cr-contract-title').value.trim();
+      if (!title) {
+        showToast("请填写本合同名称");
+        return;
+      }
       const perspective = document.getElementById('cr-perspective').value;
       const playbookKey = document.getElementById('cr-playbook').value;
       const contractText = document.getElementById('cr-contract-text').value.trim();
+
+      if (!perspective || !perspective.trim()) {
+        showToast("审查前必须选择立场（买方 / 卖方）");
+        return;
+      }
+      if (!contractText) {
+        showToast("请粘贴合同正文。空文本不能导出审查稿。");
+        return;
+      }
+      const reviewedClauses = lastContractReviewData && lastContractReviewData.status === 'success'
+        ? ((lastContractReviewData.review || {}).clause_reviews || [])
+        : [];
+      if (!reviewedClauses.length) {
+        const summary = (lastContractReviewData && lastContractReviewData.review && lastContractReviewData.review.review_summary)
+          || '还没有可用的条款审查，不能导出看起来已经审过的修订稿。';
+        showToast(summary);
+        return;
+      }
 
       const btn = document.getElementById('btn-export-redline');
       const origText = btn ? btn.innerHTML : "";
@@ -891,7 +989,7 @@ export function renderTabEvidence() {
           btn.innerHTML = origText;
           btn.disabled = false;
         }
-        showToast(err instanceof ApiError ? err.userMessage : (err && err.userMessage ? err.userMessage : `操作失败：${err.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
+        showToast(e instanceof ApiError ? e.userMessage : (e && e.userMessage ? e.userMessage : `操作失败：${e.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
       }
     }
 
@@ -943,20 +1041,11 @@ export function renderTabEvidence() {
     }
 
     function loadVersionDiffPreset() {
-      document.getElementById('diff-base-title').value = "《企业间借款合同·律所标准母本版》";
-      document.getElementById('diff-base-text').value = `第一条 借款金额：借款金额为人民币5,000,000.00元整。
-第二条 借款期限：借款期限自2025年1月10日起至2026年1月9日止。
-第三条 借款利息：年利率固定为12%，按季度结息，逾期每日加收万分之五罚息。
-第四条 保证担保：丙方（自然人股东）承担不可撤销的无限连带责任保证，保证范围涵盖本息、违约金及追偿实现债权的所有诉讼费与律师费。
-第五条 争议解决：因履行本合同引起的争议，由出借人所在地人民法院管辖。`;
-
-      document.getElementById('diff-target-title').value = "《企业间借款合同·借款人修订草案》";
-      document.getElementById('diff-target-text').value = `第一条 借款金额：借款金额为人民币5,000,000.00元整。
-第二条 借款期限：借款期限经双方协商延长至2026年7月9日止。
-第三条 借款利息：年利率固定为6%，到期一次性还本付息，取消逾期罚息条款。
-第五条 争议解决：发生争议由中国国际经济贸易仲裁委员会北京分会仲裁。
-第六条 提前还款：借款人有权提前偿还全部或部分本金，且不承担任何违约赔偿责任。`;
-      showToast("已载入商业借贷合同母本 vs 相对方争议修改稿！");
+      ['diff-base-title', 'diff-base-text', 'diff-target-title', 'diff-target-text'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      showToast('请粘贴本合同的基准正文和修订正文。不载入示例借款合同。');
     }
 
     async function runVersionCompareUI() {
@@ -1185,11 +1274,14 @@ export function renderTabEvidence() {
 
 
     async function runAutoEvidenceCatalogUI() {
-      const cause = document.getElementById('ev-catalog-cause')?.value.trim() || ((activeMatterData && activeMatterData.cause_of_action) || "民间借贷纠纷");
-      const plaintiff = document.getElementById('ev-catalog-plaintiff')?.value.trim() || ((activeMatterData && activeMatterData.plaintiff_name) || "原告");
+      const caseCtx = (window.CaseContextStore && typeof window.CaseContextStore.get === 'function')
+        ? (window.CaseContextStore.get() || {})
+        : {};
+      const cause = document.getElementById('ev-catalog-cause')?.value.trim() || caseCtx.cause || "";
+      const plaintiff = document.getElementById('ev-catalog-plaintiff')?.value.trim() || (caseCtx.plaintiff && caseCtx.plaintiff.name) || "";
       const notes = document.getElementById('ev-catalog-notes')?.value.trim() || "";
-      if (!notes) {
-        showToast("请填写原始证据碎片清单或卷宗提取文字！");
+      if (!cause || !plaintiff || !notes) {
+        showToast("请填写本案案由、举证人和证据清单，不要用其他案件的示例生成目录");
         return;
       }
       showToast("正在提炼四要素并生成《证据目录.docx》...");
@@ -1216,7 +1308,7 @@ export function renderTabEvidence() {
         switchPhase2RightTab('tools');
         showToast("《证据目录.docx》已生成完毕");
       } catch (e) {
-        showToast(err instanceof ApiError ? err.userMessage : (err && err.userMessage ? err.userMessage : `操作失败：${err.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
+        showToast(e instanceof ApiError ? e.userMessage : (e && e.userMessage ? e.userMessage : `操作失败：${e.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
       }
     }
 
@@ -1237,7 +1329,8 @@ export function renderTabEvidence() {
       const downloadBtn = data.download_url
         ? `<a href="${withDownloadToken(data.download_url)}" download="${escapeHtml(data.catalog_filename || '证据目录.docx')}" class="btn btn-amber btn-sm" style="text-decoration:none;">📥 下载《证据目录.docx》</a>`
         : '';
-      container.innerHTML = ` // safe-html: catalog summary table and download link
+      // safe-html: catalog summary table and download link
+      container.innerHTML = `
         <div style="padding: 12px 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px; flex-wrap:wrap; gap:8px;">
             <div>
@@ -1266,10 +1359,14 @@ export function renderTabEvidence() {
     }
 
     async function runCrossExaminationUI() {
-      const evName = document.getElementById('ev-cross-name')?.value.trim() || "借款证据";
+      const evName = document.getElementById('ev-cross-name')?.value.trim() || "";
       const evCat = document.getElementById('ev-cross-category')?.value || "书证";
       const oppPurpose = document.getElementById('ev-cross-purpose')?.value.trim() || "";
       const clientFacts = document.getElementById('ev-cross-facts')?.value.trim() || "";
+      if (!evName || !oppPurpose || !clientFacts) {
+        showToast("请填写对方证据名称、证明目的和我方反驳事实");
+        return;
+      }
       showToast("正在生成证据三性审查与反驳意见...");
       try {
         const resp = await api.request(`${API_BASE}/api/v1/phase2/cross-examination`, {
@@ -1279,7 +1376,9 @@ export function renderTabEvidence() {
             evidence_name: evName,
             evidence_category: evCat,
             opponent_purpose: oppPurpose,
-            client_facts: clientFacts
+            client_facts: clientFacts,
+            cause_of_action: document.getElementById('ev-catalog-cause')?.value || '',
+            track: document.getElementById('ev-cross-track')?.value || ''
           })
         });
         if (!resp.ok) {
@@ -1291,7 +1390,7 @@ export function renderTabEvidence() {
         switchPhase2RightTab('tools');
         showToast("质证意见已生成");
       } catch (e) {
-        showToast(err instanceof ApiError ? err.userMessage : (err && err.userMessage ? err.userMessage : `操作失败：${err.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
+        showToast(e instanceof ApiError ? e.userMessage : (e && e.userMessage ? e.userMessage : `操作失败：${e.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
       }
     }
 
@@ -1299,12 +1398,18 @@ export function renderTabEvidence() {
       const container = document.getElementById('ev-tools-result-container');
       if (!container) return;
       const parsed = data.cross_examination || {};
-      const auth = parsed.authenticity || parsed.真实性 || '对真实性不予认可（对方未出示原件且存在涂改存疑）';
-      const leg = parsed.legality || parsed.合法性 || '对合法性提出异议（取证形式不合法或违反强制性规定）';
-      const rel = parsed.relevance || parsed.关联性 || '对关联性与证明目的不予认可（证据内容无法达到对方证明主张）';
-      const conc = parsed.conclusion || parsed.综合质证结论 || '综上所述，该证据不具备证据三性，依法不能作为定案依据。';
-      container.innerHTML = ` // safe-html: cross examination cards and text
+      const auth = parsed.authenticity || parsed.真实性 || '真实性一项没有生成。请按原件、签名和形成过程另写，不要套用固定异议。';
+      const leg = parsed.legality || parsed.合法性 || '合法性一项没有生成。请按取证方式另写。';
+      const rel = parsed.relevance || parsed.关联性 || '关联性一项没有生成。请按对方证明目的能否被该证据覆盖另写。';
+      const conc = parsed.conclusion || parsed.综合质证结论 || '综合意见没有生成。不能直接写成该证据一律不能作为定案依据。';
+      const burdenItems = (data.burden && data.burden.items) || [];
+      const burdenHtml = burdenItems.length
+        ? `<div style="border: 1px solid #FDBA74; background: #FFF7ED; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px;"><strong style="font-size:12px;">举证责任</strong>${burdenItems.map((item) => `<div style="font-size:11.5px; margin-top:4px; line-height:1.5;">${escapeHtml(String(item))}</div>`).join('')}</div>`
+        : '';
+      // safe-html: cross examination cards and text
+      container.innerHTML = `
         <div style="padding: 12px 14px;">
+          ${burdenHtml}
           <div style="margin-bottom: 12px;">
             <strong style="font-size: 14px; color: var(--primary-navy);">《证据三性法庭质证意见与反驳论点》</strong>
             <div style="font-size: 11.5px; color: var(--text-muted); margin-top:2px;">真实性 (Authenticity) · 合法性 (Legality) · 关联性 (Relevance)</div>

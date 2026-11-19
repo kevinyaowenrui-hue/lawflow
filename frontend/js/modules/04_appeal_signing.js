@@ -1,7 +1,7 @@
 /**
  * LawFlow Module: 04_appeal_signing.js
  */
-import { api, ApiError, API_BASE, withDownloadToken } from '../api.js';
+import { api, ApiError, API_BASE, withDownloadToken, escapeHtml } from '../api.js';
 import { showToast } from '../ui/toast.js';
 
 
@@ -11,16 +11,12 @@ export const APPEALSIGNING_TAB_HTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
         <div class="segmented-control" style="font-size: 12px;">
           <button type="button" class="segmented-btn active" id="btn-subtab-appeal" onclick="switchRagSignSubTab('appeal')">
-            ⚖️ 二审/再审关键阶段：类案裁判分歧对抗大屏 (P3升级·最高院同案不同判穿透)
+            ⚖️ 上诉要点备忘（只比对本地已核验材料，不是类案检索）
           </button>
           <button type="button" class="segmented-btn" id="btn-subtab-legacy" onclick="switchRagSignSubTab('legacy')">
             📑 常规双库检索与远程电子签约
           </button>
         </div>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="load80MRepurchasePreset()" style="font-size: 11.5px; border-color: var(--accent-amber); color: var(--primary-navy);">
-          ⚡ 载入演示案（use_demo）· 非真实案例
-        </button>
-        <span id="appeal-demo-badge" style="display:none; margin-left:8px; font-size:11px; color:#B45309; background:#FEF3C7; padding:2px 8px; border-radius:4px;">演示数据·非真实案例</span>
       </div>
 
       <!-- 子面板 A: P3 二审/再审关键阶段·一审裁决漏洞剖析与最高院类案分歧穿透大屏 -->
@@ -46,16 +42,16 @@ export const APPEALSIGNING_TAB_HTML = `
             <div style="font-size: 10.5px; color: #B91C1C; margin-top: 2px;">依判决文本关键词识别，无则未识别</div>
           </div>
           <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
-            <div style="font-size: 11px; color: var(--text-muted);">已核验类案支持</div>
+            <div style="font-size: 11px; color: var(--text-muted);">记为支持上诉人的类案</div>
             <div style="font-size: 16px; font-weight: 700; color: #15803D; margin-top: 3px; font-family: var(--font-mono);" id="appeal-metric-precedents">
               —
             </div>
             <div style="font-size: 10.5px; color: #15803D; margin-top: 2px;">法发〔2020〕24号检索层级</div>
           </div>
           <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px 14px;">
-            <div style="font-size: 11px; color: var(--text-muted);">最高院裁判尺度统一合规率</div>
+            <div style="font-size: 11px; color: var(--text-muted);">类案检索范围</div>
             <div style="font-size: 16px; font-weight: 700; color: #1E40AF; margin-top: 3px; font-family: var(--font-mono);">
-              100% 官方案号本地库比对通过
+              仅比对本地已核验案号，库外裁判不在此列
             </div>
             <div style="font-size: 10.5px; color: #1E40AF; margin-top: 2px;">法发〔2020〕24号类案检索规范</div>
           </div>
@@ -75,11 +71,11 @@ export const APPEALSIGNING_TAB_HTML = `
 
             <div class="form-row">
               <div class="form-group" style="flex: 1.2;">
-                <label class="form-label">作出一审判决法院（必填）</label>
+                <label class="form-label" for="appeal-input-court">作出一审判决法院（必填）</label>
                 <input aria-label="如：某市中级人民法院"  type="text" id="appeal-input-court" placeholder="如：某市中级人民法院" value="">
               </div>
               <div class="form-group" style="flex: 1;">
-                <label class="form-label">争议标的金额 (元)</label>
+                <label class="form-label" for="appeal-input-amount">争议标的金额 (元)</label>
                 <input aria-label="选填"  type="number" id="appeal-input-amount" placeholder="选填" value="">
               </div>
               <div class="form-group" style="flex: 0.8;">
@@ -115,7 +111,7 @@ export const APPEALSIGNING_TAB_HTML = `
             </div>
 
             <button type="button" class="btn" style="width: 100%; margin-top: 6px;" onclick="runAppealAuditUI()">
-              ⚡ 执行一审裁判漏洞剖析与最高院类案分歧穿透
+              整理上诉要点（不代表改判把握）
             </button>
 
             <!-- 诊断出的一审判决致命破绽 -->
@@ -129,9 +125,9 @@ export const APPEALSIGNING_TAB_HTML = `
             <div class="card-header">
               <div class="card-title">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-                最高院与高院类案裁判分歧对抗矩阵
+                本地库类案对照（不是最高院分歧矩阵）
               </div>
-              <span class="badge" style="background:#DCFCE7; color:#15803D; font-weight:700;">支持派权威判例</span>
+              <span class="badge" style="background:#DCFCE7; color:#15803D; font-weight:700;">没有立场的不记成支持</span>
             </div>
 
             <!-- 分歧对抗表格视窗 -->
@@ -142,7 +138,7 @@ export const APPEALSIGNING_TAB_HTML = `
             <!-- 裁判口径演变时间谱系折叠盒 -->
             <div style="background: #FFFFFF; border: 1px solid var(--border-hairline); border-radius: 4px; padding: 10px 12px; margin-bottom: 12px;">
               <div style="font-size: 11.5px; font-weight: 700; color: var(--primary-navy); margin-bottom: 4px;">
-                📜 最高人民法院商事对赌裁判口径演进时间谱系：
+                本案识别到的口径。没有对赌争议时，不附对赌演进。
               </div>
               <div id="appeal-timeline-container" style="font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
                 <!-- 动态注入时间轴 -->
@@ -150,7 +146,7 @@ export const APPEALSIGNING_TAB_HTML = `
             </div>
 
             <!-- 二审文书切换与导出工具栏 -->
-            <div style="border-top: 1px dashed var(--border-hairline); padding-top: 10px;">
+            <div class="appeal-preview-wrap" style="border-top: 1px dashed var(--border-hairline); padding-top: 10px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
                 <div class="segmented-control" style="font-size: 11px;">
                   <button type="button" class="segmented-btn active" id="btn-doc-pleading" onclick="switchAppealDocView('pleading')">
@@ -171,7 +167,7 @@ export const APPEALSIGNING_TAB_HTML = `
               </div>
 
               <!-- 文书预览容器 -->
-              <div id="appeal-doc-preview" style="font-family: var(--font-serif); font-size: 11.5px; line-height: 1.6; color: var(--primary-navy); background: #FAF9F6; border: 1px solid var(--border-hairline); border-radius: 4px; padding: 10px 12px; max-height: 220px; overflow-y: auto; white-space: pre-wrap;">
+              <div id="appeal-doc-preview" class="legal-statement-box official-doc-preview">
                 正在加载二审文书预览...
               </div>
             </div>
@@ -193,26 +189,31 @@ export const APPEALSIGNING_TAB_HTML = `
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 双库隔离检索与办案策略
               </div>
-              <span class="card-tip">法规库与胜诉案例库隔离</span>
+              <span class="card-tip">法规库与演示案例分开。演示案例不是本所胜诉案件</span>
             </div>
 
             <div class="form-row">
               <div class="form-group" style="flex: 2;">
                 <label class="form-label">案情检索关键词</label>
-                <input aria-label="检索案由事实或请求权关键词"  type="text" id="rag-q" value="借条丢失 微信转账 借贷合意证明">
+                <input aria-label="检索案由事实或请求权关键词"  type="text" id="rag-q" value="" placeholder="输入本案关键词，例如借贷合意、违约金">
               </div>
               <div class="form-group" style="flex: 1;">
                 <label class="form-label">检索库源</label>
                 <select aria-label="检索法源类案文库范围"  id="rag-corpus">
                   <option value="all">双库融合检索</option>
                   <option value="public_statutes">仅公共法规库</option>
-                  <option value="private_cases">仅胜诉案例库</option>
+                  <option value="private_cases">仅演示案例</option>
                 </select>
               </div>
               <div class="form-group" style="flex: 0.8; align-self: flex-end;">
                 <button class="btn" style="width: 100%;" onclick="runDualRAGSearch()">检索</button>
               </div>
             </div>
+
+            <label for="rag-show-demo" style="display:flex; align-items:flex-start; gap:8px; margin: 8px 0 2px; cursor:pointer; font-size:12.5px; font-weight:650; color:#92400E; line-height:1.45;">
+              <input id="rag-show-demo" type="checkbox" aria-label="显示演示材料" style="margin-top:2px;" onchange="if ((document.getElementById('rag-q')?.value || '').trim()) runDualRAGSearch()">
+              <span>显示演示材料（默认关闭。打开后才列出演示项；每条都不是本所案件，不能当胜诉案例引用）</span>
+            </label>
 
             <div class="card-header" style="margin-top: 10px;">
               <div class="card-title" style="font-size: 13.5px;">
@@ -222,7 +223,7 @@ export const APPEALSIGNING_TAB_HTML = `
 
             <div class="form-group">
               <label class="form-label">提出疑难问题</label>
-              <textarea aria-label="consult q"  id="consult-q" rows="3">当事人只有微信转账记录没有借条，对方微信答应了会还，但现在不认账，应该如何起诉，如何引用法条？</textarea>
+              <textarea aria-label="consult q"  id="consult-q" rows="3" placeholder="写本案问题和已有证据。不要用示例咨询。"></textarea>
             </div>
 
             <button class="btn btn-amber" id="btn-consult" onclick="runRAGConsult()">
@@ -244,47 +245,56 @@ export const APPEALSIGNING_TAB_HTML = `
 
             <!-- 检索命中条目 -->
             <div id="rag-dual-results" style="display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto;">
-              <div style="font-size: 12px; color: var(--text-muted);">正在加载初始类案与法条对照...</div>
+              <div style="font-size: 12px; color: var(--text-muted);">输入关键词后再检索。打开页面时不会预载其他案件。</div>
             </div>
 
             <!-- 远程委托电子签约闭环 -->
             <div style="border-top: 1px dashed var(--border-hairline); padding-top: 14px;">
               <div style="font-size: 13px; font-weight: 700; color: var(--primary-navy); margin-bottom: 8px;">
-                远程委托合同电子签约闭环 (微信端手写签名)
+                委托合同签字
               </div>
-              <div id="sign-demo-banner" style="display:block; margin-bottom:10px; padding:10px 12px; background:#FEF3C7; border:1px solid #F59E0B; border-radius:6px; color:#92400E; font-size:12px; font-weight:700; line-height:1.5;">
-                ⚠ 演示模式：未接入真实电子签名服务，签署结果不具有法律效力
+              <div id="sign-config-banner" style="display:block; margin-bottom:10px; padding:10px 12px; background:#EFF6FF; border:1px solid #93C5FD; border-radius:6px; color:#1E3A8A; font-size:12px; font-weight:600; line-height:1.5;">
+                未配置电子签，请线下签字。可生成委托签字页，打印后由委托人签字。不会生成电子签署链接。
               </div>
               
               <div class="form-row">
-                <div class="form-group"><label class="form-label">委托人姓名</label><input aria-label="sign c name"  type="text" id="sign-c-name" value="张三"></div>
-                <div class="form-group"><label class="form-label">联系电话</label><input aria-label="sign c phone"  type="text" id="sign-c-phone" value="13800000000"></div>
+                <div class="form-group"><label class="form-label">委托人姓名</label><input aria-label="委托人姓名" type="text" id="sign-c-name" value=""></div>
+                <div class="form-group"><label class="form-label">联系电话</label><input aria-label="委托人联系电话" type="text" id="sign-c-phone" value=""></div>
               </div>
               
               <div class="form-row" style="margin-top: 8px;">
-                <div class="form-group"><label class="form-label">承办律师</label><input aria-label="sign l name"  type="text" id="sign-l-name" value="李四律师"></div>
-                <div class="form-group"><label class="form-label">代理费 (元)</label><input aria-label="sign fee"  type="number" id="sign-fee" value="20000"></div>
+                <div class="form-group"><label class="form-label">承办律师</label><input aria-label="承办律师" type="text" id="sign-l-name" value=""></div>
+                <div class="form-group"><label class="form-label">律师事务所</label><input aria-label="律师事务所" type="text" id="sign-firm" value="" placeholder="本所全称"></div>
+                <div class="form-group"><label class="form-label">代理费 (元)</label><input aria-label="代理费" type="number" id="sign-fee" value=""></div>
               </div>
 
               <div class="form-group" style="margin-top: 8px;">
                 <label class="form-label">委托代理事由</label>
-                <input aria-label="sign case"  type="text" id="sign-case" value="代理原告张三诉北京宏达公司买卖合同纠纷一审诉讼">
+                <input aria-label="委托代理事由" type="text" id="sign-case" value="">
               </div>
 
-              <button class="btn" style="margin-top: 12px; width: 100%;" onclick="runCreateDocuSealLink()">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                生成当事人微信手写签约任务
+              <button class="btn" id="btn-offline-sign" style="margin-top: 12px; width: 100%;" onclick="runOfflineSignaturePage()">
+                生成并下载委托签字页
               </button>
+              <button class="btn btn-secondary" id="btn-electronic-sign" style="display:none; margin-top: 8px; width: 100%;" onclick="runCreateDocuSealLink()">
+                发起电子签署
+              </button>
+              <div id="sign-create-error" role="alert" style="display:none; margin-top:8px; padding:10px 12px; background:#FEF2F2; border:1px solid #FECACA; border-radius:6px; color:#991B1B; font-size:12px; font-weight:600; line-height:1.5;"></div>
+
+              <div id="sign-offline-box" style="display: none; margin-top: 12px; padding: 12px; background: #FFFBEB; border-radius: var(--radius-sm); border: 1px solid #FDE68A;">
+                <div id="sign-offline-notice" style="font-size: 12px; font-weight: 700; color: #92400E;">未配置电子签，请线下签字</div>
+                <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 6px;">下载后打印，由委托人在签字栏手写签名。这不是电子签署链接。</div>
+                <a id="sign-offline-download" href="#" style="display:inline-block; margin-top: 8px; font-size: 12px; font-weight: 700;">下载委托签字页</a>
+              </div>
 
               <!-- 签约结果与存证凭据 -->
               <div id="sign-flow-box" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-subtle); border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);">
-                <div style="font-size: 12px; font-weight: 700; color: var(--status-valid);">签约链接已成功生成</div>
+                <div style="font-size: 12px; font-weight: 700; color: var(--status-valid);">签署任务已创建</div>
                 <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 4px; word-break: break-all;">
-                  微信签约地址：<a href="#" id="sign-h5-link" target="_blank" style="color: var(--primary-navy); text-decoration: underline;"></a>
+                  DocuSeal 签署地址：<a href="#" id="sign-h5-link" target="_blank" style="color: var(--primary-navy); text-decoration: underline;"></a>
                 </div>
                 <div style="display: flex; gap: 8px; margin-top: 10px;">
                   <button class="btn btn-secondary btn-sm" onclick="copySigningLink()">复制签署链接</button>
-                  <button class="btn btn-amber btn-sm" onclick="simulateClientSignature()">模拟当事人完成微信手写签名</button>
                 </div>
                 <div id="sign-audit-trail" style="margin-top: 10px; font-size: 11px; color: var(--text-secondary); border-top: 1px dashed var(--border-hairline); padding-top: 8px;"></div>
               </div>
@@ -337,18 +347,8 @@ export function renderTabAppealSigning() {
         if (btnAppeal) btnAppeal.classList.remove('active');
         if (paneLegacy) paneLegacy.style.display = 'block';
         if (paneAppeal) paneAppeal.style.display = 'none';
+        refreshSigningMode();
       }
-    }
-
-    let appealUseDemoFlag = false;
-
-    function load80MRepurchasePreset() {
-      appealUseDemoFlag = true;
-      const badge = document.getElementById('appeal-demo-badge');
-      if (badge) badge.style.display = 'inline-block';
-      switchRagSignSubTab('appeal');
-      showToast('已载入演示数据·非真实案例（use_demo=true）');
-      runAppealAuditUI(true);
     }
 
     async function runAppealAuditUI(triggerToast = true) {
@@ -363,7 +363,7 @@ export function renderTabAppealSigning() {
       const judgmentType = document.getElementById('appeal-input-judgment-type')?.value || 'judgment';
       const serviceDate = document.getElementById('appeal-input-service-date')?.value || '';
 
-      if (!appealUseDemoFlag && !court) {
+      if (!court) {
         showToast('请填写一审法院名称（必填）');
         return;
       }
@@ -378,12 +378,12 @@ export function renderTabAppealSigning() {
       try {
         const payload = {
           judgment_text: judgmentText,
-          first_instance_court: court || '【演示】一审法院',
+          first_instance_court: court,
           first_instance_case_no: caseNo || null,
           cause_of_action: cause || null,
           judgment_type: judgmentType,
           service_date: serviceDate || null,
-          use_demo: !!appealUseDemoFlag,
+          use_demo: false,
         };
         if (amount !== null && !Number.isNaN(amount)) payload.claim_amount = amount;
         if (rate !== null && !Number.isNaN(rate)) payload.agreed_repurchase_rate = rate;
@@ -398,19 +398,16 @@ export function renderTabAppealSigning() {
         const data = await resp.json();
         currentAppealAuditData = data;
 
-        const demoBadge = document.getElementById('appeal-demo-badge');
-        if (demoBadge) {
-          demoBadge.style.display = data.is_demo ? 'inline-block' : 'none';
-        }
-        if (data.is_demo && triggerToast) {
-          showToast(data.demo_notice || '演示数据·非真实案例');
-        }
+        if (triggerToast) showToast('二审要点审查完成');
 
         // 1. 渲染指标栏
         const metricFlaws = document.getElementById('appeal-metric-flaws');
         if (metricFlaws) metricFlaws.innerText = `${data.total_flaws_found || 0} 项识别漏洞`;
         const metricPrecedents = document.getElementById('appeal-metric-precedents');
-        if (metricPrecedents) metricPrecedents.innerText = `${data.total_pro_precedents || 0} 篇已核验类案`;
+        if (metricPrecedents) {
+          const n = data.total_pro_precedents || 0;
+          metricPrecedents.innerText = n ? `${n} 篇立场写明支持上诉人` : '没有记为支持上诉人的类案';
+        }
         const metricDeadline = document.getElementById('appeal-metric-deadline');
         if (metricDeadline) {
           if (data.appeal_deadline) {
@@ -441,8 +438,6 @@ export function renderTabAppealSigning() {
             metricDeadline.innerText = '上诉期截止日：【待填写】（请填写送达日期）';
           }
         }
-        appealUseDemoFlag = false;
-
         // 2. 渲染三大破绽警告卡片
         if (flawsCont) {
           const flaws = data.flaw_diagnostics || [];
@@ -450,16 +445,16 @@ export function renderTabAppealSigning() {
             <div class="surface-card" style="padding: 10px 12px; border-left: 4px solid #EF4444; background: #FEF2F2;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <span style="font-weight: 700; font-size: 12.5px; color: #B91C1C;">🚨 【${escapeHtml(f.probe_id)}】${escapeHtml(f.error_type)}</span>
-                <span class="badge" style="background:#FEE2E2; color:#B91C1C; font-size:10px;">致命适用法律错误</span>
+                <span class="badge" style="background:#FEE2E2; color:#B91C1C; font-size:10px;">关键词命中，尚未认定一审错误</span>
               </div>
               <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 4px;">
-                <strong>一审错误认定：</strong>${escapeHtml(f.first_instance_holding)}
+                <strong>判决文本里的对应表述：</strong>${escapeHtml(f.first_instance_holding)}
               </div>
               <div style="font-size: 11px; color: #166534; background: #F0FDF4; padding: 6px 8px; border-radius: 4px; border: 1px solid #86EFAC;">
-                <strong>二审驳斥破绽要诀：</strong>${escapeHtml(f.appellate_attack_point)}
+                <strong>可以对照的说理：</strong>${escapeHtml(f.appellate_attack_point)}
               </div>
               <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">
-                违背实体法：${escapeHtml(f.statute_violated)}
+                对照依据：${escapeHtml(f.statute_violated)}
               </div>
             </div>
           `).join('');
@@ -481,7 +476,7 @@ export function renderTabAppealSigning() {
               <!-- 最高院支持派观点 -->
               <div style="background: #F0FDF4; border-left: 3px solid #16A34A; padding: 6px 10px; border-radius: 2px; margin-bottom: 6px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <strong style="font-size: 11.5px; color: #15803D;">✅ 最高院/高院权威裁判要旨 (${escapeHtml(row.supreme_court_rule.case_number)})：</strong>
+                  <strong style="font-size: 11.5px; color: #15803D;">本地库收录的裁判要旨 (${escapeHtml(row.supreme_court_rule.case_number)})：</strong>
                   <button type="button" class="btn btn-secondary btn-sm" onclick="copyRebuttalQuote('${escapeHtml(row.supreme_court_rule.rebuttal_brief_quote)}')" style="font-size:9.5px; padding:1px 5px;">复制说理</button>
                 </div>
                 <div style="font-size: 11px; color: #166534; line-height: 1.4; margin-top: 2px;">
@@ -492,7 +487,7 @@ export function renderTabAppealSigning() {
               <!-- 一审否定派误区对抗 -->
               <div style="background: #FAF9F6; border-left: 3px solid #94A3B8; padding: 6px 10px; border-radius: 2px;">
                 <div style="font-size: 11px; color: var(--text-muted);">
-                  <strong>❌ 一审错误说理死穴：</strong>${escapeHtml(row.first_instance_error_view.flawed_argument)}
+                  <strong>一审需要对照的问题：</strong>${escapeHtml(row.first_instance_error_view.flawed_argument)}
                 </div>
               </div>
             </div>
@@ -515,7 +510,7 @@ export function renderTabAppealSigning() {
         renderAppealDocPreview();
 
         if (triggerToast) {
-          showToast("一审判决漏洞剖析与最高院类案分歧穿透完成！");
+          showToast("二审要点已按判决文本整理。关键词命中不是已经认定的错误。");
         }
       } catch (e) {
         console.error("Appeal audit error:", e);
@@ -549,12 +544,12 @@ export function renderTabAppealSigning() {
 
     function copyAppealDocument() {
       if (!currentAppealAuditData) {
-        showToast("暂无可复制文书，请先点击【执行一审裁判漏洞剖析】");
+        showToast("暂无可复制文书，请先整理上诉要点");
         return;
       }
       const text = currentAppealDocView === 'pleading' ? currentAppealAuditData.appellate_pleading_text : currentAppealAuditData.appellate_memo_report;
       navigator.clipboard.writeText(text).then(() => {
-        showToast("已成功复制二审终稿文书文本！");
+        showToast("已复制本页文书草稿。还不能直接提交。");
       }).catch(err => {
         showToast("复制失败: " + err);
       });
@@ -563,7 +558,7 @@ export function renderTabAppealSigning() {
     function copyRebuttalQuote(quoteText) {
       if (!quoteText) return;
       navigator.clipboard.writeText(quoteText).then(() => {
-        showToast("已复制最高法院权威反驳代理词说理！");
+        showToast("已复制本地库中的说理文字。不是最高法院代理词。");
       }).catch(err => {
         showToast("复制失败: " + err);
       });
@@ -608,9 +603,19 @@ export function renderTabAppealSigning() {
     // =========================================================================
     // 5.2 常规双库检索与签署 (历史保留)
     // =========================================================================
+    function ragShowDemo() {
+      return document.getElementById('rag-show-demo')?.checked === true;
+    }
+
     async function runDualRAGSearch() {
-      const query = document.getElementById('rag-q').value;
+      const query = (document.getElementById('rag-q')?.value || '').trim();
       const corpusType = document.getElementById('rag-corpus').value;
+      const showDemo = ragShowDemo();
+      if (!query) {
+        const emptyBox = document.getElementById('rag-dual-results');
+        if (emptyBox) emptyBox.innerHTML = `<div style="font-size: 12px; color: var(--text-muted);">输入关键词后再检索。打开页面时不会预载其他案件。</div>`;
+        return;
+      }
       const container = document.getElementById('rag-dual-results');
       container.innerHTML = `<span class="spinner-dark"></span> 检索中...`;
 
@@ -618,7 +623,7 @@ export function renderTabAppealSigning() {
         const resp = await api.request(`${API_BASE}/api/v1/phase3/rag/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, corpus_type: corpusType, top_k: 2 })
+          body: JSON.stringify({ query, corpus_type: corpusType, top_k: 2, include_demo: showDemo })
         });
         const d = await resp.json();
         container.innerHTML = "";
@@ -628,24 +633,34 @@ export function renderTabAppealSigning() {
           d.statutes.forEach(s => {
             container.innerHTML += `
               <div class="rag-item-card statute">
-                <strong>${s.citation}</strong>
-                <p style="color:var(--text-secondary); margin-top:2px;">${s.content}</p>
+                <strong>${escapeHtml(s.citation)}</strong>
+                <p style="color:var(--text-secondary); margin-top:2px;">${escapeHtml(s.content)}</p>
+                ${s.citation_notice ? `<p style="color:#9A3412; font-weight:700; margin-top:4px; white-space:pre-wrap;">${escapeHtml(s.citation_notice)}</p>` : ''}
               </div>
             `;
           });
         }
 
-        if (d.winning_cases && d.winning_cases.length) {
-          container.innerHTML += `<div style="font-weight:700; color:var(--status-valid); font-size:12px; margin-top:6px;">【律所胜诉案例库匹配裁判思路】</div>`;
-          d.winning_cases.forEach(c => {
+        const cases = showDemo ? (d.winning_cases || []) : [];
+        if (cases.length) {
+          container.innerHTML += `<div style="font-weight:700; color:#92400E; font-size:12px; margin-top:6px;">【演示材料，不是本所案件，不能当胜诉案例引用】</div>`;
+          cases.forEach(c => {
+            const notice = c.citation_notice || '不是本所案件，不能当胜诉案例引用';
             container.innerHTML += `
               <div class="rag-item-card case">
-                <strong style="color:var(--status-valid);">${c.title}</strong>
-                <p style="margin-top:2px;"><strong>胜诉策略：</strong>${c.win_strategy}</p>
-                <p style="color:var(--text-muted); font-size:11.5px; margin-top:2px;"><strong>代理词范例：</strong>${c.winning_brief_quote}</p>
+                <strong>${escapeHtml(c.title)}</strong>
+                <p style="color:#92400E; font-weight:700; margin-top:2px;">${escapeHtml(notice)}</p>
+                <p style="margin-top:2px;"><strong>演示写法：</strong>${escapeHtml(c.win_strategy)}</p>
+                <p style="color:var(--text-muted); font-size:11.5px; margin-top:2px;"><strong>不能当代理词引用：</strong>${escapeHtml(c.winning_brief_quote)}</p>
               </div>
             `;
           });
+        } else if (!showDemo) {
+          container.innerHTML += `<div style="font-size:12px; color:#92400E; margin-top:6px;">演示材料未显示。打开「显示演示材料」后才会列出，而且不是本所案件，不能当胜诉案例引用。</div>`;
+        }
+
+        if (!container.innerHTML.trim()) {
+          container.innerHTML = `<div style="font-size: 12px; color: var(--text-muted);">没有命中可引用的法规。</div>`;
         }
       } catch (e) {
         container.innerHTML = `<div style="color:var(--status-warn);">检索异常: ${escapeHtml(e)}</div>`;
@@ -655,23 +670,39 @@ export function renderTabAppealSigning() {
     async function runRAGConsult() {
       const btn = document.getElementById('btn-consult');
       const origHtml = btn.innerHTML;
-      btn.innerHTML = `<span class="spinner"></span> 正在查验法条与过往代理词...`;
+      btn.innerHTML = `<span class="spinner"></span> 正在对照本地法规...`;
       btn.disabled = true;
 
-      const question = document.getElementById('consult-q').value;
+      const question = (document.getElementById('consult-q').value || '').trim();
       const box = document.getElementById('consult-ans-box');
+      if (!question) {
+        showToast("请先写本案问题。不要用示例咨询。");
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+        return;
+      }
 
       try {
+        const showDemo = ragShowDemo();
         const resp = await api.request(`${API_BASE}/api/v1/phase3/rag/consult`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question })
+          body: JSON.stringify({ question, include_demo: showDemo })
         });
         const d = await resp.json();
         btn.innerHTML = origHtml;
         btn.disabled = false;
         box.style.display = 'block';
-        box.innerText = d.legal_strategy;
+        const refs = showDemo ? (d.winning_case_references || []) : [];
+        let answer = d.legal_strategy || '';
+        if (refs.length) {
+          const lines = refs.map(c => {
+            const notice = c.citation_notice || '不是本所案件，不能当胜诉案例引用';
+            return `· ${c.title || '演示材料'}（${notice}）`;
+          }).join('\n');
+          answer = `【演示材料，不是本所案件，不能当胜诉案例引用】\n${lines}\n\n${answer}`;
+        }
+        box.innerText = answer;
         showToast("办案策略与代理词已生成");
       } catch (e) {
         btn.innerHTML = origHtml;
@@ -683,14 +714,106 @@ export function renderTabAppealSigning() {
     let currentSignEnvId = null;
     let currentSignUrl = null;
 
-    async function runCreateDocuSealLink() {
-      const payload = {
-        client_name: document.getElementById('sign-c-name').value,
-        client_phone: document.getElementById('sign-c-phone').value,
-        lawyer_name: document.getElementById('sign-l-name').value,
-        service_fee: parseFloat(document.getElementById('sign-fee').value) || 0,
-        case_summary: document.getElementById('sign-case').value
+    function readSigningForm() {
+      const feeRaw = document.getElementById('sign-fee')?.value;
+      const fee = feeRaw === '' || feeRaw == null ? null : parseFloat(feeRaw);
+      return {
+        client_name: (document.getElementById('sign-c-name').value || '').trim(),
+        client_phone: (document.getElementById('sign-c-phone').value || '').trim(),
+        lawyer_name: (document.getElementById('sign-l-name').value || '').trim(),
+        law_firm: (document.getElementById('sign-firm')?.value || '').trim(),
+        service_fee: Number.isNaN(fee) ? null : fee,
+        case_summary: (document.getElementById('sign-case').value || '').trim()
       };
+    }
+
+    async function refreshSigningMode() {
+      const banner = document.getElementById('sign-config-banner');
+      const electronicBtn = document.getElementById('btn-electronic-sign');
+      try {
+        const resp = await api.request(`${API_BASE}/api/v1/phase3/signing-mode`);
+        const data = await resp.json();
+        if (banner) banner.textContent = data.notice || '未配置电子签，请线下签字';
+        if (electronicBtn) electronicBtn.style.display = data.electronic_signing ? 'block' : 'none';
+      } catch (e) {
+        if (banner) banner.textContent = '未配置电子签，请线下签字';
+        if (electronicBtn) electronicBtn.style.display = 'none';
+      }
+    }
+
+    async function runOfflineSignaturePage() {
+      const payload = readSigningForm();
+      if (!payload.client_name || !payload.lawyer_name || !payload.law_firm || !payload.case_summary) {
+        showToast('请填写委托人、承办律师、律师事务所和委托事由。缺这些内容时不生成签字页。');
+        return;
+      }
+      if (payload.service_fee != null && payload.service_fee < 0) {
+        showToast('代理费不能为负数。');
+        return;
+      }
+      try {
+        const resp = await api.request(`${API_BASE}/api/v1/phase3/offline-signature-page`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.signing_url) {
+          showToast('线下签字页不应带电子签署链接，请刷新后再试。');
+          return;
+        }
+        const flow = document.getElementById('sign-flow-box');
+        if (flow) flow.style.display = 'none';
+        const box = document.getElementById('sign-offline-box');
+        if (box) box.style.display = 'block';
+        const notice = document.getElementById('sign-offline-notice');
+        if (notice) notice.textContent = data.notice || '未配置电子签，请线下签字';
+        const link = document.getElementById('sign-offline-download');
+        if (link) {
+          link.href = withDownloadToken(data.download_url);
+          link.download = data.filename || '委托签字页.pdf';
+          link.textContent = '下载委托签字页';
+        }
+        showToast(data.notice || '未配置电子签，请线下签字');
+      } catch (e) {
+        const msg = e instanceof ApiError ? e.userMessage : String(e);
+        showToast(msg);
+      }
+    }
+
+    function signingBackendMessage(err, data) {
+      const fromData = data && (typeof data.detail === 'string' ? data.detail : (typeof data.message === 'string' ? data.message : ''));
+      if (fromData && fromData.trim()) return fromData.trim();
+      if (err && typeof err.detail === 'string' && err.detail.trim()) return err.detail.trim();
+      if (err && typeof err.userMessage === 'string' && err.userMessage.trim()) return err.userMessage.trim();
+      if (err && err.message) return String(err.message);
+      return '本次没有发起签署。';
+    }
+
+    function showSigningFailure(message) {
+      const flow = document.getElementById('sign-flow-box');
+      if (flow) flow.style.display = 'none';
+      const linkEl = document.getElementById('sign-h5-link');
+      if (linkEl) {
+        linkEl.href = '#';
+        linkEl.textContent = '';
+      }
+      currentSignUrl = '';
+      currentSignEnvId = '';
+      const box = document.getElementById('sign-create-error');
+      if (box) {
+        box.style.display = 'block';
+        box.textContent = message;
+      }
+      showToast(message);
+    }
+
+    async function runCreateDocuSealLink() {
+      const payload = readSigningForm();
+      if (!payload.client_name || !payload.lawyer_name || !payload.law_firm || !payload.case_summary) {
+        showToast("请填写委托人、承办律师、律师事务所和委托事由。");
+        return;
+      }
 
       try {
         const resp = await api.request(`${API_BASE}/api/v1/phase3/create-signing-link`, {
@@ -699,81 +822,48 @@ export function renderTabAppealSigning() {
           body: JSON.stringify(payload)
         });
         const d = await resp.json();
+        if (!d || d.docuseal_integrated !== true || typeof d.signing_url !== 'string' || !d.signing_url) {
+          showSigningFailure('无法发起电子签署：' + signingBackendMessage(null, d));
+          return;
+        }
+        const errorBox = document.getElementById('sign-create-error');
+        if (errorBox) {
+          errorBox.style.display = 'none';
+          errorBox.textContent = '';
+        }
         currentSignEnvId = d.envelope_id;
         currentSignUrl = d.signing_url;
+        const offlineBox = document.getElementById('sign-offline-box');
+        if (offlineBox) offlineBox.style.display = 'none';
 
-        const banner = document.getElementById('sign-demo-banner');
-        if (banner) {
-          if (d.is_demo) {
-            banner.style.display = 'block';
-            banner.innerText = '⚠ ' + (d.demo_notice || '演示模式：未接入真实电子签名服务，签署结果不具有法律效力');
-          } else {
-            banner.style.display = 'none';
-          }
-        }
+        const banner = document.getElementById('sign-config-banner');
+        if (banner) banner.style.display = 'none';
 
         document.getElementById('sign-flow-box').style.display = 'block';
         const linkEl = document.getElementById('sign-h5-link');
         linkEl.href = d.signing_url;
         linkEl.innerText = d.signing_url;
 
-        let audit = "<strong>签署审计链：</strong><br/>";
+        let audit = '<strong>签署审计链：</strong><br/>';
         (d.envelope && d.envelope.audit_logs || []).forEach(l => {
-          audit += `• [${l.time}] ${l.action} (${l.operator || l.target || ''})<br/>`;
+          audit += `• [${escapeHtml(l.time)}] ${escapeHtml(l.action)} (${escapeHtml(l.operator || l.target || '')})<br/>`;
         });
-        if (d.is_demo) {
-          audit += `<div style="color:#92400E;margin-top:6px;font-weight:700;">${d.demo_notice || '演示模式：未接入真实电子签名服务，签署结果不具有法律效力'}</div>`;
-        }
+        audit += '<div style="margin-top:6px;color:var(--text-secondary);">签署完成后由 DocuSeal 回调归档，本页不提供模拟签署。</div>';
         document.getElementById('sign-audit-trail').innerHTML = audit;
-        showToast(d.is_demo ? (d.demo_notice || "演示签约任务已创建") : "签约任务已创建");
+        showToast('电子签署任务已创建');
       } catch (e) {
-        showToast("创建签约失败: " + e);
+        showSigningFailure('无法发起电子签署：' + signingBackendMessage(e, null));
       }
     }
 
     function copySigningLink() {
       if (currentSignUrl) {
-        copyToClipboard(currentSignUrl, "签约链接已复制到剪贴板");
-      }
-    }
-
-    async function simulateClientSignature() {
-      if (!currentSignEnvId) {
-        showToast("请先生成签约任务");
-        return;
-      }
-      try {
-        const resp = await api.request(`${API_BASE}/api/v1/phase3/signing-webhook`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ envelope_id: currentSignEnvId })
-        });
-        const d = await resp.json().catch(() => ({}));
-        if (resp.status === 503) {
-          showToast("webhook 未启用：请设置环境变量 DOCUSEAL_WEBHOOK_SECRET 后再模拟回调");
-          document.getElementById('sign-audit-trail').innerHTML += `
-            <div style="color:#92400E; margin-top:6px; font-weight:600;">演示提示：未配置 DOCUSEAL_WEBHOOK_SECRET，无法模拟签署回调。签署结果不具有法律效力。</div>`;
-          return;
-        }
-        if (!resp.ok) {
-          showToast("签署回调失败: HTTP " + resp.status + (d.detail ? (" " + JSON.stringify(d.detail)) : ""));
-          return;
-        }
-        const sha = d.file_sha256 || "";
-        document.getElementById('sign-audit-trail').innerHTML += `
-          <div style="color:var(--status-valid); margin-top:6px; font-weight:600;">✓ 签署回调完成。文件 SHA-256 摘要（用于比对文件是否被修改，不等于第三方存证）：${sha}</div>
-          <a href="${withDownloadToken(d.archived_pdf_url || '#')}" class="btn btn-secondary btn-sm" style="margin-top:4px;" download>下载归档委托协议 PDF</a>
-          ${d.is_demo ? '<div style="color:#92400E;margin-top:4px;font-weight:700;">演示模式：未接入真实电子签名服务，签署结果不具有法律效力</div>' : ''}
-        `;
-        showToast(d.is_demo ? (d.demo_notice || "演示签署完成（不具法律效力）") : "签署回调完成");
-      } catch (e) {
-        showToast("签署回调模拟失败: " + e);
+        copyToClipboard(currentSignUrl, '签约链接已复制到剪贴板');
       }
     }
 
 export {
   switchRagSignSubTab,
-  load80MRepurchasePreset,
   runAppealAuditUI,
   switchAppealDocView,
   renderAppealDocPreview,
@@ -782,8 +872,9 @@ export {
   exportAppealDocxUI,
   runDualRAGSearch,
   runRAGConsult,
+  refreshSigningMode,
+  runOfflineSignaturePage,
   runCreateDocuSealLink,
   copySigningLink,
-  simulateClientSignature,
   lastAppealDeadline,
 };

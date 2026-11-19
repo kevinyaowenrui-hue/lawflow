@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 import httpx
 import pymupdf as fitz
 
-from gateway.core.ollama_client import ollama_client
+from gateway.core.ollama_client import ollama_client, read_secrets
 from gateway.core.db import connect
 from gateway.core.paths import get_generated_dir, get_vault_db_path
 from gateway.utils.cn_legal_calc import rmb_to_capital
@@ -140,23 +140,31 @@ class ChunkLawReq(BaseModel):
 
 class RAGSearchReq(BaseModel):
     query: str = Field(..., examples=["借条丢失 微信聊天记录 借贷合意"])
-    corpus_type: str = Field(default="all", description="检索库范围：all (双库融合) / public_statutes (公共法规库) / private_cases (律所胜诉案例库)")
+    corpus_type: str = Field(default="all", description="检索库范围：all (双库融合) / public_statutes (公共法规库) / private_cases (演示案例库)")
     top_k: int = Field(default=3)
+    include_demo: Optional[bool] = Field(
+        default=None,
+        description="是否返回演示材料。律师界面默认传 false。true 才返回，并标明不是本所案件、不能当胜诉案例引用。",
+    )
 
 class RAGConsultReq(BaseModel):
     question: str = Field(..., examples=["当事人只有微信转账记录没有借条，对方微信答应了会还，但现在不认账，应该如何起诉，如何引用法条？"])
     selected_statute_ids: Optional[List[str]] = Field(default=None)
+    include_demo: Optional[bool] = Field(
+        default=None,
+        description="是否把演示材料放进咨询上下文。默认不放。",
+    )
 
 class CreateSigningLinkReq(BaseModel):
     client_name: str = Field(..., examples=["张三"])
-    client_phone: str = Field(..., examples=["13800000000"])
-    client_email: str = Field(default="client@example.com", examples=["client@example.com"])
-    lawyer_name: str = Field(default="李四律师", examples=["李四律师"])
-    law_firm: str = Field(default="北京市京师律师事务所", examples=["北京市京师律师事务所"])
-    service_fee: float = Field(default=20000.0, examples=[20000.0])
-    agreement_title: str = Field(default="民事委托代理协议及诉讼风险告知书", examples=["民事委托代理协议及诉讼风险告知书"])
-    case_summary: str = Field(default="代理原告张三诉北京某公司技术合同纠纷一审诉讼", examples=["代理原告张三诉北京某公司技术合同纠纷一审诉讼"])
-    matter_id: str = Field(default="", examples=[""])
+    client_phone: str = Field(default="", examples=["13800000000"])
+    client_email: str = Field(default="")
+    lawyer_name: str = Field(default="")
+    law_firm: str = Field(default="", description="律师事务所名称。不预填示例律所。")
+    service_fee: Optional[float] = Field(default=None, description="未填写时签字页写【待填写】，不写成 0 元已约定")
+    agreement_title: str = Field(default="民事委托代理协议及诉讼风险告知书")
+    case_summary: str = Field(default="")
+    matter_id: str = Field(default="")
 
 
 # ==============================================================================
@@ -173,70 +181,124 @@ async def api_chunk_law(req: ChunkLawReq):
     }
 
 
+DEMO_CASE_SOURCE = "演示材料，不是本所已核验案件"
+DEMO_CASE_NOTICE = "不是本所案件，不能当胜诉案例引用"
+
+
+def _demo_cases_allowed(req: RAGSearchReq) -> bool:
+    """律师默认检索不返回 is_demo。
+
+    include_demo 为 true 才返回演示项。
+    未传该字段时：双库融合与咨询不返回；仅 corpus_type=private_cases 仍返回已标明的演示项，
+    以保持既有「仅演示案例库」验收。律师界面总会传 true 或 false。
+    """
+    if req.include_demo is True:
+        return True
+    if req.include_demo is False:
+        return False
+    return req.corpus_type == "private_cases"
+
+
 # ==============================================================================
 # 4. 双库隔离检索接口 (POST /api/v1/phase3/rag/search)
 # ==============================================================================
-@router.post("/api/v1/phase3/rag/search", summary="【公共法规库】与【律所私有胜诉案例库】双库隔离检索")
+@router.post("/api/v1/phase3/rag/search", summary="【公共法规库】与【演示案例】双库隔离检索")
 @router.post("/api/rag/search-precedents", include_in_schema=False)
 async def api_rag_search(req: RAGSearchReq):
     """
     双库隔离特征加权匹配：
-    - public_statutes: 确保精确法条引用
-    - private_cases: 提取过往胜诉代理词与裁判思维
+    - public_statutes: 本地法规库法条，引用前核对效力
+    - private_cases: 演示材料。默认不返回；打开开关后才返回，并标明不能当胜诉案例引用
     """
-    query_lower = req.query.lower()
-    query_terms = [t.strip() for t in query_lower.split() if t.strip()]
-    cleaned = re.sub(r"[^\w\u4e00-\u9fa5]+", " ", query_lower)
-    sub_tokens = [w for w in cleaned.split() if w]
-    for w in sub_tokens:
-        if len(w) >= 2:
-            query_terms.append(w)
-            for i in range(len(w) - 1):
-                query_terms.append(w[i:i+2])
-                if i + 3 <= len(w):
-                    query_terms.append(w[i:i+3])
-    query_terms = list(set(query_terms))
+    query_lower = (req.query or "").lower()
+    user_terms: List[str] = []
+    for raw in re.sub(r"[^\w\u4e00-\u9fa5]+", " ", query_lower).split():
+        term = raw.strip()
+        if len(term) >= 2 and term not in user_terms:
+            user_terms.append(term)
+
+    # 只在整句和词都没命中时，才用字窗补召。字窗不能跟词、锚点抢前三名。
+    windows: List[str] = []
+    for word in user_terms:
+        if len(word) < 4:
+            continue
+        for i in range(len(word) - 1):
+            pair = word[i:i + 2]
+            if pair not in user_terms and pair not in windows:
+                windows.append(pair)
+            if i + 3 <= len(word):
+                tri = word[i:i + 3]
+                if tri not in user_terms and tri not in windows:
+                    windows.append(tri)
+
+    anchors: List[str] = []
+    for anchor in ("借款合同", "违约金", "借贷", "劳动合同", "经济补偿"):
+        if anchor in user_terms:
+            continue
+        if anchor in query_lower or any(anchor in term for term in user_terms):
+            anchors.append(anchor)
 
     statute_results = []
     case_results = []
 
     # 1. 穿透本地权威法律数据库 (SQLite FTS5 + 子母法图谱三路混合检索)
     if req.corpus_type in ["all", "public_statutes"]:
-        seen_citations = set()
         try:
             from gateway.utils.statute_db import search_statutes_hybrid
 
-            # 整句检索 + 分词补召（替代原 PUBLIC_STATUTES_CORPUS 关键词表）
-            probe_queries = [req.query]
-            for t in query_terms:
-                if len(t) >= 2 and t not in probe_queries:
-                    probe_queries.append(t)
-            # 常见请求权锚点：保证借贷/违约类查询仍能命中法典库
-            for anchor in ("借款合同", "违约金", "借贷", "劳动合同", "经济补偿"):
-                if anchor in query_lower or any(anchor in t for t in query_terms):
-                    probe_queries.append(anchor)
+            probes: List[tuple] = []
+            seen_probes = set()
 
-            for pq in probe_queries:
-                for art in search_statutes_hybrid(pq, limit=req.top_k * 2):
+            def add_probe(text: str, weight: int) -> None:
+                text = (text or "").strip()
+                if len(text) < 2 or text in seen_probes:
+                    return
+                seen_probes.add(text)
+                probes.append((text, weight))
+
+            add_probe(req.query, 300)
+            for term in user_terms:
+                add_probe(term, 120 + min(len(term), 40))
+            for anchor in anchors:
+                add_probe(anchor, 220)
+
+            best: Dict[str, Dict[str, Any]] = {}
+
+            def absorb(probe: str, weight: int) -> None:
+                for art in search_statutes_hybrid(probe, limit=max(req.top_k * 2, 4)):
                     cite_str = f"《{art['full_name']}》{art['article_no_cn']}"
-                    if cite_str in seen_citations:
+                    score = weight + float(art.get("rank_score") or 0)
+                    prev = best.get(cite_str)
+                    if prev is not None and prev["score"] >= score:
                         continue
-                    seen_citations.add(cite_str)
-                    statute_results.append({
-                        "score": 10,
-                        "item": {
-                            "citation": cite_str,
-                            "content": art["content"],
-                            "keywords": [art.get("short_name", ""), art.get("claim_basis_type", "")],
-                            "source": "国家权威法典库(FTS5)",
-                        },
-                    })
+                    item = {
+                        "citation": cite_str,
+                        "content": art["content"],
+                        "keywords": [art.get("short_name", ""), art.get("claim_basis_type", "")],
+                        "source": "本地法规库。引用前核对效力",
+                    }
+                    notice = (art.get("cpl_citation_display_note") or "").strip()
+                    if notice:
+                        item["citation_notice"] = notice
+                        item["copyable_as_current_authority"] = False
+                    best[cite_str] = {
+                        "score": score,
+                        "item": item,
+                    }
+
+            for probe, weight in probes:
+                absorb(probe, weight)
+            # 空查询不加示例法条。词和锚点都不够时，才用字窗补足。
+            if req.query.strip() and len(best) < req.top_k:
+                for probe in windows:
+                    absorb(probe, 8 + min(len(probe), 6))
+                    if len(best) >= req.top_k:
+                        break
+            statute_results = sorted(best.values(), key=lambda row: row["score"], reverse=True)
         except Exception as e_db:
             logger.debug(f"statute_db 混合检索略过: {e_db}")
 
-        statute_results.sort(key=lambda x: x["score"], reverse=True)
-
-    # 2. 检索律所私有胜诉案例库
+    # 2. 检索演示案例。默认不进入律师结果；打开开关后才附上，并标明不能当胜诉案例引用。
     if req.corpus_type in ["all", "private_cases"]:
         for cs in _private_cases_corpus():
             score = 0
@@ -244,17 +306,29 @@ async def api_rag_search(req: RAGSearchReq):
                 kw_low = kw.lower()
                 if kw_low in query_lower:
                     score += 6
-                elif any(t in kw_low for t in query_terms if len(t) >= 2):
+                elif any(t in kw_low for t in user_terms):
                     score += 3
-            for t in query_terms:
+            for t in user_terms:
                 if len(t) >= 2:
                     if t in cs["title"]:
                         score += 3
                     if t in cs["win_strategy"]:
                         score += 2
             if score > 0:
-                case_results.append({"score": score, "item": {**cs, "source": "律所胜诉案例库(演示)", "is_demo": True}})
+                case_results.append({
+                    "score": score,
+                    "item": {
+                        **cs,
+                        "source": DEMO_CASE_SOURCE,
+                        "is_demo": True,
+                        "citation_notice": DEMO_CASE_NOTICE,
+                    },
+                })
         case_results.sort(key=lambda x: x["score"], reverse=True)
+
+    demo_allowed = _demo_cases_allowed(req)
+    if not demo_allowed:
+        case_results = [row for row in case_results if not row["item"].get("is_demo")]
 
     final_statutes = [s["item"] for s in statute_results[:req.top_k]]
     final_cases = [c["item"] for c in case_results[:req.top_k]]
@@ -264,6 +338,7 @@ async def api_rag_search(req: RAGSearchReq):
         "status": "success",
         "query": req.query,
         "corpus_type": req.corpus_type,
+        "include_demo": demo_allowed,
         "matched_statutes_count": len(final_statutes),
         "matched_cases_count": len(final_cases),
         "statutes": final_statutes,
@@ -278,25 +353,42 @@ async def api_rag_search(req: RAGSearchReq):
 @router.post("/api/v1/phase3/rag/consult", summary="法条与胜诉代理词精准注入的办案问答 (杜绝法条幻觉)")
 @router.post("/api/rag/qa", include_in_schema=False)
 async def api_rag_consult(req: RAGConsultReq):
-    # 双库检索
-    search_res = await api_rag_search(RAGSearchReq(query=req.question, corpus_type="all", top_k=2))
+    # 咨询与双列检索共用同一开关：默认不把演示材料放进上下文
+    search_res = await api_rag_search(RAGSearchReq(
+        query=req.question,
+        corpus_type="all",
+        top_k=2,
+        include_demo=req.include_demo,
+    ))
     statutes = search_res["statutes"]
     cases = search_res["winning_cases"]
 
     context_str = "【必须遵循的现行法条依据（严禁捏造不存在的法条）】\n"
     for st in statutes:
         context_str += f"- {st['citation']}:\n  {st['content']}\n"
+        if st.get("citation_notice"):
+            context_str += (
+                f"  条号对照：{st['citation_notice']}\n"
+                "  对不上的《民事诉讼法》条号不能写入代理词作为现行依据。\n"
+            )
 
-    context_str += "\n【律所历史胜诉代理词与裁判思路借鉴】\n"
-    for cs in cases:
-        context_str += f"- 案例: {cs['title']}\n  胜诉要点: {cs['win_strategy']}\n  代理词示范: {cs['winning_brief_quote']}\n"
+    if cases:
+        context_str += "\n【演示材料，不是裁判要旨，也不是本所胜诉案件。不能当胜诉案例引用】\n"
+        for cs in cases:
+            notice = cs.get("citation_notice") or DEMO_CASE_NOTICE
+            context_str += (
+                f"- 演示: {cs['title']}\n"
+                f"  标明: {notice}\n"
+                f"  仅供对照的写法: {cs['win_strategy']}\n"
+                f"  不能当代理词引用: {cs['winning_brief_quote']}\n"
+            )
 
-    system_prompt = """你是一名中华全国律师协会顶级出庭诉讼大律师与最高法院审判研究专家。
-请根据提供的【现行法条依据】与【律所胜诉代理词】，回答律师的办案策略与起诉指引。
+    system_prompt = """你是办案辅助。只能依据下面给出的法条原文。
+演示材料不是裁判文书，不能写成本所胜诉案件，也不能把演示里的结论说成法院已经支持。
 要求：
-1. 严禁出现法条幻觉，必须严格援引提供给你的法条条文；
-2. 借鉴律所胜诉案件中的证明思路与代理词要点；
-3. 输出包含：诉讼请求权基础明确、举证链补强指引、法庭辩论说理词示范。"""
+1. 只援引提供的法条，不要编造条号；
+2. 演示材料如果和法条不一致，以法条为准，并说明演示不能当依据；
+3. 分开写请求权基础、还缺什么证据、可以怎么说理。不要写胜诉把握。"""
 
     user_prompt = f"【律师咨询问题】\n{req.question}\n\n{context_str}\n\n请出具专业律师办案策略指导意见。"
 
@@ -313,6 +405,7 @@ async def api_rag_consult(req: RAGConsultReq):
         return {
             "status": "success",
             "question": req.question,
+            "include_demo": bool(search_res.get("include_demo")),
             "statute_references": statutes,
             "winning_case_references": cases,
             "legal_strategy": ans,
@@ -324,6 +417,7 @@ async def api_rag_consult(req: RAGConsultReq):
         return {
             "status": "success",
             "question": req.question,
+            "include_demo": bool(search_res.get("include_demo")),
             "statute_references": statutes,
             "winning_case_references": cases,
             "legal_strategy": fallback_ans
@@ -439,6 +533,10 @@ def _save_signing_envelope(record: Dict[str, Any]) -> None:
         )
 
 
+def _docuseal_http_client(**kwargs):
+    return httpx.AsyncClient(**kwargs)
+
+
 async def _probe_docuseal_available() -> bool:
     base = _docuseal_base_url()
     if not base:
@@ -449,6 +547,326 @@ async def _probe_docuseal_available() -> bool:
             return resp.status_code == 200
     except Exception:
         return False
+
+
+def _docuseal_api_token() -> str:
+    """环境变量优先，否则读用户目录 secrets.json，不把令牌写入仓库。"""
+    for key in ("DOCUSEAL_API_TOKEN", "DOCUSEAL_API_KEY"):
+        value = (os.getenv(key) or "").strip()
+        if value:
+            return value
+    try:
+        data = read_secrets()
+    except Exception as exc:
+        logger.warning("读取 DocuSeal API 令牌失败: %s", exc)
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    return str(data.get("docuseal_api_token") or data.get("DOCUSEAL_API_TOKEN") or "").strip()
+
+
+def _stringify_id(value: Any) -> str:
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, float):
+        if not value.is_integer():
+            return ""
+        return str(int(value))
+    if isinstance(value, int):
+        return str(value)
+    return str(value).strip()
+
+
+def _push_id(keys: List[str], value: Any) -> None:
+    text = _stringify_id(value)
+    if text and text not in keys:
+        keys.append(text)
+
+
+_COMPLETION_WEBHOOK_EVENTS = frozenset({
+    "form.completed",
+    "submission.completed",
+    "envelope.completed",
+})
+_STORED_DOCUSEAL_ID_FIELDS = (
+    "docuseal_submission_id",
+    "docuseal_submitter_id",
+    "external_id",
+    "docuseal_slug",
+)
+
+
+def _webhook_candidate_ids(body: Dict[str, Any]) -> List[str]:
+    """兼容本系统 envelope_id，以及 DocuSeal form/submission 回调里的真实编号。"""
+    keys: List[str] = []
+    _push_id(keys, body.get("envelope_id"))
+    data = body.get("data") if isinstance(body.get("data"), dict) else {}
+    _push_id(keys, data.get("external_id"))
+    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    _push_id(keys, metadata.get("envelope_id"))
+    submission = data.get("submission") if isinstance(data.get("submission"), dict) else {}
+    _push_id(keys, submission.get("external_id"))
+    submission_meta = submission.get("metadata") if isinstance(submission.get("metadata"), dict) else {}
+    _push_id(keys, submission_meta.get("envelope_id"))
+    for item in data.get("submitters") or []:
+        if not isinstance(item, dict):
+            continue
+        _push_id(keys, item.get("external_id"))
+        item_meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        _push_id(keys, item_meta.get("envelope_id"))
+    _push_id(keys, data.get("submission_id"))
+    _push_id(keys, submission.get("id"))
+    _push_id(keys, data.get("id"))
+    for item in data.get("submitters") or []:
+        if not isinstance(item, dict):
+            continue
+        _push_id(keys, item.get("submission_id"))
+        _push_id(keys, item.get("id"))
+    _push_id(keys, body.get("submission_id"))
+    _push_id(keys, body.get("id"))
+    return keys
+
+
+def find_signing_envelope_for_webhook(body: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    candidates = _webhook_candidate_ids(body)
+    for key in candidates:
+        record = get_signing_envelope(key)
+        if record:
+            return record
+    if not candidates:
+        return None
+    wanted = set(candidates)
+    ensure_signing_envelopes_table()
+    with connect(get_vault_db_path(), row_factory=sqlite3.Row) as conn:
+        rows = conn.execute(
+            "SELECT envelope_id, payload_json FROM signing_envelopes"
+        ).fetchall()
+    for row in rows:
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        stored = {_stringify_id(payload.get(field)) for field in _STORED_DOCUSEAL_ID_FIELDS}
+        stored.discard("")
+        if stored & wanted:
+            return get_signing_envelope(row["envelope_id"])
+    return None
+
+
+def _retainer_html(req: CreateSigningLinkReq) -> str:
+    phone = html.escape((req.client_phone or "").strip() or "【待填写】")
+    email = (req.client_email or "").strip()
+    email_html = f"<p>电子邮箱：{html.escape(email)}</p>" if email else ""
+    return (
+        "<!DOCTYPE html><html><body>"
+        f"<h1>{html.escape(req.agreement_title)}</h1>"
+        f"<p>委托人（甲方）：{html.escape((req.client_name or '').strip())}</p>"
+        f"<p>联系电话：{phone}</p>"
+        f"{email_html}"
+        f"<p>承办律师：{html.escape((req.lawyer_name or '').strip())}</p>"
+        f"<p>律师事务所：{html.escape((req.law_firm or '').strip())}</p>"
+        f"<p>委托事由：{html.escape((req.case_summary or '').strip())}</p>"
+        f"<p>代理费：{html.escape(_fee_line(req.service_fee))}</p>"
+        "<p>委托人已知悉诉讼固有风险。委托事项、代理权限和代理费以本页记载为准。"
+        "未填写的项目，签署前应当补全。</p>"
+        "<p>委托人签字："
+        '<signature-field name="委托人签字" role="委托人" required="true" '
+        'style="width: 180px; height: 48px; display: inline-block;"></signature-field>'
+        "</p></body></html>"
+    )
+
+
+def _submitter_payload(req: CreateSigningLinkReq, envelope_id: str) -> Dict[str, Any]:
+    submitter: Dict[str, Any] = {
+        "name": req.client_name.strip(),
+        "role": "委托人",
+        "send_email": False,
+        "external_id": envelope_id,
+        "metadata": {"envelope_id": envelope_id},
+    }
+    email = (req.client_email or "").strip()
+    if email:
+        submitter["email"] = email
+    phone = (req.client_phone or "").strip()
+    if phone.startswith("+"):
+        submitter["phone"] = phone
+    return submitter
+
+
+def _iter_submitters(payload: Any) -> tuple:
+    if isinstance(payload, list):
+        submitters = [item for item in payload if isinstance(item, dict)]
+        submission_id = ""
+        for item in submitters:
+            submission_id = _stringify_id(item.get("submission_id"))
+            if submission_id:
+                break
+        return submitters, submission_id
+    if not isinstance(payload, dict):
+        return [], ""
+    submission_id = _stringify_id(payload.get("submission_id") or payload.get("id"))
+    raw = payload.get("submitters")
+    if isinstance(raw, list):
+        submitters = [item for item in raw if isinstance(item, dict)]
+        for item in submitters:
+            nested = _stringify_id(item.get("submission_id"))
+            if nested:
+                submission_id = nested
+                break
+        return submitters, submission_id
+    if payload.get("embed_src") or payload.get("slug"):
+        return [payload], submission_id
+    return [], submission_id
+
+
+def _official_signing_url(base: str, submitter: Dict[str, Any]) -> str:
+    embed = str(submitter.get("embed_src") or "").strip()
+    slug = str(submitter.get("slug") or "").strip()
+    if embed.startswith("http://") or embed.startswith("https://"):
+        return embed
+    if embed.startswith("/") and not embed.startswith("//"):
+        return f"{base}{embed}"
+    token = slug
+    if not token and embed and "://" not in embed and "/" not in embed and " " not in embed:
+        token = embed
+    if not token:
+        return ""
+    return f"{base}/s/{token}"
+
+
+def _signing_link_from_submission(base: str, payload: Any, envelope_id: str) -> Dict[str, str]:
+    submitters, submission_id = _iter_submitters(payload)
+    chosen = None
+    for item in submitters:
+        if str(item.get("role") or "") == "委托人" and _official_signing_url(base, item):
+            chosen = item
+            break
+    if chosen is None:
+        for item in submitters:
+            if _official_signing_url(base, item):
+                chosen = item
+                break
+    if chosen is None:
+        return {}
+    signing_url = _official_signing_url(base, chosen)
+    if not signing_url:
+        return {}
+    if envelope_id and signing_url.rstrip("/").endswith("/s/" + envelope_id):
+        return {}
+    sub_id = _stringify_id(chosen.get("submission_id")) or submission_id
+    if sub_id == envelope_id:
+        sub_id = ""
+    return {
+        "signing_url": signing_url,
+        "docuseal_submission_id": sub_id,
+        "docuseal_submitter_id": _stringify_id(chosen.get("id")),
+        "docuseal_slug": str(chosen.get("slug") or "").strip(),
+    }
+
+
+def _docuseal_error_hint(resp: httpx.Response) -> str:
+    try:
+        data = resp.json()
+    except Exception:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    for key in ("error", "message", "detail"):
+        value = data.get(key)
+        if not isinstance(value, str):
+            continue
+        text = " ".join(value.split())
+        lowered = text.lower()
+        if (
+            not text
+            or "<" in text
+            or "traceback" in lowered
+            or "x-auth-token" in lowered
+            or len(text) > 160
+        ):
+            continue
+        return text
+    return ""
+
+
+def _raise_docuseal_create_error(resp: httpx.Response) -> None:
+    if resp.status_code in (401, 403):
+        detail = (
+            "DocuSeal 拒绝了 API 令牌。请核对 DOCUSEAL_API_TOKEN，"
+            "或用户目录 secrets.json 里的 docuseal_api_token。本次没有发起签署。"
+        )
+    elif resp.status_code == 404:
+        detail = (
+            "DocuSeal 没有从委托合同创建提交的接口（HTTP 404）。"
+            "请确认 DOCUSEAL_URL 指向的服务支持 POST /api/submissions/html。"
+            "本次没有发起签署。"
+        )
+    else:
+        detail = f"DocuSeal 创建签署提交失败（HTTP {resp.status_code}）。本次没有发起签署。"
+        hint = _docuseal_error_hint(resp)
+        if hint:
+            detail = f"{detail} {hint}"
+    raise HTTPException(status_code=502, detail=detail)
+
+
+async def _request_docuseal_submission(
+    req: CreateSigningLinkReq,
+    envelope_id: str,
+    token: str,
+) -> Dict[str, str]:
+    base = _docuseal_base_url()
+    url = f"{base}/api/submissions/html"
+    body = {
+        "name": req.agreement_title,
+        "send_email": False,
+        "documents": [
+            {
+                "name": req.agreement_title or "委托合同",
+                "html": _retainer_html(req),
+                "size": "A4",
+            }
+        ],
+        "submitters": [_submitter_payload(req, envelope_id)],
+    }
+    try:
+        async with _docuseal_http_client(timeout=20.0) as client:
+            resp = await client.post(
+                url,
+                headers={"X-Auth-Token": token, "Accept": "application/json"},
+                json=body,
+            )
+    except httpx.RequestError as exc:
+        logger.warning("DocuSeal 创建提交连接失败: %s", exc.__class__.__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="DocuSeal 服务不可达，创建签署提交时连不上，请检查 DOCUSEAL_URL。本次没有发起签署。",
+        )
+    if resp.status_code >= 400:
+        logger.warning("DocuSeal 创建提交被拒绝 status=%s", resp.status_code)
+        _raise_docuseal_create_error(resp)
+    try:
+        payload = resp.json()
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail="DocuSeal 创建签署提交失败：返回的不是合法 JSON。本次没有发起签署。",
+        )
+    link = _signing_link_from_submission(base, payload, envelope_id)
+    if not link.get("signing_url"):
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "DocuSeal 创建提交已返回，但响应里没有签署链接"
+                "（需要 submitters 里的 embed_src 或 slug）。本次没有发起签署。"
+            ),
+        )
+    logger.info(
+        "DocuSeal 签署提交已创建 submission_id=%s",
+        link.get("docuseal_submission_id") or "",
+    )
+    return link
 
 
 def _demo_meta(is_demo: bool) -> Dict[str, Any]:
@@ -530,28 +948,145 @@ def _finalize_signing_record(record: Dict[str, Any], is_demo: bool) -> Dict[str,
     return result
 
 
-@router.post("/api/v1/phase3/create-signing-link", summary="将委托合同与风险告知书推至 DocuSeal 发起微信端电子签署")
+OFFLINE_SIGN_NOTICE = "未配置电子签，请线下签字"
+
+
+def _signing_identity_error(req: CreateSigningLinkReq) -> Optional[str]:
+    missing = []
+    if not (req.client_name or "").strip():
+        missing.append("委托人")
+    if not (req.lawyer_name or "").strip():
+        missing.append("承办律师")
+    if not (req.law_firm or "").strip():
+        missing.append("律师事务所")
+    if not (req.case_summary or "").strip():
+        missing.append("委托事由")
+    if not missing:
+        return None
+    return "请填写" + "、".join(missing) + "。缺这些内容时不生成签字页，避免空白页看起来像已经签好的委托。"
+
+
+def _fee_line(amount: Optional[float]) -> str:
+    if amount is None or amount <= 0:
+        return "【待填写】"
+    return f"人民币 {float(amount):,.2f} 元（{rmb_to_capital(float(amount))}）"
+
+
+@router.get("/api/v1/phase3/signing-mode", summary="电子签是否已配置")
+async def signing_mode():
+    url_ok = bool(_docuseal_base_url())
+    secret_ok = bool(_webhook_secret())
+    token_ok = bool(_docuseal_api_token())
+    if url_ok and secret_ok and token_ok:
+        return {
+            "status": "success",
+            "electronic_signing": True,
+            "notice": "已配置电子签。未完成签署前，仍可下载委托签字页线下签字。",
+        }
+    if url_ok and secret_ok and not token_ok:
+        return {
+            "status": "success",
+            "electronic_signing": True,
+            "notice": (
+                "DocuSeal 地址和回调密钥已填写，还缺 API 令牌。"
+                "请配置 DOCUSEAL_API_TOKEN，或在用户目录 secrets.json 写入 docuseal_api_token。"
+                "没有令牌时不能发起电子签署。"
+            ),
+        }
+    return {
+        "status": "success",
+        "electronic_signing": False,
+        "notice": OFFLINE_SIGN_NOTICE,
+    }
+
+
+@router.post("/api/v1/phase3/offline-signature-page", summary="生成线下委托签字页")
+async def offline_signature_page(req: CreateSigningLinkReq):
+    """没有 DocuSeal 时给律师一份可打印的签字页，不伪造签署链接。"""
+    identity_error = _signing_identity_error(req)
+    if identity_error:
+        raise HTTPException(status_code=422, detail=identity_error)
+    if req.service_fee is not None and req.service_fee < 0:
+        raise HTTPException(status_code=422, detail="代理费不能为负数。")
+
+    now_str = datetime.now().strftime("%Y年%m月%d日")
+    safe_client = re.sub(r'[\\/:*?"<>|\s]+', "_", req.client_name.strip())[:40] or "委托人"
+    filename = f"委托签字页_{safe_client}_{int(time.time())}.pdf"
+    path = os.path.join(str(get_generated_dir()), filename)
+    phone = (req.client_phone or "").strip() or "【待填写】"
+    email = (req.client_email or "").strip()
+    email_line = f"电子邮箱：{email}\n" if email else ""
+    text = (
+        "委托签字页\n\n"
+        f"{OFFLINE_SIGN_NOTICE}\n"
+        "本页只供当面或邮寄签字，不是电子签署，也不是法院立案回执。\n\n"
+        f"文件名称：{req.agreement_title}\n"
+        f"委托人：{req.client_name.strip()}\n"
+        f"联系电话：{phone}\n"
+        f"{email_line}"
+        f"承办律师：{req.lawyer_name.strip()}\n"
+        f"律师事务所：{req.law_firm.strip()}\n"
+        f"委托事由：{req.case_summary.strip()}\n"
+        f"代理费：{_fee_line(req.service_fee)}\n\n"
+        "委托人确认：委托事项、代理权限和代理费以双方另行签署的委托合同为准。"
+        "本页未填写的项目，签字前应当手写补全。\n\n"
+        "委托人签字：____________________    日期：__________\n\n"
+        "承办律师签字：____________________    日期：__________\n\n"
+        f"打印日期：{now_str}\n"
+    )
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_textbox(fitz.Rect(54, 64, 541, 780), text, fontsize=12, fontname="china-s")
+    doc.save(path)
+    doc.close()
+    return {
+        "status": "success",
+        "mode": "offline",
+        "electronic_signing": False,
+        "notice": OFFLINE_SIGN_NOTICE,
+        "signing_url": None,
+        "filename": filename,
+        "download_url": f"/api/documents/download/{filename}",
+    }
+
+
+def _require_docuseal_config() -> None:
+    if not _docuseal_base_url() or not _webhook_secret():
+        raise HTTPException(
+            status_code=503,
+            detail="未配置 DOCUSEAL_URL 与 DOCUSEAL_WEBHOOK_SECRET，无法发起正式电子签署",
+        )
+
+
+@router.post("/api/v1/phase3/create-signing-link", summary="将委托合同与风险告知书推至 DocuSeal 发起电子签署")
 @router.post("/api/sign/create-envelope", include_in_schema=False)
 async def create_signing_link(req: CreateSigningLinkReq):
-    """
-    将《民事委托代理协议》与《诉讼风险告知书》推送至本地 DocuSeal（若已配置且可用）；
-    否则返回工作台内置演示签署页链接（不具法律效力）。
-    """
+    """把委托合同提交到 DocuSeal。健康检查通过还不够，签署链接必须来自创建提交的响应。"""
+    _require_docuseal_config()
+    identity_error = _signing_identity_error(req)
+    if identity_error:
+        raise HTTPException(status_code=422, detail=identity_error)
+    token = _docuseal_api_token()
+    if not token:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "未配置 DocuSeal API 令牌。请设置环境变量 DOCUSEAL_API_TOKEN，"
+                "或在用户目录 secrets.json 写入 docuseal_api_token。"
+                "没有令牌就不能在 DocuSeal 创建签署提交，本次没有发起签署。"
+            ),
+        )
+    if not await _probe_docuseal_available():
+        raise HTTPException(
+            status_code=503,
+            detail="DocuSeal 服务不可达，请检查 DOCUSEAL_URL。本次没有发起签署。",
+        )
+
     envelope_id = f"ds-{uuid.uuid4().hex[:12]}"
     view_token = secrets.token_urlsafe(32)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    docuseal_available = await _probe_docuseal_available()
-    is_demo = not docuseal_available
-    base = _public_base_url()
-
-    if docuseal_available:
-        signing_url = f"{_docuseal_base_url()}/s/{envelope_id}"
-    else:
-        signing_url = (
-            f"{base}/api/v1/phase3/sign-view/{envelope_id}"
-            f"?view_token={view_token}"
-        )
+    link = await _request_docuseal_submission(req, envelope_id, token)
+    signing_url = link["signing_url"]
 
     envelope_record: Dict[str, Any] = {
         "envelope_id": envelope_id,
@@ -562,8 +1097,8 @@ async def create_signing_link(req: CreateSigningLinkReq):
         "client_email": req.client_email,
         "lawyer_name": req.lawyer_name,
         "law_firm": req.law_firm,
-        "service_fee": req.service_fee,
-        "service_fee_capital": rmb_to_capital(req.service_fee),
+        "service_fee": float(req.service_fee or 0),
+        "service_fee_capital": rmb_to_capital(float(req.service_fee or 0)),
         "case_summary": req.case_summary,
         "created_at": now_str,
         "completed_at": None,
@@ -572,31 +1107,33 @@ async def create_signing_link(req: CreateSigningLinkReq):
         "view_token": view_token,
         "file_path": None,
         "file_sha256": None,
-        "docuseal_integrated": docuseal_available,
-        "is_demo": is_demo,
-        "mode": "demo" if is_demo else "docuseal",
+        "docuseal_integrated": True,
+        "docuseal_submission_id": link.get("docuseal_submission_id") or "",
+        "docuseal_submitter_id": link.get("docuseal_submitter_id") or "",
+        "docuseal_slug": link.get("docuseal_slug") or "",
+        "external_id": envelope_id,
+        "is_demo": False,
+        "mode": "docuseal",
         "audit_logs": [
             {"time": now_str, "action": "签署任务创建", "operator": req.lawyer_name},
             {
                 "time": now_str,
-                "action": "生成签署链接（演示页或 DocuSeal）",
+                "action": "已把委托合同提交到 DocuSeal",
                 "target": req.client_phone,
             },
         ],
     }
     _save_signing_envelope(envelope_record)
 
-    resp = {
+    return {
         "status": "success",
         "envelope_id": envelope_id,
         "signing_url": signing_url,
-        "docuseal_integrated": docuseal_available,
+        "docuseal_integrated": True,
+        "docuseal_submission_id": link.get("docuseal_submission_id") or "",
         "envelope": envelope_record,
-        **_demo_meta(is_demo),
+        **_demo_meta(False),
     }
-    if is_demo:
-        resp["message"] = DEMO_SIGNING_NOTICE
-    return resp
 
 
 @router.post("/api/v1/phase3/signing-webhook", summary="DocuSeal 电子签约完成回调与文书自动归档")
@@ -627,102 +1164,32 @@ async def signing_webhook(request: Request):
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="请求体不是合法 JSON")
 
-    envelope_id = body.get("envelope_id") or body.get("id")
-    if not envelope_id:
-        raise HTTPException(status_code=404, detail="envelope 不存在")
+    event_type = str(body.get("event_type") or "").strip()
+    if event_type and event_type not in _COMPLETION_WEBHOOK_EVENTS:
+        return {
+            "status": "ignored",
+            "event_type": event_type,
+            "message": "已收到 DocuSeal 回调。这不是签署完成，未归档。",
+        }
 
-    record = get_signing_envelope(str(envelope_id))
+    record = find_signing_envelope_for_webhook(body)
     if not record:
         raise HTTPException(status_code=404, detail="envelope 不存在")
 
-    is_demo = not bool(record.get("docuseal_integrated"))
-    return _finalize_signing_record(record, is_demo=is_demo)
+    if not bool(record.get("docuseal_integrated")) or bool(record.get("is_demo")):
+        raise HTTPException(
+            status_code=400,
+            detail="该签署任务不是正式 DocuSeal 任务，已停用演示签署完成路径",
+        )
+    return _finalize_signing_record(record, is_demo=False)
 
 
-@router.get("/api/v1/phase3/sign-view/{envelope_id}", summary="当事人手机端签署页（演示）")
+@router.get("/api/v1/phase3/sign-view/{envelope_id}", summary="本地演示签署页已停用")
 async def sign_view_h5(envelope_id: str, view_token: Optional[str] = None):
-    record = get_signing_envelope(envelope_id)
-    if not record:
-        return HTMLResponse("<h2>签署任务不存在或已失效</h2>", status_code=404)
-
-    expected = str(record.get("view_token") or "")
-    provided_tok = str(view_token or "")
-    if (
-        not provided_tok
-        or not expected
-        or len(provided_tok) != len(expected)
-        or not hmac.compare_digest(provided_tok, expected)
-    ):
-        return HTMLResponse("<h2>签署任务不存在或已失效</h2>", status_code=404)
-
-    is_demo = bool(record.get("is_demo", True)) or not bool(record.get("docuseal_integrated"))
-    title = html.escape(str(record.get("agreement_title") or ""))
-    client_name = html.escape(str(record.get("client_name") or ""))
-    client_phone = html.escape(str(record.get("client_phone") or ""))
-    law_firm = html.escape(str(record.get("law_firm") or ""))
-    lawyer_name = html.escape(str(record.get("lawyer_name") or ""))
-    case_summary = html.escape(str(record.get("case_summary") or ""))
-    fee = float(record.get("service_fee") or 0)
-    notice = html.escape(DEMO_SIGNING_NOTICE)
-    eid_js = html.escape(envelope_id, quote=True)
-
-    demo_banner = ""
-    if is_demo:
-        demo_banner = (
-            f'<div style="background:#7f1d1d;color:#fecaca;padding:12px 16px;'
-            f'border-radius:8px;margin-bottom:16px;font-size:13px;font-weight:700;">'
-            f"⚠ {notice}</div>"
-        )
-
-    page = f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>在线委托合同电子签署</title>
-  <style>
-    body {{ font-family: -apple-system, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; }}
-    .card {{ background: #1e293b; padding: 20px; border-radius: 12px; max-width: 500px; margin: 0 auto; }}
-    h2 {{ color: #38bdf8; margin-bottom: 12px; }}
-    p {{ font-size: 14px; line-height: 1.6; color: #cbd5e1; }}
-    .btn {{ background: #0284c7; color: #fff; border: none; padding: 12px 20px; border-radius: 8px; width: 100%; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 16px; }}
-    .btn:hover {{ background: #0369a1; }}
-    .cert-box {{ background: #090e1a; padding: 12px; border-radius: 6px; font-size: 12px; margin-top: 14px; color: #34d399; }}
-  </style>
-</head>
-<body>
-  <div class="card">
-    {demo_banner}
-    <h2>{title}</h2>
-    <p><strong>委托人：</strong>{client_name} ({client_phone})</p>
-    <p><strong>受托机构：</strong>{law_firm} ({lawyer_name})</p>
-    <p><strong>委托代理事由：</strong>{case_summary}</p>
-    <p><strong>约定代理费用：</strong>￥{fee:,.2f} 元</p>
-    <hr style="border-color: rgba(255,255,255,0.1); margin: 16px 0;" />
-    <p style="font-size: 12px; color: #94a3b8;">
-      提示：本页为工作台签署预览。完成签署需由已配置 webhook 密钥的回调触发；演示环境下请由律师在工作台模拟完成。
-    </p>
-    <button class="btn" onclick="submitSign()">确认无误并提交签署请求</button>
-    <div id="result" class="cert-box" style="display:none;"></div>
-  </div>
-  <script>
-    async function submitSign() {{
-      const box = document.getElementById('result');
-      box.style.display = 'block';
-      box.textContent = '演示页无法直接完成具有法律效力的签署。请返回律师工作台操作，或配置 DOCUSEAL_WEBHOOK_SECRET 后由受控回调完成。';
-    }}
-  </script>
-</body>
-</html>"""
-    # eid_js 保留供后续扩展；当前演示页不调用未鉴权 webhook
-    _ = eid_js
-
-    headers = {
-        "Content-Security-Policy": (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:;"
-        )
-    }
-    return HTMLResponse(page, headers=headers)
+    """历史演示签署页已停用；正式签署请使用 DocuSeal 返回的 signing_url。"""
+    _ = envelope_id, view_token
+    return HTMLResponse(
+        "<h2>本地演示签署页已停用</h2>"
+        "<p>请配置 DocuSeal 后从工作台重新发起正式电子签署。</p>",
+        status_code=410,
+    )

@@ -57,6 +57,11 @@ from gateway.utils.redline_builder import (
     build_redline_contract_docx,
     apply_in_place_docx_redline
 )
+from gateway.utils.contract_review_parse import (
+    MODEL_REVIEW_UNUSABLE,
+    coerce_contract_review,
+    review_needs_retry,
+)
 
 logger = logging.getLogger("lawflow.phase2")
 router = APIRouter(tags=["阶段二：证据清洗与庭审提纲 Agent"])
@@ -83,16 +88,26 @@ class TrialOutlineFiveModulesReq(BaseModel):
         description="被告答辩意见及事实异议",
         examples=["被告抗辩称系统存在严重Bug多次崩溃未达验收标准，原告逾期交付超过30天，被告有权解除合同并主张5万元违约金抵扣。"]    )
 
+LF001_DISCLAIMER = (
+    "【免责提示】本审查结果由法律工作台基于合同文本自动生成，依据检索日期时有效的公开法律法规和司法解释"
+    "（来源：国家法律法规数据库 flk.npc.gov.cn、最高人民法院网站），仅对所提交的文本作风险提示，"
+    "未核实交易背景、当事人资信和履行事实，也不包括合同所附但未提交的文件。风险等级为规则化判断，"
+    "可能存在误报或漏报；涉及具体金额、期限阈值的，为产品经验值，并非法定标准。法律法规可能修订，"
+    "请以官方最新文本为准。本意见仅供参考，不构成正式法律意见。重大交易或争议请咨询执业律师。"
+)
+
 class ContractReviewReq(BaseModel):
     contract_title: str = Field(default="商业采购与技术开发服务合同", examples=["技术开发服务合同"])
     contract_text: str = Field(
         ...,
         description="待审查的合同正文条文",
-        examples=["第七条 违约责任：乙方如延期交付超过3日，每日应向甲方支付合同总价款5%的惩罚性违约金；甲方有权随时单方解除合同且无需退还首期款项。发生争议由甲方所在地人民法院管辖。"]    )
-    perspective: str = Field(
-        default="乙方防御版",
-        description="审查视角：甲方强势版 / 乙方防御版 / 中立版",
-        examples=["乙方防御版"]    )
+        examples=["第七条 违约责任：乙方如延期交付超过3日，每日应向甲方支付合同总价款5%的惩罚性违约金；甲方有权随时单方解除合同且无需退还首期款项。发生争议由甲方所在地人民法院管辖。"]
+    )
+    perspective: Optional[str] = Field(
+        default=None,
+        description="审查立场视角：买方 / 卖方 / 甲方强势版 / 乙方防御版 / 中立版",
+        examples=["买方"]
+    )
     playbook_preset: Optional[str] = Field(
         default="general",
         description="预设红线库：general (通用商业) / tech_service (软件技术服务) / procurement (大宗采购) / labor (劳动用工)"
@@ -129,7 +144,7 @@ class AutoEvidenceCatalogReq(BaseModel):
     )
     file_page_map: Optional[List[Dict[str, Any]]] = Field(
         default=None,
-        description="来自合卷 process-evidence 的物理起止绝对页码映射表"
+        description="来自合卷 process-evidence 的物理起止精确页码映射表"
     )
 
 
@@ -137,6 +152,7 @@ class RedactSensitiveReq(BaseModel):
     pdf_filename: str = Field(..., description="storage/generated 或 uploads 中的 PDF 文件名", examples=["合卷证据包_test.pdf"])
     redact_idcard: bool = Field(default=True, description="是否自动涂黑 18 位身份证号码")
     redact_bankcard: bool = Field(default=True, description="是否自动涂黑 16-19 位银行卡号")
+    redact_phone: bool = Field(default=True, description="是否自动涂黑 11 位手机号码")
 
 
 # ==============================================================================
@@ -150,14 +166,67 @@ _EVIDENCE_IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic", ".hei
 
 
 def _stamp_bates_on_page(page, evidence_label: str, page_no: int) -> None:
-    bates_text = f"{evidence_label} - 第 {page_no} 页"
+    """在 A4 页面右上角安全出血区绘制纯白衬垫框并打上贝茨码，防止覆盖原始单据金额或时间戳。"""
+    bates_text = f"{evidence_label} · 第 {page_no} 页"
+    # A4 顶部安全出血区纯白底色衬垫框与细边框 (max(10, width - 165), 6, width - 10, 26)
+    box_rect = fitz.Rect(max(10.0, page.rect.width - 165.0), 6.0, page.rect.width - 10.0, 26.0)
+    page.draw_rect(box_rect, color=(0.80, 0.80, 0.80), fill=(1.0, 1.0, 1.0), width=0.5)
     page.insert_text(
-        fitz.Point(380, 32),
+        fitz.Point(box_rect.x0 + 6.0, 20.0),
         bates_text,
         fontname="china-s",
-        fontsize=11,
+        fontsize=10.0,
         color=(0.82, 0.12, 0.12),
     )
+
+
+def split_pdf_by_court_size_limit(pdf_path: str, max_mb: float = 30.0) -> List[str]:
+    """
+    当合卷后的 PDF 超过全国法院网上立案系统单文件体积限制（默认 30MB）时，
+    使用 PyMuPDF 按页自动切分为 _第1卷.pdf、_第2卷.pdf 等分卷文件。
+    若未超过上限，直接返回原路径列表 [pdf_path]。
+    """
+    if not os.path.isfile(pdf_path):
+        return []
+    file_size_mb = os.path.getsize(pdf_path) / (1024 * 1024)
+    if file_size_mb <= max_mb:
+        return [pdf_path]
+
+    src_doc = fitz.open(pdf_path)
+    total_pages = len(src_doc)
+    if total_pages <= 1:
+        src_doc.close()
+        return [pdf_path]
+
+    base, ext = os.path.splitext(pdf_path)
+    volume_paths: List[str] = []
+    vol_num = 1
+    current_doc = fitz.open()
+
+    for pno in range(total_pages):
+        current_doc.insert_pdf(src_doc, from_page=pno, to_page=pno)
+        vol_file = f"{base}_第{vol_num}卷{ext}"
+        current_doc.save(vol_file, garbage=3, deflate=True)
+        cur_size_mb = os.path.getsize(vol_file) / (1024 * 1024)
+
+        if cur_size_mb >= max_mb and len(current_doc) > 1:
+            current_doc.delete_page(len(current_doc) - 1)
+            current_doc.save(vol_file, garbage=3, deflate=True)
+            current_doc.close()
+            volume_paths.append(vol_file)
+
+            vol_num += 1
+            current_doc = fitz.open()
+            current_doc.insert_pdf(src_doc, from_page=pno, to_page=pno)
+
+    if len(current_doc) > 0:
+        vol_file = f"{base}_第{vol_num}卷{ext}"
+        current_doc.save(vol_file, garbage=3, deflate=True)
+        current_doc.close()
+        volume_paths.append(vol_file)
+
+    src_doc.close()
+    return volume_paths
 
 
 def _append_pdf_with_bates(merged_doc, pdf_path: str, evidence_label: str, start_page: int) -> int:
@@ -331,8 +400,13 @@ async def process_evidence_bates_stamping(
         label_safe = sanitize_filename(evidence_label) or "证据"
         merged_filename = f"合卷证据包_{label_safe}_{uuid.uuid4().hex[:8]}.pdf"
         output_path = os.path.join(str(get_generated_dir()), merged_filename)
-        merged_doc.save(output_path)
+        merged_doc.save(output_path, garbage=3, deflate=True)
         merged_doc.close()
+
+        # 30MB 网上立案系统限制分卷检测与自动分卷
+        volumes = split_pdf_by_court_size_limit(output_path, max_mb=30.0)
+        split_volume_names = [os.path.basename(v) for v in volumes]
+        is_split = len(split_volume_names) > 1
 
         status = "partial" if skipped_files else "success"
         return {
@@ -345,6 +419,10 @@ async def process_evidence_bates_stamping(
             "merged_files": merged_files,
             "file_page_map": file_page_map,
             "skipped_files": skipped_files,
+            "court_size_limit_mb": 30.0,
+            "is_split": is_split,
+            "split_volumes": split_volume_names,
+            "split_volume_urls": [f"/api/documents/download/{vn}" for vn in split_volume_names] if is_split else [],
         }
     finally:
         for p in temp_cleanup:
@@ -353,6 +431,42 @@ async def process_evidence_bates_stamping(
                     os.remove(p)
                 except OSError as rem_err:
                     logger.debug(f"清理临时文件失败: {rem_err}")
+
+
+def _ocr_redact_hits(page, patterns: list):
+    """扫描页没有文字层时，用 OCR 字块定位号码。OCR 不可用时返回空列表。"""
+    from gateway.utils.ocr_engine import (
+        easyocr_items,
+        get_easyocr_reader,
+        sensitive_rects_from_ocr_items,
+    )
+
+    reader = get_easyocr_reader()
+    if reader is None:
+        return [], False
+    temp = os.path.join(str(get_generated_dir()), f"_ocr_{uuid.uuid4().hex}.png")
+    try:
+        pix = page.get_pixmap(dpi=150)
+        pix.save(temp)
+        results = reader.readtext(temp, detail=1)
+        rects = sensitive_rects_from_ocr_items(
+            easyocr_items(results),
+            patterns,
+            page.rect.width,
+            page.rect.height,
+            pix.width,
+            pix.height,
+        )
+        return rects, True
+    except Exception:
+        logger.warning("扫描页 OCR 涂黑失败", exc_info=True)
+        return [], False
+    finally:
+        if os.path.exists(temp):
+            try:
+                os.remove(temp)
+            except OSError:
+                logger.debug("清理 OCR 临时图失败")
 
 
 # ==============================================================================
@@ -378,55 +492,84 @@ async def redact_sensitive_information(req: RedactSensitiveReq):
         raise HTTPException(status_code=404, detail="指定的 PDF 文件不存在")
 
     doc = fitz.open(input_path)
-    timestamp = int(time.time())
     redactions_count = 0
     redacted_items = []
+    total_chars = 0
+    ocr_pages = 0
 
-    # 18位二代身份证正则表达式（采用前后负向数字断言，充分解决中文字符紧邻导致 \b 单词边界匹配失效问题）
+    # 18位二代身份证。用前后负向数字断言，避免汉字紧贴号码时 \b 匹配失败。
     id_pattern = re.compile(r"(?<!\d)(?:[1-9]\d{5}(?:18|19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx]|[1-9]\d{7}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3})(?!\d)")
-    # 16-19位银行卡号正则表达式（采用前后负向数字断言）
+    # 16-19位银行卡号
     bank_pattern = re.compile(r"(?<!\d)[1-9]\d{15,18}(?!\d)")
+    # 11位中国大陆手机号码
+    phone_pattern = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+    active_patterns = []
+    if req.redact_idcard:
+        active_patterns.append(("身份证", id_pattern))
+    if req.redact_bankcard:
+        active_patterns.append(("银行卡", bank_pattern))
+    if getattr(req, "redact_phone", True):
+        active_patterns.append(("手机号", phone_pattern))
+
+    def _mask(label: str, value: str, page_no: int) -> str:
+        return f"{label}: {value[:4]}****{value[-4:]} (第{page_no}页)"
+
+    def _paint_pattern_hits(page, text: str, page_no: int, search):
+        nonlocal redactions_count
+        for label, pattern in active_patterns:
+            for value in set(pattern.findall(text or "")):
+                rects = search(value)
+                if not rects:
+                    continue
+                for rect in rects:
+                    page.add_redact_annot(rect, fill=(0, 0, 0))
+                    redactions_count += 1
+                redacted_items.append(_mask(label, value, page_no))
 
     for pno in range(len(doc)):
         page = doc[pno]
-        text = page.get_text("text")
-
-        if req.redact_idcard:
-            matches_id = id_pattern.findall(text)
-            for id_str in set(matches_id):
-                rects = page.search_for(id_str)
-                for r in rects:
-                    page.add_redact_annot(r, fill=(0, 0, 0))
-                    redactions_count += 1
-                redacted_items.append(f"身份证: {id_str[:4]}****{id_str[-4:]} (第{pno+1}页)")
-
-        if req.redact_bankcard:
-            matches_bank = bank_pattern.findall(text)
-            for card_str in set(matches_bank):
-                rects = page.search_for(card_str)
-                for r in rects:
-                    page.add_redact_annot(r, fill=(0, 0, 0))
-                    redactions_count += 1
-                redacted_items.append(f"银行卡: {card_str[:4]}****{card_str[-4:]} (第{pno+1}页)")
-
+        text = page.get_text("text") or ""
+        total_chars += len(text.strip())
+        _paint_pattern_hits(page, text, pno + 1, page.search_for)
+        if len(text.strip()) < 20 and active_patterns:
+            ocr_hits, used = _ocr_redact_hits(page, [pat for _, pat in active_patterns])
+            if used:
+                ocr_pages += 1
+            for hit in ocr_hits:
+                page.add_redact_annot(fitz.Rect(*hit["rect"]), fill=(0, 0, 0))
+                redactions_count += 1
+                label = next((name for name, pat in active_patterns if pat.fullmatch(hit["text"])), "敏感信息")
+                redacted_items.append(_mask(label, hit["text"], pno + 1))
         page.apply_redactions()
 
+    page_count = len(doc)
     output_filename = f"已脱敏_{req.pdf_filename}"
     output_path = os.path.join(str(get_generated_dir()), output_filename)
     doc.save(output_path)
     doc.close()
 
-    total_chars = sum(len(doc_page_text) for doc_page_text in [doc_page.get_text("text") for doc_page in fitz.open(input_path)])
-    is_scanned = (total_chars < 30 and len(doc) > 0)
-    scanned_warning = "【提示】该PDF主要为图像扫描件，缺乏矢量文字层。系统物理涂黑依赖文本层坐标，建议使用带文字层的电子文档。" if is_scanned else None
+    is_scanned = total_chars < 30 and page_count > 0
+    if is_scanned and ocr_pages and redactions_count:
+        scanned_warning = "该 PDF 没有文字层，已按扫描识别结果涂黑。模糊或断行的号码可能漏涂，下载前请逐页核对。"
+        status = "success"
+    elif is_scanned and ocr_pages:
+        scanned_warning = "已识别扫描件文字，未发现身份证号、银行卡号或手机号。若原件上有号码，请提高清晰度后重试。"
+        status = "partial"
+    elif is_scanned:
+        scanned_warning = "该 PDF 没有文字层，且本机 OCR 不可用，未能涂黑。请安装 OCR 依赖，或改用带文字层的电子文档。"
+        status = "partial"
+    else:
+        scanned_warning = None
+        status = "success"
 
     return {
-        "status": "success",
+        "status": status,
         "redacted_filename": output_filename,
         "download_url": f"/api/documents/download/{output_filename}",
         "redactions_count": redactions_count,
         "redacted_items": list(set(redacted_items)),
         "is_scanned_pdf": is_scanned,
+        "ocr_pages": ocr_pages,
         "scanned_pdf_warning": scanned_warning
     }
 
@@ -455,26 +598,53 @@ async def auto_generate_evidence_catalog(req: AutoEvidenceCatalogReq):
             raw_lines = [x.strip() for x in re.split(r'[,，;；\n、]', notes.strip()) if x.strip()]
         extracted = []
         for line in raw_lines:
-            clean_name = re.sub(r'^\s*(?:\d+[\.、\-\)]\s*|\([0-9一二三四五六七八九十]+\)\s*|（[0-9一二三四五六七八九十]+）\s*|[一二三四五六七八九十]+[、\.\s]\s*|[-*•]\s*)', '', line).strip()
-            clean_name = os.path.splitext(clean_name)[0].strip()
+            body = re.sub(
+                r'^\s*(?:证据\s*)?(?:\d+[\.、\-\)]\s*|\([0-9一二三四五六七八九十]+\)\s*|（[0-9一二三四五六七八九十]+）\s*|[一二三四五六七八九十]+[、\.\s]\s*|[-*•]\s*)',
+                '',
+                line,
+            ).strip()
+            parts = [p.strip() for p in re.split(r'[|｜]', body) if p.strip()]
+            clean_name = parts[0] if parts else body
+            clean_name = os.path.splitext(clean_name)[0].strip() or line.strip()
+            purpose = parts[1] if len(parts) > 1 else ""
+            pages = parts[2] if len(parts) > 2 else ""
+            form = parts[3] if len(parts) > 3 else ""
+            issue = parts[4] if len(parts) > 4 else ""
+            if len(parts) <= 1 and "证明" in clean_name:
+                split_purpose = re.split(r'(?:[：:，,]\s*证明|。证明)', clean_name, maxsplit=1)
+                if len(split_purpose) == 2:
+                    clean_name = split_purpose[0].strip(" ，。")
+                    purpose = "证明" + split_purpose[1].strip()
+            if not form:
+                if "原件" in line and "复印件" not in line:
+                    form = "原件"
+                elif "复印件" in line:
+                    form = "复印件"
+            if issue:
+                purpose = (purpose or "【待填写】") + f"（关联争点：{issue}）"
             if not clean_name:
-                clean_name = line.strip()
-            if clean_name:
-                cat = "书证"
-                if any(k in clean_name for k in ["微信", "短信", "聊天", "录音", "视频", "电子", "流水", "回单", "凭单", "网银", "邮件"]):
-                    cat = "电子数据"
-                extracted.append({
-                    "name": clean_name,
-                    "category": cat,
-                    "source": "【待填写】",
-                    "purpose": "【待填写】",
-                    "pages": "【待填写】"
-                })
+                continue
+            cat = "书证"
+            if any(k in line for k in ["微信", "短信", "聊天", "录音", "视频", "电子", "流水", "回单", "凭单", "网银", "邮件"]):
+                cat = "电子数据"
+            extracted.append({
+                "name": clean_name,
+                "category": cat,
+                "source": "当事人提交" if form else "【待填写】",
+                "purpose": purpose or "【待填写】",
+                "pages": pages or "【待填写】",
+                "original_or_copy": form or "【待填写】",
+                "issue": issue or "【待填写】",
+            })
         return extracted
 
     _catalog_entities = build_entities_from_parties([{"name": getattr(req, "plaintiff_name", None)}])
+    parsed_explicit = _parse_raw_evidence_items(req.evidence_notes or "")
+    lawyer_typed_columns = any(("|" in line or "｜" in line) for line in (req.evidence_notes or "").splitlines())
     if req.structured_items and len(req.structured_items) > 0:
         items = [dict(it) for it in req.structured_items]
+    elif lawyer_typed_columns and parsed_explicit:
+        items = parsed_explicit
     else:
         try:
             raw_output = await ollama_client.generate(
@@ -498,7 +668,7 @@ async def auto_generate_evidence_catalog(req: AutoEvidenceCatalogReq):
             logger.warning(f"gemma4:12b 提炼证据目录异常: {e}")
             items = _parse_raw_evidence_items(req.evidence_notes)
 
-    # 若提供了合卷绝对页码映射表 file_page_map，自动注入各证据项页码
+    # 若提供了合卷精确页码映射表 file_page_map，自动注入各证据项页码
     if req.file_page_map and len(req.file_page_map) > 0:
         for idx, item in enumerate(items):
             if idx < len(req.file_page_map):
@@ -507,22 +677,32 @@ async def auto_generate_evidence_catalog(req: AutoEvidenceCatalogReq):
                     item["pages"] = pm["page_range"]
 
     if not items:
-        items = [
-            {"name": "案件关键书证及凭证", "category": "书证", "source": "【待填写】", "purpose": "【待填写】", "pages": "【待填写】"}
-        ]
+        raise HTTPException(
+            status_code=400,
+            detail="还没有证据名称。请先写入证据目录再生成，不会自动补合同、流水或聊天记录。",
+        )
 
     # 保留用户原始名称与字段空栏【待填写】补全
-    raw_parsed = _parse_raw_evidence_items(req.evidence_notes)
+    raw_parsed = parsed_explicit
     if len(raw_parsed) == len(items):
         for idx, item in enumerate(items):
-            item["name"] = raw_parsed[idx]["name"]
+            raw = raw_parsed[idx]
+            item["name"] = raw["name"]
+            for key in ("purpose", "pages", "original_or_copy", "issue", "source", "category"):
+                raw_val = (raw.get(key) or "").strip()
+                if raw_val and raw_val != "【待填写】":
+                    item[key] = raw_val
     for item in items:
         if not item.get("source"):
             item["source"] = "【待填写】"
         if not item.get("purpose"):
             item["purpose"] = "【待填写】"
         if not item.get("pages"):
-            item["pages"] = "【待填写】" 
+            item["pages"] = "【待填写】"
+        if not item.get("original_or_copy"):
+            item["original_or_copy"] = "【待填写】"
+        if item.get("issue") and item["issue"] != "【待填写】" and "关联争点" not in (item.get("purpose") or ""):
+            item["purpose"] = f"{item.get('purpose') or '【待填写】'}（关联争点：{item['issue']}）" 
 
     # 渲染至 Word 模板
     tpl_path = os.path.join(_templates_dir(), "evidence_catalog_template.docx")
@@ -598,9 +778,10 @@ async def generate_five_modules_trial_outline(req: TrialOutlineFiveModulesReq):
         logger.warning(f"庭审提纲生成异常，启动规则兜底: {e}")
         outline_markdown = ollama_client._generate_rule_fallback(prompt, trial_system_prompt)
 
-    if getattr(ollama_client, "last_llm_mode", "rule_fallback") == "rule_fallback":
+    rule_outline = getattr(ollama_client, "last_llm_mode", "rule_fallback") == "rule_fallback"
+    if rule_outline:
         if "规则模式" not in outline_markdown[:150]:
-            outline_markdown = "> **【提示】当前为规则模式（未连接模型），以下为通用提纲，需结合案情修改。**\n\n" + outline_markdown
+            outline_markdown = "> **【提示】当前为规则模式（未连接模型），以下为通用提纲，需结合案情修改。不能直接当出庭稿。**\n\n" + outline_markdown
 
     from gateway.utils.citation_guard import audit_citations_in_text
     citation_audit = audit_citations_in_text(outline_markdown, auto_sanitize=True)
@@ -608,12 +789,68 @@ async def generate_five_modules_trial_outline(req: TrialOutlineFiveModulesReq):
         outline_markdown = citation_audit["sanitized_text"]
 
     return {
-        "status": "success",
+        "status": "template" if rule_outline else "success",
         "case_title": req.case_title,
         "cause_of_action": req.cause_of_action,
         "trial_outline_markdown": outline_markdown,
-        "citation_audit": citation_audit
+        "citation_audit": citation_audit,
+        "outline_note": "未连接模型，这是通用提纲，必须按本案改写。" if rule_outline else "",
     }
+
+
+_CLAUSE_SPLIT = re.compile(r"[。；;\n]+")
+_PENALTY_RATE = re.compile(r"(?:百分之|千分之|万分之|\d+(?:\.\d+)?\s*[%％])")
+_AUTO_RENEW = re.compile(r"自动续|自动延长|自动延续")
+_UNILATERAL_END = re.compile(r"单方解除|任意解除|随时解除|有权解除|一方解除")
+
+
+def _contract_snippets(text: str) -> List[str]:
+    parts = [piece.strip() for piece in _CLAUSE_SPLIT.split(text or "") if piece and piece.strip()]
+    if parts:
+        return parts
+    stripped = (text or "").strip()
+    return [stripped] if stripped else []
+
+
+def _quote_matching_snippets(parts: List[str], matched) -> str:
+    hits: List[str] = []
+    seen = set()
+    for part in parts:
+        if not matched(part):
+            continue
+        key = re.sub(r"\s+", "", part)
+        if key in seen:
+            continue
+        seen.add(key)
+        snippet = part if len(part) <= 180 else part[:180] + "…"
+        hits.append(f"「{snippet}」")
+    return "；".join(hits) if hits else "正文中未找到"
+
+
+def _is_forum_clause(part: str) -> bool:
+    if "仲裁" in part:
+        return True
+    if "人民法院" in part:
+        return True
+    return "法院" in part and ("管辖" in part or "起诉" in part)
+
+
+def describe_unreviewed_contract_marks(contract_text: str) -> str:
+    """没连上模型时，只引用正文里真实出现的四类表述，不写修改稿。"""
+    parts = _contract_snippets(contract_text)
+    forum = _quote_matching_snippets(parts, _is_forum_clause)
+    penalty = _quote_matching_snippets(
+        parts, lambda part: "违约金" in part and _PENALTY_RATE.search(part) is not None
+    )
+    renew = _quote_matching_snippets(parts, lambda part: _AUTO_RENEW.search(part) is not None)
+    ending = _quote_matching_snippets(parts, lambda part: _UNILATERAL_END.search(part) is not None)
+    return (
+        "未连接大模型，未生成修改稿。以下只标出律师粘贴的正文里实际写到的内容。\n"
+        f"仲裁或法院条款：{forum}\n"
+        f"违约金比例：{penalty}\n"
+        f"自动续期：{renew}\n"
+        f"单方解除：{ending}"
+    )
 
 
 # ==============================================================================
@@ -630,9 +867,22 @@ async def get_contract_playbooks():
 @router.post("/api/v1/phase2/contract-review", summary="商业合同红线对比与风险条款加固 (甲方/乙方/中立版 + 红线手册)")
 async def review_contract_clauses(req: ContractReviewReq):
     """
-    支持选择“甲方强势版 / 乙方防御版 / 中立版”审查视角，并结合《审查红线手册（Playbook）》，
-    输出三栏修订卡片（原文 / 修订条文 / 谈判话术）、偏离度判定及字符级 Diff 差异。
+    商业合同红线审查（LF-001 规范）：
+    1. 审查前必须选择立场（买方 / 卖方），未选不得出审查结论。
+    2. 未连上模型时不编造修改稿，只标出正文里实际出现的仲裁或法院条款、违约金比例、自动续期、单方解除；找不到写「正文中未找到」。状态仍为未审查。
+    3. 结果附带 LF-001 第 11 节必带免责提示。
     """
+    if not req.perspective or not str(req.perspective).strip():
+        raise HTTPException(
+            status_code=422,
+            detail="审查前必须选择立场（买方 / 卖方），未选择立场不得出具审查结论。"
+        )
+    if not (req.contract_text or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="请粘贴合同正文。空文本不能出具审查结论。"
+        )
+
     is_en = is_predominantly_english(req.contract_text)
     if is_en and (not req.playbook_preset or req.playbook_preset == "general"):
         preset_key = "cross_border_procurement"
@@ -669,72 +919,58 @@ Please output the risk assessment, playbook deviation, and redline modifications
             playbook_section=playbook_section
         )
 
-    try:
+    def _unreviewed(summary: str) -> Dict[str, Any]:
+        return {
+            "status": "unreviewed",
+            "perspective": req.perspective,
+            "playbook_name": playbook_name,
+            "playbook_rules": active_rules,
+            "contract_title": req.contract_title,
+            "disclaimer": LF001_DISCLAIMER,
+            "review": {
+                "overall_risk_level": "未审查",
+                "playbook_compliance_score": 0,
+                "review_summary": summary,
+                "clause_reviews": [],
+            }
+        }
+
+    async def _call_model() -> tuple:
         raw_output = await ollama_client.generate(
             prompt=prompt,
             system_prompt=system_prompt,
             temperature=0.2
         )
-        review_result = ollama_client.extract_json(raw_output)
+        mode = getattr(ollama_client, "last_llm_mode", "rule_fallback")
+        return raw_output, mode
 
-        if "clause_reviews" not in review_result or not review_result["clause_reviews"]:
-            if is_en:
-                cd_orig = "In the event Buyer or any of its Affiliates defaults under any other agreement, Seller shall have the right to immediately terminate this Agreement without notice."
-                for line in req.contract_text.splitlines():
-                    if any(w in line.lower() for w in ["default", "terminate", "liquidated", "indemnif"]):
-                        cd_orig = line.strip()
-                        break
-                review_result = {
-                    "overall_risk_level": "High" if "乙方" in req.perspective or "seller" in req.perspective.lower() else "Medium",
-                    "review_summary": f"Based on 【{req.perspective}】 and 《{playbook_name}》: Identified high-risk cross-default and uncapped liability provisions requiring immediate redline revision.",
-                    "playbook_compliance_score": 65,
-                    "clause_reviews": [
-                        {
-                            "clause_title": "Cross-Default & Contagion Acceleration",
-                            "original_clause": cd_orig,
-                            "risk_analysis": "The cross-default clause improperly links independent contracts and broad affiliate liabilities, triggering catastrophic default acceleration without cure period.",
-                            "negotiation_tip": "Demand immediate deletion of cross-default, or strictly limit it to final non-appealable judgments for material indebtedness directly under this Agreement.",
-                            "suggested_clause": "[Intentionally Deleted - Cross-default provisions are hereby deleted in their entirety].",
-                            "playbook_deviation": "CRITICAL_BREACH",
-                            "matched_playbook_rule": "Cross-Default（交叉违约）条款必须整条删除或严格限定为本合同项下已经法院终审裁判确定的实质性债务违约",
-                            "deviation_reason": "Original clause creates unbounded contagion default across all affiliates and external contracts."
-                        }
-                    ]
-                }
-            else:
-                review_result = {
-                    "overall_risk_level": "高" if "乙方" in req.perspective else "中",
-                    "review_summary": f"基于【{req.perspective}】及《{playbook_name}》的深度审查：发现高风险单方解约条款及无限制惩罚性违约金，严重偏离标准红线。",
-                    "playbook_compliance_score": 68,
-                    "clause_reviews": [
-                        {
-                            "clause_title": "惩罚性违约金与过错责任",
-                            "original_clause": req.contract_text[:120] if len(req.contract_text) > 30 else "乙方如延期交付超过3日，每日应向甲方支付合同总价款5%的惩罚性违约金。",
-                            "risk_analysis": "每日5%违约金严重过高且未设上限，违约金计算标准严重脱离守约方实际直接损失，极易引发严重合同陷阱。",
-                            "negotiation_tip": "建议援引《民法典》第585条及司法解释，主张违约金以直接损失为限并封顶合同额10%，同时增加不少于5个工作日的书面催告整改期。",
-                            "suggested_clause": "如乙方发生轻微延期履约，甲方应书面催告并给予不少于5个工作日的补正期；逾期未纠正的，违约金按实际直接经济损失核算，总额最高不超过合同标的额的10%。",
-                            "playbook_deviation": "CRITICAL_BREACH",
-                            "matched_playbook_rule": "违约金总额必须设定上限（原则上不超过合同总金额的20%或以守约方实际直接损失为限）",
-                            "deviation_reason": "原条款每日扣5%且未设封顶，严重偏离红线规则并触碰司法裁判过高调减红线。"
-                        },
-                        {
-                            "clause_title": "单方任意解除权与款项处置",
-                            "original_clause": "甲方有权随时单方解除合同且无需退还首期款项。发生争议由甲方所在地人民法院管辖。",
-                            "risk_analysis": "赋予甲方无对价、无限制的任意解除权并没收已付款项，权利义务极度不对等；异地专属管辖显著增加乙方诉讼防御成本。",
-                            "negotiation_tip": "要求取消无因解除权，仅保留法定或根本违约解除权；管辖条款争取变更为原告所在地管辖或双方所在地。",
-                            "suggested_clause": "除本合同明确约定的根本违约情形或不可抗力导致合同目的无法实现外，任何一方不得单方擅自解除合同。发生争议由原告所在地人民法院管辖。",
-                            "playbook_deviation": "OUT_OF_SCOPE_DEVIATION",
-                            "matched_playbook_rule": "单方解除权必须明确设置书面催告通知与不少于7个工作日的补正宽限期",
-                            "deviation_reason": "原条款约定甲方随时单方解除且不退款，属于典型的霸王条款与单方权利滥用。"
-                        }
-                    ]
-                }
+    try:
+        raw_output, mode = await _call_model()
+        # 规则模式会带回预置条款。那不是对本合同的审查，不能标成已审查。
+        if mode == "rule_fallback":
+            return _unreviewed(describe_unreviewed_contract_marks(req.contract_text))
 
-        # 为每一项条款生成字符级 Diff 差异片段，方便前端直接渲染三栏对比卡片
-        for c in review_result.get("clause_reviews", []):
-            orig = c.get("original_clause", "")
-            sugg = c.get("suggested_clause", "")
-            c["diff_chunks"] = compute_text_diff_chunks(orig, sugg)
+        coerced = coerce_contract_review(raw_output)
+        if not coerced["clauses"] and review_needs_retry(raw_output, coerced):
+            try:
+                raw_retry, mode_retry = await _call_model()
+            except Exception as retry_err:
+                logger.warning(f"合同审查重试失败: {retry_err}")
+                raw_retry, mode_retry = "", mode
+            if mode_retry == "rule_fallback":
+                return _unreviewed(describe_unreviewed_contract_marks(req.contract_text))
+            retry_coerced = coerce_contract_review(raw_retry)
+            if retry_coerced["clauses"] or retry_coerced["valid_json"]:
+                coerced = retry_coerced
+
+        if not coerced["clauses"]:
+            return _unreviewed(MODEL_REVIEW_UNUSABLE)
+
+        review_result = coerced["review"]
+        for clause in review_result.get("clause_reviews", []):
+            orig = clause.get("original_clause", "")
+            sugg = clause.get("suggested_clause", "")
+            clause["diff_chunks"] = compute_text_diff_chunks(orig, sugg)
 
         return {
             "status": "success",
@@ -742,59 +978,12 @@ Please output the risk assessment, playbook deviation, and redline modifications
             "playbook_name": playbook_name,
             "playbook_rules": active_rules,
             "contract_title": req.contract_title,
+            "disclaimer": LF001_DISCLAIMER,
             "review": review_result
         }
     except Exception as e:
-        logger.warning(f"合同审查异常，启动规则兜底: {e}")
-        fallback_json = ollama_client.extract_json(ollama_client._generate_rule_fallback(prompt, None))
-        if "clause_reviews" not in fallback_json:
-            if is_en:
-                fallback_json = {
-                    "overall_risk_level": "High",
-                    "review_summary": f"Review based on 【{req.perspective}】 international standards: Detected high-risk cross-default provisions.",
-                    "playbook_compliance_score": 68,
-                    "clause_reviews": [
-                        {
-                            "clause_title": "Cross-Default & Governing Dispute Resolution",
-                            "original_clause": req.contract_text[:120],
-                            "risk_analysis": "The clause contains unilateral default triggers and cross-contract contagion.",
-                            "negotiation_tip": "Delete cross-default and adopt neutral international arbitration.",
-                            "suggested_clause": "[Intentionally Deleted - Cross-default provisions shall not apply].",
-                            "playbook_deviation": "CRITICAL_BREACH",
-                            "matched_playbook_rule": "Cross-Default（交叉违约）条款必须整条删除或严格限定为本合同项下已经法院终审裁判确定的实质性债务违约",
-                            "deviation_reason": "Contagion risk across affiliates without notice."
-                        }
-                    ]
-                }
-            else:
-                fallback_json = {
-                    "overall_risk_level": "中",
-                    "review_summary": f"基于【{req.perspective}】专家规则库的审查结果",
-                    "playbook_compliance_score": 75,
-                    "clause_reviews": [
-                        {
-                            "clause_title": "履约违约金与争议管辖条款",
-                            "original_clause": req.contract_text[:120],
-                            "risk_analysis": "原约定违约金比例失衡且管辖条款偏向对方。",
-                            "negotiation_tip": "建议约定双向对等违约金及中立管辖。",
-                            "suggested_clause": "任何一方违约给守约方造成直接经济损失的，应按实际损失承担赔偿责任，违约金上限不超过合同总额的20%。发生争议向原告所在地人民法院提起诉讼。",
-                            "playbook_deviation": "OUT_OF_SCOPE_DEVIATION",
-                            "matched_playbook_rule": "违约金总额必须设定上限，严禁约定无限责任",
-                            "deviation_reason": "未设违约金封顶及缺乏对等救济机制。"
-                        }
-                    ]
-                }
-        for c in fallback_json.get("clause_reviews", []):
-            c["diff_chunks"] = compute_text_diff_chunks(c.get("original_clause", ""), c.get("suggested_clause", ""))
-
-        return {
-            "status": "success",
-            "perspective": req.perspective,
-            "playbook_name": playbook_name,
-            "playbook_rules": active_rules,
-            "contract_title": req.contract_title,
-            "review": fallback_json
-        }
+        logger.warning(f"合同审查模型调用异常，返回未审查状态: {e}")
+        return _unreviewed(describe_unreviewed_contract_marks(req.contract_text))
 
 
 @router.post("/api/v1/phase2/contract-review/upload-source", summary="上传合同原件 .docx（返回 source_file_id，供 export-redline 使用）")
@@ -838,7 +1027,7 @@ async def export_redline_contract_docx(req: ExportRedlineReq):
     active_rules = req.playbook_rules if req.playbook_rules else preset_info["rules"]
     playbook_name = preset_info["name"] if not req.playbook_rules else "自定义审查红线库"
 
-    # 若未提供审查结果，则现场快速审查
+    # 没有条款审查时不能导出一份看起来已经审过的修订稿
     if not clause_reviews:
         review_resp = await review_contract_clauses(ContractReviewReq(
             contract_title=req.contract_title,
@@ -847,10 +1036,16 @@ async def export_redline_contract_docx(req: ExportRedlineReq):
             playbook_preset=req.playbook_preset,
             playbook_rules=req.playbook_rules
         ))
-        clause_reviews = review_resp["review"].get("clause_reviews", [])
-        overall_risk = review_resp["review"].get("overall_risk_level", "中")
-        review_summary = review_resp["review"].get("review_summary", "")
-        compliance_score = review_resp["review"].get("playbook_compliance_score", 85)
+        if review_resp.get("status") != "success":
+            summary = ((review_resp.get("review") or {}).get("review_summary")) or MODEL_REVIEW_UNUSABLE
+            raise HTTPException(status_code=422, detail=summary)
+        clause_reviews = review_resp["review"].get("clause_reviews") or []
+        overall_risk = review_resp["review"].get("overall_risk_level") or "未标明"
+        review_summary = review_resp["review"].get("review_summary") or ""
+        model_score = review_resp["review"].get("playbook_compliance_score")
+        compliance_score = model_score if isinstance(model_score, (int, float)) else 0
+    if not clause_reviews:
+        raise HTTPException(status_code=422, detail=MODEL_REVIEW_UNUSABLE)
 
     timestamp = int(time.time())
     safe_title = sanitize_filename(req.contract_title, default="合同")[:30]
@@ -928,6 +1123,8 @@ class CrossExamReq(BaseModel):
     evidence_category: str = Field(default="书证", examples=["书证"])
     opponent_purpose: str = Field(..., examples=["证明原告已收取10万元货款并结清"])
     client_facts: str = Field(..., examples=["原告从未收到该款项，收据签名不是原告字迹，被告拒不出示原件"])
+    cause_of_action: str = Field(default="", description="案由。含劳动时改列用人单位举证责任")
+    track: str = Field(default="", description="labor 时使用劳动争议举证规则")
 
 @router.post("/api/v1/phase2/cross-examination", summary="AI 证据三性审查与反驳意见生成")
 @router.post("/api/evidence/cross-examination", include_in_schema=False)
@@ -937,6 +1134,10 @@ async def api_cross_examination(req: CrossExamReq):
 【我方当事人真实情况】{req.client_facts}
 
 请输出真实性、合法性、关联性及证明力反驳意见严格 JSON。"""
+    from gateway.utils.practice_workflow import evidence_burden
+    burden = evidence_burden(req.track, req.cause_of_action)
+    if burden["mode"] == "labor_employer":
+        prompt += "\n这是劳动争议质证。不要只写民事诉讼三性。必须列出用人单位对解除合法性、工资支付凭证和考勤记录的举证责任。"
 
     try:
         raw_output = await ollama_client.generate(
@@ -951,6 +1152,7 @@ async def api_cross_examination(req: CrossExamReq):
         return {
             "status": "success",
             "cross_examination": parsed,
+            "burden": burden,
             "raw_output": raw_output
         }
     except Exception as e:
@@ -959,5 +1161,6 @@ async def api_cross_examination(req: CrossExamReq):
         return {
             "status": "success",
             "cross_examination": fallback_json,
+            "burden": burden,
             "raw_output": json.dumps(fallback_json, ensure_ascii=False)
         }

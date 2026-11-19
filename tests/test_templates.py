@@ -9,6 +9,10 @@ import pytest
 from docxtpl import DocxTemplate
 
 from gateway.core.paths import get_base_dir
+from gateway.utils.cn_legal_calc import (
+    LABOR_ARBITRATION_LIMITATION_NOTE,
+    SALES_COMPLAINT_OVERDUE_RATE_DESC,
+)
 
 
 TEMPLATES = get_base_dir() / "templates"
@@ -40,6 +44,22 @@ def test_preservation_template_no_picc_has_types():
     assert "中国人民财产保险股份有限公司" not in full
     assert "诉前保全" in full
     assert "诉中保全" in full
+
+
+def test_labor_arbitration_template_uses_article_27_note():
+    full = _full_text(TEMPLATES / "labor_arbitration_template.docx")
+    assert "律师核实" not in full
+    assert "{{ arbitration_limitation_note }}" in full
+    assert "第二十七条" in LABOR_ARBITRATION_LIMITATION_NOTE
+    assert "拖欠劳动报酬" in LABOR_ARBITRATION_LIMITATION_NOTE
+    assert "不受该一年限制" in LABOR_ARBITRATION_LIMITATION_NOTE
+
+
+def test_sales_complaint_overdue_rate_is_fixed_at_breach():
+    assert "第十八条第四款" in SALES_COMPLAINT_OVERDUE_RATE_DESC
+    assert "不再浮动" in SALES_COMPLAINT_OVERDUE_RATE_DESC
+    assert "贷款基准利率" in SALES_COMPLAINT_OVERDUE_RATE_DESC
+    assert "依法可主张的标准" not in SALES_COMPLAINT_OVERDUE_RATE_DESC
 
 
 def test_service_address_agree_disagree():
@@ -202,7 +222,7 @@ def test_evidence_catalog_has_original_column():
                 "arbitration_committee": "朝阳区劳动人事争议仲裁委员会",
                 "filing_date": "2026年1月1日",
                 "evidences": [],
-                "arbitration_limitation_note": "仲裁时效一般为1年，具体以律师核实为准",
+                "arbitration_limitation_note": LABOR_ARBITRATION_LIMITATION_NOTE,
             },
         ),
         (

@@ -67,7 +67,7 @@ graph TD
 | :--- | :--- | :--- | :--- |
 | LawFlow Gateway + Web | 默认 | **5221** | FastAPI + 静态前端 |
 | Stirling-PDF | 默认（compose） | 8081 | PDF 中间件（可选） |
-| DocuSeal | profile `phase3` | 8082 | 电子签；未配置时网关走**演示**签署 |
+| DocuSeal | profile `phase3` | 8082 | 电子签；未配置或创建失败时拒绝创建电子签，不伪造链接；可下载线下签字页 |
 | Docassemble | profile `planned` | 8080 | **规划中，当前代码未使用** |
 | RAGFlow | — | — | **规划中，未使用** |
 | 宿主机 Ollama | 系统服务 | 11434 | 本地大模型 |

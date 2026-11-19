@@ -62,7 +62,7 @@ def _load_appellate_precedents() -> List[Dict[str, Any]]:
                 "judgment_year": r.get("judgment_year"),
                 "court_level": r.get("court_level") or r.get("court_name") or "",
                 "is_guiding_or_gazette": bool(r.get("is_guiding_or_gazette")),
-                "stance": r.get("stance") or "PRO_APPELLANT",
+                "stance": r.get("stance") or "UNSTATED",
                 "core_topic": r.get("core_topic") or r.get("cause_of_action") or "",
                 "holding_ratio": r.get("holding_ratio") or r.get("holding_summary") or "",
                 "appellate_rebuttal_argument": r.get("appellate_rebuttal_argument")
@@ -177,18 +177,12 @@ def analyze_first_instance_judgment_and_precedents(
     flaw_diagnostics: List[Dict[str, Any]] = []
     unrecognized: List[str] = []
 
+    investment_words = ("对赌", "股权回购", "增资", "回购", "保本保收益", "名为投资")
+    loan_words = ("借贷", "借款", "民间借贷", "4倍LPR", "四倍LPR")
     has_loan_mischaracterization = any(
-        k in content
-        for k in [
-            "借款",
-            "民间借贷",
-            "借贷性质",
-            "保本保收益",
-            "名投实借",
-            "名为投资实为借贷",
-            "4倍LPR",
-            "四倍LPR",
-        ]
+        k in content for k in ("保本保收益", "名投实借", "名为投资实为借贷")
+    ) or (
+        any(k in content for k in investment_words) and any(k in content for k in loan_words)
     ) or (
         first_instance_errors
         and any("借贷" in e or "定性" in e for e in first_instance_errors)
@@ -205,10 +199,16 @@ def analyze_first_instance_judgment_and_precedents(
                 "appellate_attack_point": (
                     "本案争议焦点在于法律关系定性。若当事人真实意思为股权投资回购，"
                     "则不宜简单适用民间借贷利率上限。"
-                    "《九民纪要》（法发〔2019〕25号）第5条对对赌协议的效力和履行作出规定"
-                    "（具体内容请律师核实原文）。"
+                    "《九民纪要》（法发〔2019〕25号）第五条：与目标公司订立对赌协议，没有法定无效事由的，"
+                    "目标公司不能仅因约定了股权回购或者金钱补偿就主张协议无效。"
+                    "投资方请求目标公司回购股权，目标公司未完成减资程序的，人民法院应当驳回；"
+                    "请求金钱补偿的，公司没有利润或者利润不足的，驳回或者部分支持，以后有利润可以另行起诉。"
+                    "纪要写的是当时《公司法》第三十五条、第一百四十二条、第一百六十六条。"
+                    "现行《公司法》（2024年修订）中，不得抽逃出资见第五十三条，"
+                    "股份有限公司不得收购本公司股份见第一百六十二条，弥补亏损并提取公积金后分配利润见第二百一十条。"
+                    "有限责任公司减资回购不能只套第一百六十二条。"
                 ),
-                "statute_violated": "《中华人民共和国民法典》第四百六十五条、第五百零九条；《九民纪要》第5条（内容待律师核实）",
+                "statute_violated": "《九民纪要》（法发〔2019〕25号）第五条；《公司法》（2024年修订）第五十三条、第一百六十二条、第二百一十条",
             }
         )
     else:
@@ -231,9 +231,12 @@ def analyze_first_instance_judgment_and_precedents(
                     "一审以宏观环境或行业客观变化为由，适用情势变更削减或免除违约责任。"
                 ),
                 "appellate_attack_point": (
-                    "股权投资领域的市场波动与政策调整，通常属于订约时可合理预见的商业风险。"
-                    "《民法典》第五百三十三条及合同编通则解释相关条款对情势变更适用有严格限制"
-                    "（具体条文请律师核实），不宜将一般商业风险径行认定为情势变更。"
+                    "合同成立后，基础条件发生了订立时无法预见、不属于商业风险的重大变化，"
+                    "继续履行对一方明显不公平的，才可以请求变更或者解除合同（《民法典》第五百三十三条）。"
+                    "政策调整或者市场供求异常导致的价格涨跌，可以构成这种重大变化；"
+                    "市场属性活跃、价格波动较大的大宗商品以及股票、期货等风险投资型金融产品除外"
+                    "（《民法典合同编通则解释》第三十二条）。"
+                    "股权投资的一般市场波动，通常属于商业风险，不能直接写成情势变更。"
                 ),
                 "statute_violated": "《中华人民共和国民法典》第五百三十三条",
             }
@@ -261,7 +264,11 @@ def analyze_first_instance_judgment_and_precedents(
                 ),
                 "appellate_attack_point": (
                     "依《民法典》第五百八十五条第二款，违约金调减应综合约定目的、履行情况、过错与损失等因素。"
-                    "私募股权投资具有较长封闭期与机会成本，调减时应审慎评估，不宜仅以一年期LPR替代约定标准。"
+                    + (
+                        "股权投资的封闭期和机会成本可以作为损失的说明，不能用一年期贷款市场报价利率直接替换约定标准。"
+                        if any(k in content for k in ("股权", "对赌", "回购", "增资", "私募", "保本保收益"))
+                        else "本案文本没有写股权投资或对赌。不要把投资封闭期直接写成损失，也不要用一年期贷款市场报价利率直接替换约定标准。损失的百分之三十是过分高于的门槛，不是减完以后的金额。"
+                    )
                 ),
                 "statute_violated": "《中华人民共和国民法典》第五百八十五条第二款",
             }
@@ -291,12 +298,13 @@ def analyze_first_instance_judgment_and_precedents(
                 "first_instance_error_view": {
                     "source": "一审判决相关认定",
                     "flawed_argument": "需对照用户提供的一审理由逐项比对。",
-                    "fatal_vulnerability": "请结合《九民纪要》第5条及统一法律适用要求评估。",
+                    "fatal_vulnerability": "对照本案已经识别的争议评估。没有对赌或名为投资实为借贷的表述时，不要套用对赌口径。",
                 },
             }
         )
 
-    judicial_evolution_timeline = [
+    has_vam_flaw = any(f.get("probe_id") == "FLAW-01" for f in flaw_diagnostics)
+    vam_timeline = [
         {
             "stage": "第一阶段：2012年以前（海富案初期探索）",
             "benchmark_event": f"最高人民法院海富案（案号：{CASE_NUMBER_PLACEHOLDER}）",
@@ -306,16 +314,41 @@ def analyze_first_instance_judgment_and_precedents(
             "stage": "第二阶段：2019年（《九民纪要》统一裁判尺度）",
             "benchmark_event": "最高法《九民纪要》（《全国法院民商事审判工作会议纪要》，法发〔2019〕25号）第5条",
             "rule_evolution": (
-                "《九民纪要》（法发〔2019〕25号）第5条对对赌协议的效力和履行作出规定"
-                "（具体内容请律师核实原文）。"
+                "《九民纪要》（法发〔2019〕25号）第五条：与目标公司对赌，没有法定无效事由的，"
+                "不能仅因约定股权回购或金钱补偿就认定无效。"
+                "请求回购的，目标公司未完成减资程序的，驳回诉讼请求；"
+                "请求金钱补偿的，没有利润或利润不足的，驳回或部分支持。"
+                "纪要所引《公司法》第三十五条、第一百四十二条、第一百六十六条是当时的条号。"
+                "现行公司法（2024年修订）不得抽逃出资见第五十三条，"
+                "股份有限公司回购限制见第一百六十二条，利润分配见第二百一十条。"
             ),
         },
+    ]
+    general_timeline = [
         {
-            "stage": "第三阶段：2021年至今（《民法典》及合同编解释）",
-            "benchmark_event": "《民法典》情势变更与违约金调整相关规定",
-            "rule_evolution": "情势变更与违约金调整应依现行民法典及相关司法解释严格适用，具体条文请律师核实。",
+            "stage": "《民法典》施行后的情势变更与违约金",
+            "benchmark_event": "《民法典》第五百三十三条、第五百八十五条；合同编通则解释第三十二条、第六十五条",
+            "rule_evolution": (
+                "情势变更见《民法典》第五百三十三条：基础条件发生订立时无法预见、不属于商业风险的重大变化，"
+                "继续履行明显不公平的，可以请求变更或解除。"
+                "价格异常涨跌是否构成重大变化，见《民法典合同编通则解释》第三十二条；"
+                "股票、期货等风险投资型金融产品除外。"
+                "违约金是否过分高于损失，见合同编通则解释第六十五条，损失的百分之三十是调整门槛，不是减完以后的金额。"
+            ),
         },
     ]
+    if has_vam_flaw:
+        judicial_evolution_timeline = vam_timeline + general_timeline
+    elif flaw_diagnostics:
+        judicial_evolution_timeline = general_timeline
+    else:
+        judicial_evolution_timeline = [
+            {
+                "stage": "本案没有识别对赌、情势变更或违约金调减",
+                "benchmark_event": "不附对赌口径",
+                "rule_evolution": "判决文本没有出现对赌、名为投资实为借贷、情势变更或违约金调减。不附对赌纪要口径，也不附该案早期对赌探索口径。",
+            }
+        ]
 
     legal_brief_report = _generate_appellate_legal_memo(
         title=title,
@@ -390,10 +423,16 @@ def _generate_appellate_legal_memo(
     )
     for i, name in enumerate(RETRIEVAL_HIERARCHY, 1):
         lines.append(f"  ({i}) {name}")
-    lines.append("另需检索人民法院案例库（相关文件名称 TODO(律师核实)）。")
     lines.append(
-        "本案一审判决在法律关系定性、情势变更认定及违约金调整等争议点上是否背离统一裁判尺度，"
-        "应由二审法院结合类案检索结果审查。"
+        "另需检索人民法院案例库（rmfyalk.court.gov.cn）。"
+        "入库案例供办案参考，不能替代法发〔2020〕24号列出的检索范围。"
+    )
+    lines.append(
+        (
+            "本案判决文本出现对赌或名为投资实为借贷的表述，可以对照《九民纪要》第五条，但不能把纪要写成判决。"
+            if any(f.get("probe_id") == "FLAW-01" for f in flaws)
+            else "本案没有识别对赌争议。不要把对赌纪要第五条写进代理意见。"
+        )
     )
     lines.append("")
     lines.append("一、一审判决说理诊断：")
@@ -426,10 +465,16 @@ def _generate_appellate_legal_memo(
 
     lines.append("")
     lines.append("【结论】")
-    lines.append(
-        f"综上所述，请二审法院结合《九民纪要》第5条及类案检索结果（类案案号：{CASE_NUMBER_PLACEHOLDER}）"
-        "审查一审判决是否适用法律错误，依法作出裁判。"
-    )
+    if any(f.get("probe_id") == "FLAW-01" for f in flaws):
+        lines.append(
+            f"综上所述，本案出现对赌或名为投资实为借贷的表述，可以对照《九民纪要》第五条和类案检索结果（类案案号：{CASE_NUMBER_PLACEHOLDER}）审查。"
+            "纪要不是判决。"
+        )
+    else:
+        lines.append(
+            f"综上所述，请只根据本案已经识别的争议和类案检索结果（类案案号：{CASE_NUMBER_PLACEHOLDER}）审查。"
+            "本案没有识别对赌争议，不要套用对赌纪要第五条。"
+        )
     return "\n".join(lines)
 
 
@@ -462,8 +507,9 @@ def _generate_appellate_pleading(
     lines = []
     lines.append("民 事 上 诉 状")
     lines.append("")
-    lines.append(_party_line("上诉人（一审原告/被告）", appellant))
-    lines.append(_party_line("被上诉人（一审被告/原告）", appellee))
+    lines.append(_party_line("上诉人", appellant))
+    lines.append(_party_line("被上诉人", appellee))
+    lines.append("一审地位未填写。上诉人可能是一审原告，也可能是一审被告。诉请方向不要按当事人称谓猜测。")
     lines.append("")
     lines.append(f"原审人民法院：{first_instance_court}")
     lines.append(f"原审案号：{case_no}")
@@ -482,16 +528,23 @@ def _generate_appellate_pleading(
     )
     lines.append("")
     lines.append("【上诉请求】")
-    lines.append("1. 依法撤销一审判决相关判项；")
-    lines.append(f"2. 依法改判被上诉人向上诉人支付人民币 {_fmt_amount(claim_amount)} 元；")
+    lines.append("1. 撤销一审裁判中上诉人不服的判项；")
+    if claim_amount is not None:
+        amount_note = f"用户录入的争议金额为人民币 {_fmt_amount(claim_amount)} 元。"
+    else:
+        amount_note = "争议金额未填写。"
+    lines.append(
+        f"2. 依法改判。{amount_note}本页不写谁向谁付款。付款方向按上诉人在一审的地位改写。"
+    )
     if agreed_rate is not None:
         lines.append(
-            f"3. 依法改判被上诉人按合同约定年化 {rate_str} 支付逾期违约金（如有约定）；"
+            f"3. 逾期利息或违约金是否按约定年化 {rate_str} 纳入改判，取决于上诉人在一审是主张债权还是提出抗辩。"
+            "本页不写成被上诉人应当支付该利率。"
         )
     claim_idx = 4 if agreed_rate is not None else 3
-    fee_line = f"{claim_idx}. 判令由被上诉人承担本案一审、二审诉讼费用"
+    fee_line = f"{claim_idx}. 一审、二审诉讼费用由人民法院依法确定"
     if include_preservation_insurance:
-        fee_line += "及财产保全责任险保费（无合同约定时一般不予支持）"
+        fee_line += "。财产保全责任险保费仅在合同有约定或法律有规定时列入，无约定时一般不支持"
     fee_line += "。"
     lines.append(fee_line)
     lines.append("")

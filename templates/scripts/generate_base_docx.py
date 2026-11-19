@@ -739,7 +739,7 @@ def create_labor_arbitration_template(output_path: str):
     # 时效提示
     p_note = doc.add_paragraph()
     format_paragraph(p_note, first_line_indent_chars=2)
-    r = p_note.add_run("【提示】仲裁时效一般为1年，具体以律师核实为准。")
+    r = p_note.add_run("【提示】{{ arbitration_limitation_note }}")
     set_run_font(r, font_name="仿宋", size_pt=11)
     doc.add_paragraph()
 

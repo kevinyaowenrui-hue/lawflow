@@ -240,6 +240,9 @@ def test_a08_redline_rule_wordings():
     general_rules = " ".join(PLAYBOOK_PRESETS["general"]["rules"])
     assert "原告所在地人民法院" not in general_rules
     assert "甲方住所地" in general_rules
+    assert "第三十条" in general_rules
+    assert "百分之二十写成法定上限" in general_rules
+    assert "原告所在地人民法院" not in general_rules
 
     labor_rules = " ".join(PLAYBOOK_PRESETS["labor"]["rules"])
     assert "必须明确按月支付不低于" not in labor_rules
@@ -262,6 +265,7 @@ def test_a18_sub_documents_preservation_choice(client):
     payload_base = {
         "cause_of_action": "买卖合同纠纷",
         "claim_amount": 200000.0,
+        "claims": ["判令被告支付货款20万元"],
         "raw_case_notes": "被告拖欠货款20万元，经多次催讨未果。",
         "court_name": "北京市海淀区人民法院",
         "plaintiff": {
@@ -297,3 +301,26 @@ def test_a18_sub_documents_preservation_choice(client):
     payload_invalid["sub_documents"] = ["invalid_doc_type"]
     resp3 = client.post("/api/v1/phase1/generate-litigation-package", json=payload_invalid)
     assert resp3.status_code == 422
+
+
+def test_contract_review_fallback_does_not_prescribe_plaintiff_court(client, monkeypatch):
+    from gateway.core.ollama_client import ollama_client
+
+    async def empty_json(*args, **kwargs):
+        return "{}"
+
+    monkeypatch.setattr(ollama_client, "generate", empty_json)
+    resp = client.post(
+        "/api/v1/phase2/contract-review",
+        json={
+            "contract_title": "测试采购合同",
+            "contract_text": "乙方延期交付的，每日按合同总价款百分之五支付违约金。发生争议由原告所在地人民法院管辖。",
+            "perspective": "乙方防御版",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    # T-010 3.4 / RICE 600: 模型未连接或返回空时，不得返回预置假条款，必须返回未审查状态
+    data = resp.json()
+    assert data["status"] == "unreviewed"
+    reviews = data["review"]["clause_reviews"]
+    assert len(reviews) == 0

@@ -2,6 +2,8 @@
 """批次14 I-30：自定义案情推演案由识别、标的额、第三人栏。"""
 from __future__ import annotations
 
+import json
+
 
 SALES_FACTS = "原告向被告供应货物，被告以质量问题为由拒付货款 30 万元"
 PLACEHOLDER_THIRD = "以案情实际涉及为准"
@@ -17,6 +19,12 @@ def test_sales_case_auto_cause_and_amount(client):
     assert data.get("status") == "success"
     assert data["cause_of_action"] == "买卖合同纠纷"
     assert data["claim_amount"] == 300000
+    blob = json.dumps(data, ensure_ascii=False)
+    assert "2023-03-01" not in blob
+    assert "书证原件" not in blob
+    assert data.get("scorecard", {}).get("is_litigation_ready") is False
+    related = data.get("related_statutes") or []
+    assert any("买卖" in item or "民法典" in item for item in related), related
     assert PLACEHOLDER_THIRD not in str(data)
     third = (data.get("parties") or {}).get("third_party")
     assert third in (None, "", "无") or "third_party" not in (data.get("parties") or {})

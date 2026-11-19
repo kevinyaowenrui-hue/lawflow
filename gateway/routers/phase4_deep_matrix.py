@@ -219,9 +219,20 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
     recalled_statutes = []
     try:
         from gateway.utils.statute_db import search_statutes_hybrid
-        kb_results = search_statutes_hybrid(query_str=cause + " " + facts[:40], limit=4)
+        query = cause.replace("纠纷", "").strip() or cause
+        kb_results = search_statutes_hybrid(query, limit=8)
+        needles = [part for part in ("买卖", "借贷", "借款", "劳动", "保证", "施工", "租赁") if part in query]
         for art in kb_results:
-            recalled_statutes.append(f"《{art['full_name']}》{art['article_no_cn']}【{art.get('claim_basis_type') or '请求权规范'}】")
+            blob = f"{art.get('full_name') or ''}{art.get('content') or ''}"
+            if needles and not any(word in blob for word in needles):
+                continue
+            label = f"《{art['full_name']}》{art['article_no_cn']}"
+            basis_type = (art.get("claim_basis_type") or "").strip()
+            if basis_type:
+                label += f"【{basis_type}】"
+            recalled_statutes.append(label)
+            if len(recalled_statutes) >= 4:
+                break
     except Exception as e:
         logger.warning(f"statute_db 检索异常: {e}")
 
@@ -241,8 +252,8 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
             raw_documents.append({
                 "doc_id": doc_id,
                 "doc_name": l[:40],
-                "doc_type": "银行清算电子数据" if ("回单" in l or "流水" in l or "转账" in l) else ("电子数据" if "微信" in l or "聊天" in l else "书证原件"),
-                "source": f"{p_name}持有或网银导出",
+                "doc_type": "律师录入的证据名称",
+                "source": "证据目录文字，尚未核对原件",
                 "pages": 1,
                 "recorded_date": "在卷留存",
                 "hash_sha256": d_hash,
@@ -252,46 +263,6 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
             doc_idx += 1
             if doc_idx > 4:
                 break
-
-    if not raw_documents:
-        raw_documents = [
-            {
-                "doc_id": "DOC-01",
-                "doc_name": f"《双方关于{cause}之基础协议/借据原件》",
-                "doc_type": "书证原件",
-                "source": f"{p_name}出示持有原件",
-                "pages": 1,
-                "recorded_date": "合同成立日",
-                "hash_sha256": hashlib.sha256((facts[:50] + "doc1").encode("utf-8")).hexdigest(),
-                "content_lines": [{"line": 1, "text": f"{p_name}与{d_name}就{cause}达成合意并签字确认", "anchor": "L1"}],
-                "raw_text": f"双方就{cause}形成明确权利义务约定及争议解决方式。"
-            },
-            {
-                "doc_id": "DOC-02",
-                "doc_name": "《银行网银电子交易流水及款项/货物交付回执》",
-                "doc_type": "银行清算电子数据",
-                "source": "银行网银官方导出",
-                "pages": 1,
-                "recorded_date": "交付履行日",
-                "hash_sha256": hashlib.sha256((facts[:50] + "doc2").encode("utf-8")).hexdigest(),
-                "content_lines": [{"line": 1, "text": (
-                    f"涉及金额人民币 {amount_for_text:,.2f} 元之履行交易明细"
-                    if amount_display is not None else "涉及款项/货物交付履行交易明细"
-                ), "anchor": "L1"}],
-                "raw_text": f"证明实际履约交付事实，确认款项/货物到达指定交付控制权。"
-            },
-            {
-                "doc_id": "DOC-03",
-                "doc_name": "《微信聊天沟通记录及履行期满书面催告通知》",
-                "doc_type": "电子数据",
-                "source": f"{p_name}留存提取",
-                "pages": 2,
-                "recorded_date": "期满催讨时",
-                "hash_sha256": hashlib.sha256((facts[:50] + "doc3").encode("utf-8")).hexdigest(),
-                "content_lines": [{"line": 1, "text": f"{p_name}多次书面催告，{d_name}确认债务或抗辩推诿", "anchor": "P1#L1"}],
-                "raw_text": "证明合同期限届满未受清偿，并产生诉讼时效中断效果。"
-            }
-        ]
 
     # 3. 动态时间轴抽取
     date_matches = re.findall(r'(\d{4}[年\-\.]\d{1,2}[月\-\.]\d{1,2}日?)', facts)
@@ -308,22 +279,20 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
             })
         if len(timeline_events) < 2:
             timeline_events.append({
-                "date": "约定还款/催告履行日",
-                "source": f"DOC-0{min(2, len(raw_documents))}",
-                "summary": f"借款/履行期限届满，{p_name}书面催告，{d_name}推脱拒付",
-                "type": "违约催讨",
-                "risk_flag": "danger"
+                "date": "其余日期未写明",
+                "source": "律师录入的案情",
+                "summary": "案情里能抽出的日期不足，不能补写交付日或催告日。",
+                "type": "待补充",
+                "risk_flag": "warning",
             })
     else:
-        amt_timeline = (
-            f"实际履行金额 ¥{amount_for_text:,.2f}"
-            if amount_display is not None else "实际履行（标的额待补充）"
-        )
-        timeline_events = [
-            {"date": "2023-03-01", "source": "DOC-01 基础合同", "summary": f"{p_name}与{d_name}确立{cause}法律关系", "type": "成立", "risk_flag": "info"},
-            {"date": "2023-03-05", "source": "DOC-02 交付凭证", "summary": f"款项划转/货物移交，{amt_timeline}", "type": "交付", "risk_flag": "success"},
-            {"date": "2023-09-01", "source": "DOC-03 催告记录", "summary": f"约定期限届满，{p_name}书面催告履行，{d_name}拖延未付", "type": "违约", "risk_flag": "danger"}
-        ]
+        timeline_events = [{
+            "date": "案情未写明日期",
+            "source": "律师录入的案情",
+            "summary": "案情文字里没有可以抽出的年月日，时间轴不能代替事实认定。",
+            "type": "待补充",
+            "risk_flag": "warning",
+        }]
 
     # 4. 冲突破绽检测
     detected_conflicts = []
@@ -334,12 +303,21 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
             "description": "资金流水或货物交付流向案外人账户，对方极易抗辩未向其本人实际履行！",
             "remedy": "必须补强债务人明确指示付款至第三方账户的微信/书面证据，确立代收委托授权。"
         })
-    if "年化" in facts or "利息" in facts or "%" in facts:
+    lending_case = ("借贷" in cause) or ("借款" in cause)
+    mentions_rate = any(k in facts for k in ("年化", "利息", "月息", "利率", "%", "％", "违约金"))
+    if lending_case and mentions_rate:
         detected_conflicts.append({
-            "conflict_type": "高息或复利被依法调减风险 (Excessive Interest Rate Risk)",
+            "conflict_type": "民间借贷利率保护上限",
             "severity": "MEDIUM",
-            "description": "利息、违约金或逾期费用约定可能突破司法保护上限（一年期LPR 4倍）。",
-            "remedy": "起诉前主动将利息诉求核减至合同成立时一年期LPR 4倍以内，降低败诉败费风险。"
+            "description": "民间借贷的利息、逾期利息、违约金和其他费用合计，超过合同成立时一年期贷款市场报价利率四倍的部分，人民法院不予支持；四倍以内仍可主张。借期利率和逾期利率都没有约定的，逾期利息按当时一年期贷款市场报价利率计算，不能直接套四倍（《民间借贷规定》第二十五条、第二十八条、第二十九条）。",
+            "remedy": "先分清有没有约定借期内利率和逾期利率。两项都没约定的，逾期利息按当时一年期贷款市场报价利率，不是四倍。约定了利率的，只把超过四倍的合计部分从诉请里拿掉，不要把整个利息约定说成无效。",
+        })
+    elif mentions_rate:
+        detected_conflicts.append({
+            "conflict_type": "违约金是否过分高于损失",
+            "severity": "MEDIUM",
+            "description": "约定的违约金超过造成损失的百分之三十的，一般可以认定为过分高于造成的损失。这是是否调整的门槛，不是减完以后的金额。恶意违约的一方请求减少违约金的，一般不予支持（《民法典合同编通则解释》第六十五条）。一年期贷款市场报价利率的四倍是民间借贷的保护上限，不能套到买卖、服务等其他合同。",
+            "remedy": "先核对案由是不是民间借贷。不是民间借贷的，按约定主张违约金，并准备实际损失的证据。这里不计算减到多少。",
         })
     if "口头" in facts or "未签" in facts or "未留" in facts:
         detected_conflicts.append({
@@ -357,20 +335,30 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
         })
 
     # 5. 七维要件事实矩阵构建
+    def _doc_name(index: int) -> str:
+        if index < len(raw_documents):
+            return raw_documents[index]["doc_name"]
+        return "尚未录入的证据"
+
+    def _doc_snippet(index: int) -> str:
+        if index < len(raw_documents):
+            return (raw_documents[index].get("raw_text") or "")[:60]
+        return "案情和证据目录里没有这一项。"
+
     matrix_elements = []
     if "借贷" in cause or "借款" in cause:
         matrix_elements = [
             {
                 "element_id": "E1",
                 "element_name": "借贷合意依法成立要件",
-                "claim_basis": recalled_statutes[0] if recalled_statutes else "《民法典》第六百六十七条【借款合同定义】",
+                "claim_basis": "《民法典》第六百六十七条【借款合同定义】",
                 "asserted_fact": f"{p_name}与{d_name}就借款达成明确借贷合意，约定本金与借期。",
-                "grounded_citations": [{"doc_id": "DOC-01", "doc_name": raw_documents[0]["doc_name"], "anchor": "DOC-01:L1", "snippet": raw_documents[0]["raw_text"][:60], "integrity": "存证验真一致"}],
+                "grounded_citations": [{"doc_id": "DOC-01", "doc_name": _doc_name(0), "anchor": "DOC-01:L1", "snippet": _doc_snippet(0), "integrity": "存证验真一致"}],
                 "opponent_defense": "抗辩称借条非本人真实意思表示，或主张款项系投资款/货款而非借款。",
-                "burden_of_proof": "出借人对借贷合意的成立承担举证责任（《民间借贷司法解释》第2条）。",
+                "burden_of_proof": "出借人起诉时应当提供借据、收据、欠条等债权凭证，以及其他能够证明借贷法律关系存在的证据（《民间借贷规定》第二条）。",
                 "proof_status": "PROVEN",
                 "adversarial_attack": "【红队攻击】借条是否存在倒签？是否出具纸质原件？是否存在隐名合伙或商业投资安排？",
-                "counter_strategy": "当庭出示纸质原件或高保真公证书，配合微信中自认借据的照片与语音，坐死合意事实。"
+                "counter_strategy": "出示原件或公证书，并对照聊天记录里对借款的承认。这些文字还没有核对原件，不能把借贷合意写成已经确定。"
             },
             {
                 "element_id": "E2",
@@ -388,13 +376,20 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
                 "element_id": "E3",
                 "element_name": "约定期限届满与未清偿违约要件",
                 "claim_basis": "《民法典》第六百七十五条、第五百七十七条",
-                "asserted_fact": f"还款期限届满后，{p_name}多次催告，{d_name}至今拒不返还本息。",
+                "asserted_fact": (
+                    f"期限届满后是否未清偿，只看录入文字。"
+                    + (
+                        "案情里写到催告或催款。能否中断诉讼时效，要核对日期和送达，不能写成连续中断。"
+                        if any(word in facts or word in evidence_notes for word in ("催告", "催款"))
+                        else "案情里没有写催告。不要补写多次催告。"
+                    )
+                ),
                 "grounded_citations": [{"doc_id": "DOC-03", "doc_name": raw_documents[2]["doc_name"] if len(raw_documents)>2 else "催告记录", "anchor": "DOC-03:P1#L1", "snippet": raw_documents[2]["raw_text"][:60] if len(raw_documents)>2 else "催告记录", "integrity": "电子数据保全"}],
                 "opponent_defense": "主张双方曾口头延期，或提出时效抗辩。",
                 "burden_of_proof": "借款人对已清偿事实承担举证责任。",
                 "proof_status": "PROVEN",
                 "adversarial_attack": "【红队攻击】原告催告通知是否有效送达被告？催告时效是否在最后一次催告后超过3年？",
-                "counter_strategy": "出示微信最新沟通记录或EMS催告函签收回执，证明时效发生连续中断。"
+                "counter_strategy": "催告或对方同意履行，要留下日期和能够证明送达的记录，才讨论是否中断诉讼时效。一次记录不能写成连续中断。保证期间不能靠催告函代替起诉主债务人或向保证人请求。"
             }
         ]
     elif "买卖" in cause or "购销" in cause:
@@ -402,26 +397,33 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
             {
                 "element_id": "E1",
                 "element_name": "买卖合同法律关系成立与标的约定要件",
-                "claim_basis": recalled_statutes[0] if recalled_statutes else "《民法典》第五百九十五条【买卖合同定义】",
+                "claim_basis": "《民法典》第五百九十五条【买卖合同定义】",
                 "asserted_fact": f"{p_name}与{d_name}订立买卖合同，约定货物规格、单价及总价款人民币 {amount_label} 元。",
-                "grounded_citations": [{"doc_id": "DOC-01", "doc_name": raw_documents[0]["doc_name"], "anchor": "DOC-01:L1", "snippet": raw_documents[0]["raw_text"][:60], "integrity": "存证验真"}],
+                "grounded_citations": [{"doc_id": "DOC-01", "doc_name": _doc_name(0), "anchor": "DOC-01:L1", "snippet": _doc_snippet(0), "integrity": "存证验真"}],
                 "opponent_defense": "抗辩称合同未正式盖章，或经办人无权代理。",
                 "burden_of_proof": "主张合同成立方承担举证责任。",
                 "proof_status": "PROVEN",
                 "adversarial_attack": "【红队攻击】审查经办人是否具有授权委托书，签字真实性与表见代理要件是否成立。",
-                "counter_strategy": "出示双方历史交易惯例与银行账户首期款转账记录，坐实表见代理与追认事实。"
+                "counter_strategy": "历史交易和付款记录可以用来核对经办人是否在执行工作任务（《民法典》第一百七十条）。表见代理要另证相对人有理由相信其有代理权（第一百七十二条）。追认要有被代理人的意思表示（第一百七十一条）。不要把这三件事写成已经成立。"
             },
             {
                 "element_id": "E2",
                 "element_name": "出卖人依约发货交付与受领要件",
                 "claim_basis": "《民法典》第六百零一条【出卖人交付标的物的期限】",
-                "asserted_fact": f"{p_name}已按期足额交付符合约定质量之货物，买受人已实际受领。",
+                "asserted_fact": (
+                    f"是否已经交付并受领，只看录入文字。"
+                    + (
+                        "案情里写到交付、供应或签收。是否按期、是否足额、签收人有没有受领权限，还要核对原件。"
+                        if any(word in facts or word in evidence_notes for word in ("交付", "签收", "送货", "供应"))
+                        else "案情里没有写交付或签收。不要写成已经按期足额交付并且买受人已经受领。"
+                    )
+                ),
                 "grounded_citations": [{"doc_id": "DOC-02", "doc_name": raw_documents[1]["doc_name"] if len(raw_documents)>1 else "交付凭证", "anchor": "DOC-02:L1", "snippet": raw_documents[1]["raw_text"][:60] if len(raw_documents)>1 else "送货签收", "integrity": "电子回执"}],
                 "opponent_defense": "抗辩称签收人非公司员工，或货物存在质量瑕疵未达验收标准。",
                 "burden_of_proof": "出卖人对交付行为承担举证责任，买受人对瑕疵异议承担举证责任。",
                 "proof_status": "PROVEN",
                 "adversarial_attack": "【红队攻击】送货单签收字迹潦草，无买受人公章，不构成对交付货物的有效受领确认！",
-                "counter_strategy": "出示物流过磅单、发票开具及买受人转售获益记录，构成实际商用验收拟制。"
+                "counter_strategy": "核对签收人是否有权受领，并保留送货单、物流记录和对方使用或转售的痕迹。质量异议要看合同约定的检验期限，没有公章不能直接写成没有交付，投入使用也不能直接写成已经验收合格。"
             },
             {
                 "element_id": "E3",
@@ -433,7 +435,7 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
                 "burden_of_proof": "主张先履行抗辩权的举证责任在买受人。",
                 "proof_status": "PROVEN",
                 "adversarial_attack": "【红队攻击】主张先票后款为交易先决条件，原告未开具全额发票，被告有权行使先履行抗辩权！",
-                "counter_strategy": "援引最高院判例：开票属于附随义务，不能对抗支付货款的主合同债务履行。"
+                "counter_strategy": "先看合同有没有把开具发票写成付款的先决条件。合同没写的，不能直接把未开票当成拒付货款的理由；合同写了的，按约定处理。不要引用没有案号的判例。"
             }
         ]
     else:
@@ -442,9 +444,9 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
             {
                 "element_id": "E1",
                 "element_name": f"{cause}之基础法律关系成立要件",
-                "claim_basis": recalled_statutes[0] if recalled_statutes else "《民法典》第四百六十九条、第五百零九条",
+                "claim_basis": "《民法典》第四百六十九条、第五百零九条",
                 "asserted_fact": f"{p_name}与{d_name}之间存在真实合法的{cause}法律关系。",
-                "grounded_citations": [{"doc_id": "DOC-01", "doc_name": raw_documents[0]["doc_name"], "anchor": "DOC-01:L1", "snippet": raw_documents[0]["raw_text"][:60], "integrity": "存证验真"}],
+                "grounded_citations": [{"doc_id": "DOC-01", "doc_name": _doc_name(0), "anchor": "DOC-01:L1", "snippet": _doc_snippet(0), "integrity": "存证验真"}],
                 "opponent_defense": "否认存在合意或抗辩合同无效/未生效。",
                 "burden_of_proof": "主张权利发生者对产生权利的基础事实承担证明责任。",
                 "proof_status": "PROVEN",
@@ -473,24 +475,47 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
                 "burden_of_proof": "受损方对损失数额及因果关系承担举证责任。",
                 "proof_status": "PROVEN",
                 "adversarial_attack": "【红队攻击】违约损失计算依据不足，所主张的可得利益损失缺乏预见性，要求大幅核减！",
-                "counter_strategy": "依据合同约定固定违约金条款，并在30%合理浮动区间内提供实际直接损失依据支撑。"
+                "counter_strategy": "有约定违约金的按约定主张，并准备实际损失的证据。约定金额超过损失百分之三十的，一般属于过分高于损失的门槛，不是减完以后的金额。这里不计算减到多少。"
             }
         ]
 
-    # 6. 计算实证检验指标与可验证账本
+    # 6. 自定义案情只整理文字，不把摘录记成已经证明
+    docs_by_id = {doc["doc_id"]: doc for doc in raw_documents}
+    for element in matrix_elements:
+        element["proof_status"] = "UNPROVEN"
+        fixed_cites = []
+        for cite in element.get("grounded_citations") or []:
+            doc = docs_by_id.get(cite.get("doc_id"))
+            if doc is None:
+                fixed_cites.append({
+                    "doc_id": "未录入",
+                    "doc_name": "尚未录入的证据",
+                    "anchor": "未录入",
+                    "snippet": "案情和证据目录里没有这一项，不能记成已经证明。",
+                    "integrity": "尚未录入",
+                })
+            else:
+                fixed_cites.append({
+                    **cite,
+                    "doc_name": doc["doc_name"],
+                    "snippet": (doc.get("raw_text") or "")[:80],
+                    "integrity": "摘自律师录入的文字，尚未核对原件",
+                })
+        element["grounded_citations"] = fixed_cites
+
     total_elements = len(matrix_elements)
-    proven_count = sum(1 for e in matrix_elements if e["proof_status"] == "PROVEN")
-    unproven_count = sum(1 for e in matrix_elements if e["proof_status"] == "UNPROVEN")
+    proven_count = 0
+    unproven_count = total_elements
     isolated_count = sum(1 for e in matrix_elements if e.get("is_isolated", False))
-    completeness_score = int((proven_count / total_elements) * 100) if total_elements > 0 else 0
-    is_litigation_ready = (unproven_count == 0 and isolated_count == 0)
+    completeness_score = 0
+    is_litigation_ready = False
 
     verifiability_ledger = {
-        "verifier_name": "LawFlow 真实卷宗要件事实与质证推演机 (Custom Dossier Solver)",
-        "hash_verification": f"全案已抽取 {len(raw_documents)} 份原始证据，已计算 SHA-256 指纹验真",
-        "grounding_coverage": f"每个构成要件均成功回溯坐标锚定至原始证据行号",
-        "statute_validity_check": f"已成功关联并核验 {len(recalled_statutes)} 部现行规范性法律文件依据",
-        "redline_risk_status": f"已侦测出 {len(detected_conflicts)} 项潜在质证破绽并生成补强取证 SOP"
+        "verifier_name": "案情文字整理（不是原件核验结论）",
+        "hash_verification": f"已从录入文字中抽出 {len(raw_documents)} 条证据名称。SHA-256 只覆盖这些文字，不能代替原件比对。",
+        "grounding_coverage": "要件旁边的摘录来自律师录入的案情或证据目录。没有对应文字的，标为尚未录入，不能当成已经证明。",
+        "statute_validity_check": f"检索到 {len(recalled_statutes)} 条相关法条供对照。本页没有逐条作出现行有效的结论，引用前请再查本地库。",
+        "redline_risk_status": f"利率和违约金提示 {len(detected_conflicts)} 项。民间借贷才适用四倍上限；其他合同不把四倍或损失的百分之三十写成应主张的金额。",
     }
 
     parties = {
@@ -511,6 +536,7 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
         "matrix_elements": matrix_elements,
         "timeline_events": timeline_events,
         "detected_conflicts": detected_conflicts,
+        "related_statutes": recalled_statutes,
         "scorecard": {
             "total_elements": total_elements,
             "proven_count": proven_count,
@@ -518,7 +544,7 @@ async def analyze_custom_case_internal(req: DeepAnalyzeReq) -> Dict[str, Any]:
             "isolated_count": isolated_count,
             "completeness_score": completeness_score,
             "is_litigation_ready": is_litigation_ready,
-            "status_label": "【闭环完备·已达起诉标准】" if is_litigation_ready else "【存疑要件·禁止盲目起诉】"
+            "status_label": "【案情推演·证据尚未核对原件，不能据此决定起诉】"
         },
         "verifiability_ledger": verifiability_ledger
     }
@@ -640,8 +666,8 @@ async def analyze_deep_matrix(req: DeepAnalyzeReq):
                 "burden_of_proof": "主张债务更新或消灭的，举证责任在借款人李四（《民诉法解释》第91条）。",
                 "proof_status": "PROVEN",
                 "is_isolated": False,
-                "adversarial_attack": "【红队攻击】2023-09-15之后张三与李四是否还有其他商业对话？李四在2024-02-28已明确发微信否定借贷关系并主张为钢材定金，张三当时未立即在微信中反驳，构成沉默自认！",
-                "counter_strategy": "引用《最高人民法院关于适用〈中华人民共和国民事诉讼法〉的解释》第九十条，沉默不构成意思表示；李四未出示任何双方签字盖章的《买卖合同》或《定金协议》，纯属单方事后脱债抗辩。"
+                "adversarial_attack": "对方可能主张张三没有立刻反驳，就构成沉默自认。沉默本身不是自认。只有法律规定、当事人约定或者交易习惯，沉默才可以视为意思表示。",
+                "counter_strategy": "《民法典》第一百四十条：沉默只有在有法律规定、当事人约定或者符合交易习惯时，才可以视为意思表示。对方否定借贷、主张已变成定金的，应就其主张的买卖合同或定金协议举证（《民事诉讼法解释》第九十一条第二项）。不要把《民事诉讼法解释》第九十条当成沉默规则，那一条只是举证证明责任的一般规定。"
             },
             {
                 "element_id": "E4",
@@ -657,12 +683,12 @@ async def analyze_deep_matrix(req: DeepAnalyzeReq):
                         "integrity": "约定超标"
                     }
                 ],
-                "opponent_defense": "【抗辩完全成立】答辩意见三：年化24%严重超出一年期LPR四倍（14.6%），超过部分依法属于高利贷无效！逾期违约金每日千分之一折合年化36.5%，合并计算超过4倍上限。",
+                "opponent_defense": "年化24%超过合同成立时一年期贷款市场报价利率的四倍（14.60%）。超过四倍的部分人民法院不予支持，未超过的部分仍可主张。逾期利息、违约金和其他费用合计也不能超过这个四倍（《民间借贷规定》第二十五条、第二十九条）。不要把整个利息约定说成无效。",
                 "burden_of_proof": "出借人仅在法定限额内享有受法律保护的利息请求权。",
                 "proof_status": "PROVEN",
                 "is_isolated": False,
-                "adversarial_attack": "【红队重锤攻击】原告若在诉状中全额主张年化24%利息及千分之一违约金，法院将直接判决驳回超标部分诉求，原告不仅将承担超额部分的诉讼费，合议庭还会对原告形成‘放高利贷’的不良心证！",
-                "counter_strategy": "【主动降维自修正】诉讼请求中直接将利息及逾期违约金主动调减至合同成立时一年期LPR 4倍（年化14.60%），不给对方任何程序性抗辩空间，既节省原告诉讼费，又锁定法院支持全部诉求。"
+                "adversarial_attack": "如果诉状按年化24%再加每日千分之一违约金全额主张，超过合同成立时一年期贷款市场报价利率四倍的部分得不到支持。四倍以内的约定仍然可以主张。利息和违约金要合并计算是否超过四倍，不能只看利息本身。",
+                "counter_strategy": "诉讼请求按合同成立时一年期贷款市场报价利率的四倍为上限，主张利息与违约金的合计。不要把超过部分一并列入，也不要把整个利息约定说成无效。"
             },
             {
                 "element_id": "E5",
@@ -747,13 +773,13 @@ async def analyze_deep_matrix(req: DeepAnalyzeReq):
                 "conflict_type": "银行附言‘往来款’性质模糊风险 (Ambiguous Transaction Note)",
                 "severity": "MEDIUM",
                 "description": "网银摘要填写‘往来款’，未写‘借款’，给对方留出钢材买卖货款/定金抗辩口实。",
-                "remedy": "依据最高法《民间借贷司法解释》第十七条，原告出示借据与转账凭证即完成举证责任，被告主张系定金必须由其承担买卖合同成立的举证责任。"
+                "remedy": "转账凭证和借贷合意要分开看。《民间借贷规定》第十六条：原告只有转账凭证、被告主张是偿还其他债务的，由被告先举证；被告举证后，原告仍要证明借贷关系成立。第十七条是原告无正当理由拒不到庭时如何处理，不能用来说明举证责任已经完成。"
             },
             {
-                "conflict_type": "利息约定超越法定LPR 4倍红线 (Usury Cap Breach)",
+                "conflict_type": "利息约定超过合同成立时一年期贷款市场报价利率四倍",
                 "severity": "CRITICAL",
-                "description": "约定月息2%（年化24%），超过借款时一年期LPR 3.65%的四倍（14.60%），超出的9.40%年化利率部分无效。",
-                "remedy": "诉请端强制自动裁切，按年化14.60%分段诉请，确保判决全额支持。"
+                "description": "约定月息2%（年化24%），超过借款合同成立时一年期贷款市场报价利率3.65%的四倍（14.60%）。超过四倍的部分人民法院不予支持，不是整个利息约定无效。逾期利息和违约金还要与利息合并计算（《民间借贷规定》第二十九条）。",
+                "remedy": "诉请按合同成立时一年期贷款市场报价利率的四倍以内主张。利息、逾期利息和违约金合计不能超过四倍。不要把超过部分写成当然无效。"
             }
         ]
 
@@ -784,13 +810,13 @@ async def analyze_deep_matrix(req: DeepAnalyzeReq):
                 "proof_status": "PROVEN",
                 "is_isolated": False,
                 "adversarial_attack": "【红队攻击】部署到内网不等于‘验收交付’，原告无华腾物流加盖公章的《最终验收合格单》！",
-                "counter_strategy": "援引合同第4条及司法惯例：被告未经检验已全面投入商业使用超万笔运单，依法视为验收合格！"
+                "counter_strategy": "合同第4条约定逾期不组织验收并且已经投入实际使用的，按约定视为验收合格。这是合同条款，不是法定拟制。要证明已经投入使用，并且对方逾期没有组织验收。"
             },
             {
                 "element_id": "E3",
-                "element_name": "拟制验收合格与付款条件成就事实",
-                "claim_basis": "《最高法关于审理买卖合同纠纷案件适用法律若干问题的解释》第十条、民商事技术合同裁判惯例",
-                "asserted_fact": "被告自2023年9月1日至今持续在生产环境实际商业运营该系统，依法视为验收合格，尾款40万元付款条件成就。",
+                "element_name": "合同约定的验收条件是否已经成就",
+                "claim_basis": "《民法典》第五百零九条、第五百七十七条。验收是否因实际使用而成就，以合同约定为准。买卖合同的检验期间不能照搬到委托开发。",
+                "asserted_fact": "被告自2023年9月1日起在生产环境使用该系统。合同第4条是否因此成就，要对照约定的验收条件，不能直接写成法定验收合格。",
                 "grounded_citations": [{"doc_id": "DOC-03", "anchor": "DOC-03:P1#L1-L2", "snippet": "系统后台处理华腾物流真实运单超12,000笔", "integrity": "公证日志"}],
                 "opponent_defense": "主张试运行不是正式商用，保留缺陷索赔权。",
                 "burden_of_proof": "主张实际使用的举证责任在原告。",
@@ -815,10 +841,10 @@ async def analyze_deep_matrix(req: DeepAnalyzeReq):
                 "remedy": "出示首期款支付流水，证明合同已实际履行。"
             },
             {
-                "conflict_type": "无纸质终验单抗辩与实际商用拟制冲突 (Deemed Acceptance Conflict)",
+                "conflict_type": "无纸质终验单与合同约定的使用条款",
                 "severity": "HIGH",
-                "description": "对方以缺乏加盖公章的验收单抗辩拒付尾款。",
-                "remedy": "主打DOC-03公证数据：『投入商业使用超30天依法推定为验收合格』之抗辩封阻。"
+                "description": "对方以缺乏加盖公章的验收单抗辩拒付尾款。合同第4条写了逾期不组织验收且投入实际使用的，按约定视为验收合格。这是合同约定，不是买卖合同司法解释上的法定拟制。",
+                "remedy": "对照合同第4条举证已经投入实际使用，并且对方逾期没有组织验收。实际使用本身不等于验收合格。"
             }
         ]
 
@@ -829,15 +855,16 @@ async def analyze_deep_matrix(req: DeepAnalyzeReq):
     isolated_count = sum(1 for e in matrix_elements if e.get("is_isolated", False))
 
     completeness_score = int((proven_count / total_elements) * 100) if total_elements > 0 else 0
-    is_litigation_ready = (unproven_count == 0 and isolated_count == 0)
+    # 演示卷宗的要件是样例对齐，不能给出可以起诉的结论。
+    is_litigation_ready = False
 
     # 外部实证验证报告 (External Verifiability Ledger)
     verifiability_ledger = {
-        "verifier_name": "LawFlow 司法证据链布尔判定机 (Boolean Evidence Solver)",
-        "hash_verification": "全部 4 份原始素材 SHA-256 完整性核验通过 (100% Raw Grounded)",
-        "grounding_coverage": "每一个法定构成要件均绑定一手原始卷宗行号坐标，无任何纯抽象臆断",
-        "statute_validity_check": "引用法条全部通过《民法典》及2020民间借贷解释现行有效性探针检验",
-        "redline_risk_status": "已拦截并纠正原告年化24%超标利率，建议调减至年化14.60% (LPR 4倍上限)"
+        "verifier_name": "演示卷宗要件对照（不是原件核验结论）",
+        "hash_verification": "演示素材的 SHA-256 只覆盖样例文本，不能代替原件比对。",
+        "grounding_coverage": "要件旁边的文书坐标来自演示卷宗摘录，不能据此认定事实已经证明。",
+        "statute_validity_check": "法条引用需要再经本地库核对效力。本页没有逐条作出现行有效的结论。",
+        "redline_risk_status": "民间借贷的利息、逾期利息、违约金和其他费用合计，超过合同成立时一年期贷款市场报价利率四倍的部分不予支持；四倍以内仍可主张。本页不把诉请改写成某一个年利率。",
     }
 
     return {
@@ -859,7 +886,7 @@ async def analyze_deep_matrix(req: DeepAnalyzeReq):
             "isolated_count": isolated_count,
             "completeness_score": completeness_score,
             "is_litigation_ready": is_litigation_ready,
-            "status_label": "【闭环完备·已达起诉标准】" if is_litigation_ready else "【存疑要件·禁止盲目起诉】"
+            "status_label": "【演示样例·只供对照要件，不能据此决定起诉】"
         },
         "verifiability_ledger": verifiability_ledger
     }
@@ -885,10 +912,10 @@ async def generate_adversarial_attack(req: AdversarialAttackReq):
         },
         {
             "dimension": "合法性与强制性规定攻击 (Legality)",
-            "attack_angle": "审查是否存在高利转贷、套取金融机构贷款、侵犯第三人个人信息或违反《民法典》关于禁止高利放贷之强制性规定。",
+            "attack_angle": "审查资金来源是否属于套取金融机构贷款转贷，以及利息、逾期利息、违约金和其他费用合计是否超过民间借贷的保护上限。超过上限的部分不予支持，不要把整个借款合同说成无效。",
             "drill_questions": [
-                "原告向第三方账户划转资金的真实意图是什么？是否存在规避监管或避税意图？",
-                "利息与各项综合成本是否超过一年期LPR四倍法定红线？"
+                "原告向第三方账户划转资金的真实意图是什么？是否存在套取金融机构贷款再转贷？",
+                "利息、逾期利息、违约金和其他费用合计，是否超过合同成立时一年期贷款市场报价利率的四倍？四倍以内的部分是否仍然主张？"
             ]
         },
         {
@@ -937,7 +964,7 @@ class EnforcementAuditRequest(BaseModel):
     equipment_value: Optional[float] = Field(default=None, description="被查封设备估值")
     third_party_claimant: Optional[str] = Field(default=None, description="案外异议人公司名称")
     intermingled_flows: Optional[List[Dict[str, Any]]] = Field(default=None, description="混同流水列表（兼容旧字段）")
-    use_demo: bool = Field(default=False, description="为 true 时载入 data/demo/enforcement_demo.json")
+    use_demo: bool = Field(default=False, description="仅测试用：为 true 时载入 data/demo/enforcement_demo.json；正式界面不提供")
     is_one_person_company: Optional[bool] = Field(default=None, description="是否一人有限责任公司")
     equity_transfers: Optional[List[Dict[str, Any]]] = Field(default=None, description="股权转让事实列表")
     capital_flows: Optional[List[Dict[str, Any]]] = Field(default=None, description="公私混同流水")

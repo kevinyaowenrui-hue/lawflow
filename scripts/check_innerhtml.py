@@ -109,7 +109,8 @@ def _scan_file(path: Path) -> list[tuple[int, str]]:
             i = end_idx + 1
             continue
 
-        assign_exempt = bool(SAFE_COMMENT_RE.search(assign_line))
+        prev_line = lines[i - 1] if i > 0 else ""
+        assign_exempt = bool(SAFE_COMMENT_RE.search(assign_line) or SAFE_COMMENT_RE.search(prev_line))
 
         for m in INTERP_RE.finditer(block):
             expr = m.group(1).strip()

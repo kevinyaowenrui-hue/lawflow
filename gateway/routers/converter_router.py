@@ -89,7 +89,7 @@ async def api_convert_file(
         raise HTTPException(status_code=501, detail=str(e))
     except Exception as e:
         logger.error(f"转码失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"离线转码失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="离线转码处理异常，请检查上传文件格式与内容是否完整")
 
     finally:
         # 清理原始上传临时文件（保留转换好的成品于 storage/generated）
@@ -149,7 +149,7 @@ async def api_batch_merge_evidence(
         raise
     except Exception as e:
         logger.error(f"多图合卷失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"合卷制作失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="合卷制作处理异常，请检查上传文件格式与内容是否完整")
 
     finally:
         for p in saved_paths:

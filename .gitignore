@@ -68,3 +68,9 @@ htmlcov/
 # Agent internal state
 .agents/
 
+
+# Temporary runtime caches & local agent state
+Microsoft/
+.cursor-batches/
+.agy-frontfix/
+.agy-practical-fix/

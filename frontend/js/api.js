@@ -67,6 +67,9 @@ export function mapFriendlyError(status, code, serverMsg) {
   if (status === 401) return ERROR_MESSAGE_MAP["AUTH_REQUIRED"];
   if (status === 403) return ERROR_MESSAGE_MAP["FORBIDDEN"];
   if (status === 404) return ERROR_MESSAGE_MAP["NOT_FOUND"];
+  if ((status === 422 || status === 409 || status === 400) && serverMsg && typeof serverMsg === "string" && serverMsg.length < 180 && !serverMsg.includes("Traceback") && !serverMsg.includes(".py")) {
+    return serverMsg;
+  }
   if (status === 422) return "提交参数不符合规范，请核对输入数据";
   if (status >= 500) return ERROR_MESSAGE_MAP["INTERNAL_ERROR"];
   if (serverMsg && typeof serverMsg === "string" && serverMsg.length < 80 && !serverMsg.includes("Traceback") && !serverMsg.includes("line ") && !serverMsg.includes(".py") && !serverMsg.includes("OperationalError") && !serverMsg.includes("sqlite3")) {

@@ -247,48 +247,57 @@ def _rule_based_intent_parser(
     if is_calc_req or extracted_amount is not None or start_date_str is not None:
         if not intent:
             intent = "LPR 计算"
-        principal = extracted_amount if extracted_amount is not None else (case_ctx.get("principal") or case_ctx.get("amount") or 500000.0)
-        start = start_date_str or (case_ctx.get("interest_calc") or {}).get("start_date") or "2023-01-01"
+        principal = extracted_amount if extracted_amount is not None else (case_ctx.get("principal") or case_ctx.get("amount"))
+        start = start_date_str or (case_ctx.get("interest_calc") or {}).get("start_date")
         end = end_date_str or (case_ctx.get("interest_calc") or {}).get("end_date") or datetime.now().strftime("%Y-%m-%d")
-
-        try:
-            lpr_res = calculate_lpr_interest(principal=principal, start_date=start, end_date=end, term="1Y")
-            court_res = calculate_court_fees(claim_amount=principal, case_type="property")
-            
-            interest_val = lpr_res.get("interest_total", 0.0)
-            court_fee_val = court_res.get("fee_amount", 0.0)
-
-            formal_statement = f"自{start}起至实际清偿之日止，以本金{principal:,.2f}元为基数，按同期全国银行间同业拆借中心公布的一年期贷款市场报价利率（LPR）计算至{end}暂计为{interest_val:,.2f}元；"
-
-            calc_patch = {
-                "principal": principal,
-                "start_date": start,
-                "end_date": end,
-                "interest_total": interest_val,
-                "formal_statement": formal_statement,
-                "court_fee": court_fee_val,
-                "preservation_fee": court_res.get("preservation_fee", 0.0)
-            }
-            context_patch["interest_calc"] = calc_patch
-            context_patch["principal"] = principal
-            if "amount" not in context_patch:
-                context_patch["amount"] = principal
-            if "start_date" not in context_patch:
-                context_patch["start_date"] = start
-            if "end_date" not in context_patch:
-                context_patch["end_date"] = end
-
+        if principal is None or not start:
             module_actions.append({
                 "module_id": "phase1_calc",
                 "module_name": "01 实务精算与核验",
                 "action_name": "LPR 利息与诉讼费穿透精算",
                 "target_tab": "tab-calc",
-                "status": "success",
-                "summary": f"已按本金 ¥{principal:,.2f} 重新核算 LPR 利息 ¥{interest_val:,.2f}，诉讼费受理费 ¥{court_fee_val:,.2f}，并写入全案上下文",
-                "data": calc_patch
+                "status": "needs_input",
+                "summary": "没有本金或起息日，未计算利息，也没有用示例本金或 2023-01-01。请在实务精算里填写后再算。",
             })
-        except Exception as e:
-            logger.warning(f"本地规则精算执行异常: {e}")
+        else:
+            try:
+                lpr_res = calculate_lpr_interest(principal=principal, start_date=start, end_date=end, term="1Y")
+                court_res = calculate_court_fees(claim_amount=principal, case_type="property")
+            
+                interest_val = lpr_res.get("interest_total", 0.0)
+                court_fee_val = court_res.get("fee_amount", 0.0)
+
+                formal_statement = f"自{start}起至实际清偿之日止，以本金{principal:,.2f}元为基数，按同期全国银行间同业拆借中心公布的一年期贷款市场报价利率（LPR）计算至{end}暂计为{interest_val:,.2f}元；"
+
+                calc_patch = {
+                    "principal": principal,
+                    "start_date": start,
+                    "end_date": end,
+                    "interest_total": interest_val,
+                    "formal_statement": formal_statement,
+                    "court_fee": court_fee_val,
+                    "preservation_fee": court_res.get("preservation_fee", 0.0)
+                }
+                context_patch["interest_calc"] = calc_patch
+                context_patch["principal"] = principal
+                if "amount" not in context_patch:
+                    context_patch["amount"] = principal
+                if "start_date" not in context_patch:
+                    context_patch["start_date"] = start
+                if "end_date" not in context_patch:
+                    context_patch["end_date"] = end
+
+                module_actions.append({
+                    "module_id": "phase1_calc",
+                    "module_name": "01 实务精算与核验",
+                    "action_name": "LPR 利息与诉讼费穿透精算",
+                    "target_tab": "tab-calc",
+                    "status": "success",
+                    "summary": f"已按本金 ¥{principal:,.2f} 重新核算 LPR 利息 ¥{interest_val:,.2f}，诉讼费受理费 ¥{court_fee_val:,.2f}，并写入全案上下文",
+                    "data": calc_patch
+                })
+            except Exception as e:
+                logger.warning(f"本地规则精算执行异常: {e}")
 
     # 4.2 执行时效或上诉期联动
     if intent == "时效计算":
@@ -330,20 +339,27 @@ def _rule_based_intent_parser(
             if statute_hits:
                 attached_statutes = []
                 for s in statute_hits:
+                    snippet = (s.get("content") or "")[:120]
+                    note = (s.get("cpl_citation_display_note") or "").strip()
+                    if note:
+                        snippet = "【旧条号不能作为现行依据】" + note.split("\n", 1)[0] + " " + snippet
                     attached_statutes.append({
                         "id": s.get("id"),
                         "law_name": s.get("law_name"),
                         "article_no": s.get("article_no_cn"),
-                        "content": (s.get("content") or "")[:120] + "..."
+                        "content": snippet + "..."
                     })
                 context_patch["statutes"] = attached_statutes
+                basis_label = "已挂载至案件请求权依据"
+                if any((s.get("cpl_citation_display_note") or "").strip() for s in statute_hits):
+                    basis_label = "已挂载；民诉法解释里对不上的旧条号不能当作现行依据"
                 module_actions.append({
                     "module_id": "phase5_statutes",
                     "module_name": "06 权威法典与子母法图谱",
                     "action_name": "实体法规范与司法解释检索",
                     "target_tab": "tab-statutes",
                     "status": "success",
-                    "summary": f"检索命中《{attached_statutes[0]['law_name']}》{attached_statutes[0]['article_no']}等 {len(attached_statutes)} 条实体裁判规范，已挂载至案件请求权依据",
+                    "summary": f"检索命中《{attached_statutes[0]['law_name']}》{attached_statutes[0]['article_no']}等 {len(attached_statutes)} 条实体裁判规范，{basis_label}",
                     "data": {"count": len(attached_statutes), "statutes": attached_statutes}
                 })
         except Exception as e:

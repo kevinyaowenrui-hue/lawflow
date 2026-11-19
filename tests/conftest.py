@@ -10,6 +10,7 @@ import pytest
 
 os.environ.setdefault("LAWFLOW_API_TOKEN", "test-token")
 os.environ.setdefault("LAWFLOW_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver")
+os.environ.setdefault("LAWFLOW_SKIP_SERVICE_PROBE_WARMUP", "1")
 
 
 @pytest.fixture(autouse=True)

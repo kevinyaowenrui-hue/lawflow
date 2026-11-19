@@ -16,9 +16,9 @@
 | 合同红线审查与修订轨导出 | **已实现** | `/api/v1/phase2/contract-review` |
 | 法条 FTS5 检索与子母法图谱 | **已实现** | 如 `/api/v1/statutes/search`；库需律师核验 |
 | 类案关键词检索与咨询 | **已实现** | `/api/v1/phase3/rag/search`（关键词/FTS，非向量） |
-| 电子签约 DocuSeal | **演示** | 未配置真实 DocuSeal 时为演示信封；接入真实数据前保持演示 |
-| P3 二审/类案分歧攻防屏 | **演示** | `/api/v1/litigation/appeal-audit` 等；样例数据为演示 |
-| P4 执行穿透与追加被执行人 | **演示** | `/api/v1/enforcement/penetration-audit`；样例金额为演示 |
+| 电子签约 DocuSeal | **已实现** | 需配置 `DOCUSEAL_URL`、`DOCUSEAL_API_TOKEN` 与 `DOCUSEAL_WEBHOOK_SECRET`；令牌也可放在用户目录 `secrets.json` 的 `docuseal_api_token`。未配齐时拒绝创建 |
+| P3 二审/类案分歧攻防屏 | **已实现** | `/api/v1/litigation/appeal-audit`；按律师输入事实审查，缺事实不编造 |
+| P4 执行穿透与追加被执行人 | **已实现** | `/api/v1/enforcement/penetration-audit`；按已填事实探针，缺事实返回不足 |
 | 案件空间 / 阅卷表 / 语音中枢 | **已实现** | 如 `/api/v1/vault/matters`、`/api/v1/copilot/tasks` |
 | Docassemble 问卷 | **计划** | compose profile `planned`；代码未调用 |
 | 向量 RAG 引擎 | **计划** | 未使用 |
@@ -49,19 +49,19 @@
 - [x] `/api/v1/phase2/trial-outline` 庭审提纲
 - [x] 兼容别名（schema 外）：`/api/evidence/cross-examination`、`/api/evidence/trial-outline`
 
-### 阶段三：检索与签约 — **已实现**（签约为 **演示**）
+### 阶段三：检索与签约 — **已实现**
 
 - [x] `/api/v1/phase3/rag/search`、`/api/v1/phase3/rag/consult`
-- [x] `/api/v1/phase3/create-signing-link`、`/api/v1/phase3/signing-webhook`
-- [ ] 真实 DocuSeal 生产对接与存证审计 — **计划**
+- [x] `/api/v1/phase3/create-signing-link`、`/api/v1/phase3/signing-webhook`（需 DocuSeal 配置）
+- [ ] DocuSeal 容器侧模板与微信端体验打磨 — **计划**
 
-### 深度实务屏 — **演示** / 部分 **已实现**
+### 深度实务屏 — **已实现**
 
 - [x] P0 英文合同修订轨 — **已实现**
 - [x] P1 视觉切片与和解 NPV — **已实现**（依赖卷宗原件）
 - [x] P2 法定冲抵与保证期间 — **已实现**
-- [x] P3 上诉审计 — **演示**（接入真实卷宗前）
-- [x] P4 执行穿透 — **演示**（接入真实财产线索前）
+- [x] P3 上诉审计 — **已实现**（按律师输入判决与当事人事实）
+- [x] P4 执行穿透 — **已实现**（按律师填写财产线索与追加事实）
 
 ### 规划中 — **计划**
 

@@ -296,6 +296,7 @@ def test_d_health_rule_fallback(app_client, monkeypatch):
             raise ConnectionError("no model")
 
     monkeypatch.setattr("httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("gateway.core.service_probe.is_ollama_available", lambda *a, **k: False)
 
     resp = http.get("/health")
     assert resp.status_code == 200

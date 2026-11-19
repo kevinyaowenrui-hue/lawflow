@@ -10,6 +10,31 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+
+def _use_spacious_test_temp() -> None:
+    """测试临时库不要写进系统盘 %TEMP%。C: 曾被写满，sqlite 会报 database or disk is full。"""
+    chosen = os.environ.get("LAWFLOW_TEST_TMP", "").strip()
+    root: Path | None = Path(chosen) if chosen else None
+    if root is None:
+        for letter in ("D", "F"):
+            drive = Path(f"{letter}:/")
+            if drive.exists():
+                root = drive / "lawflow-pytest-tmp"
+                break
+    if root is None:
+        return
+    root.mkdir(parents=True, exist_ok=True)
+    location = str(root)
+    os.environ["LAWFLOW_TEST_TMP"] = location
+    os.environ["TEMP"] = location
+    os.environ["TMP"] = location
+    os.environ["TMPDIR"] = location
+    os.environ["SQLITE_TMPDIR"] = location
+    tempfile.tempdir = location
+
+
+_use_spacious_test_temp()
+
 # 必须在任何 gateway 导入之前设置
 os.environ.setdefault("LAWFLOW_API_TOKEN", "test-token")
 os.environ.setdefault("LAWFLOW_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver")

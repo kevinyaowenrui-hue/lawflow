@@ -3,7 +3,65 @@
  * 提供成功、警告、失败、信息四种状态的轻量级 Toast 提示与专属图标
  */
 
+export function isPinnedFormFailure(msg) {
+  const text = String(msg || '');
+  if (!text || text.includes('还没有可同步的计算结果')) return false;
+  if (/生成失败/.test(text) || /生成[^。\n]{0,30}失败/.test(text)) return true;
+  if (/期限/.test(text) && /失败|读不到|没有读到|无法读取|未读到|暂时没有/.test(text)) return true;
+  if (/测算失败|核算失败/.test(text) && /期|期限|时效/.test(text)) return true;
+  return false;
+}
+
+function pinAboveDeadlineBoard(msg) {
+  return /期限清单|今日期限|暂时没有读到/.test(String(msg || ''));
+}
+
+function pinFormFailure(msg) {
+  const text = String(msg || '');
+  const aboveBoard = pinAboveDeadlineBoard(text);
+  const board = typeof document !== 'undefined' ? document.getElementById('today-deadlines-board') : null;
+  const active = typeof document !== 'undefined' ? document.querySelector('.workspace-tab.active') : null;
+  const anchor = (aboveBoard && board) ? board : (active || document.body);
+  const stackId = aboveBoard && board ? 'sticky-failures-deadlines' : 'sticky-failures-form';
+  let stack = document.getElementById(stackId);
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.id = stackId;
+    stack.dataset.stickyFailures = '1';
+    stack.style.margin = '0 0 8px';
+  }
+  if (aboveBoard && board && board.parentElement) {
+    if (stack.nextElementSibling !== board) board.parentElement.insertBefore(stack, board);
+  } else if (anchor && anchor.firstChild !== stack) {
+    anchor.insertBefore(stack, anchor.firstChild);
+  }
+  const already = Array.from(stack.children).some((item) => item.dataset.msg === text);
+  if (already) return;
+  const item = document.createElement('div');
+  item.dataset.msg = text;
+  item.setAttribute('role', 'alert');
+  item.style.cssText = 'margin:0 0 8px;padding:8px 10px;background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;border-radius:4px;font-size:12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;';
+  const span = document.createElement('span');
+  span.textContent = text;
+  span.style.whiteSpace = 'pre-wrap';
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.textContent = '关闭';
+  dismiss.style.cssText = 'flex:none;background:#fff;border:1px solid #FECACA;color:#991B1B;border-radius:4px;padding:2px 8px;cursor:pointer;';
+  dismiss.addEventListener('click', () => {
+    item.remove();
+    if (!stack.childElementCount) stack.remove();
+  });
+  item.appendChild(span);
+  item.appendChild(dismiss);
+  stack.appendChild(item);
+}
+
 export function showToast(msg, type = 'info') {
+  if (isPinnedFormFailure(msg)) {
+    pinFormFailure(msg);
+    return;
+  }
   let container = document.getElementById('toast-container');
   if (!container) {
     container = document.createElement('div');

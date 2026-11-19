@@ -17,9 +17,54 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse
 import httpx
-from gateway.utils.pii_sanitizer import pii_sanitizer
+from gateway.utils.pii_sanitizer import pii_sanitizer, withhold_network_sensitive
 
 logger = logging.getLogger("lawflow.llm")
+
+
+def _ollama_text_piece(value: Any) -> str:
+    """把 Ollama 字段收成字符串。字段存在但值为 null 时不能当空字符串再调用 strip。"""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        parts: List[str] = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(str(item.get("content") or item.get("text") or ""))
+        return "".join(parts).strip()
+    return str(value).strip()
+
+
+def ollama_generated_text(data: Any) -> str:
+    """读取生成正文。思考模型有时把仅有的 token 放在 thinking，response 为空，不能丢掉。"""
+    if not isinstance(data, dict):
+        return ""
+    response = _ollama_text_piece(data.get("response"))
+    if response:
+        return response
+    message = data.get("message")
+    if isinstance(message, dict):
+        content = _ollama_text_piece(message.get("content"))
+        if content:
+            return content
+        thinking = _ollama_text_piece(message.get("thinking"))
+        if thinking:
+            return thinking
+    thinking = _ollama_text_piece(data.get("thinking"))
+    if thinking:
+        return thinking
+    return ""
+
+
+def _ollama_eval_count(data: Dict[str, Any]) -> int:
+    try:
+        return int(data.get("eval_count") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LEGACY_SETTINGS_FILE = os.path.join(BASE_DIR, "storage", "llm_settings.json")
@@ -36,6 +81,30 @@ def get_settings_file() -> str:
 def get_secrets_file() -> str:
     # 密钥固定落在用户目录 ~/.lawflow/secrets.json（测试可通过 HOME/USERPROFILE 重定向）
     return os.path.join(_default_lawflow_dir(), "secrets.json")
+
+
+def read_secrets() -> Dict[str, Any]:
+    secrets_path = get_secrets_file()
+    if not os.path.exists(secrets_path):
+        return {}
+    try:
+        with open(secrets_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        logger.warning(f"读取 secrets.json 失败: {e}")
+        return {}
+
+
+def write_secrets(data: Dict[str, Any]) -> None:
+    secrets_path = get_secrets_file()
+    os.makedirs(os.path.dirname(secrets_path), exist_ok=True)
+    with open(secrets_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    try:
+        os.chmod(secrets_path, stat.S_IRUSR | stat.S_IWUSR)
+    except Exception as e:
+        logger.warning(f"无法将 secrets.json 权限设为 0600（Windows 下尽力而为）: {e}")
 
 
 # 兼容旧常量名（测试与其它模块可能引用）
@@ -172,35 +241,48 @@ class UniversalLLMClient:
         return bool(self.settings.get("cloud_consent", False))
 
     def _should_force_pii_mask(self, target: str = "cloud") -> bool:
-        """云端始终按盾牌设置；远程 Ollama 强制脱敏（无视盾牌关闭）。"""
+        """云端是否替换证件号只看 pii_shield_enabled。远程 Ollama 仍强制替换号码。"""
         if target == "remote_ollama":
             return True
         return bool(self.settings.get("pii_shield_enabled", True))
+
+    def _prepare_outbound_text(
+        self,
+        text: Optional[str],
+        *,
+        network: bool,
+        mask: bool,
+        custom_entities: Optional[List[Dict[str, str]]],
+        mapping: Dict[str, str],
+    ) -> Optional[str]:
+        """发往公网前先拿掉能识别的未成年人信息和病历，再按开关决定是否替换号码。"""
+        if text is None:
+            return None
+        piece = text
+        if network and piece:
+            piece, report = withhold_network_sensitive(piece)
+            if report.get("segments_withheld"):
+                logger.info(
+                    "外发前已留存可识别内容：未成年人=%s 病历=%s 段数=%s。识别不了的没有拦截。",
+                    bool(report.get("minor_withheld")),
+                    bool(report.get("medical_withheld")),
+                    report.get("segments_withheld"),
+                )
+        if mask and piece:
+            piece, part_map, _stats = pii_sanitizer.mask(piece, custom_entities)
+            mapping.update(part_map)
+        return piece
 
     def _load_secret_key(self) -> str:
         env_key = os.getenv("LLM_API_KEY", "").strip()
         if env_key:
             return env_key
-        secrets_path = get_secrets_file()
-        if os.path.exists(secrets_path):
-            try:
-                with open(secrets_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                return (data.get("api_key") or "").strip()
-            except Exception as e:
-                logger.warning(f"读取 secrets.json 失败: {e}")
-        return ""
+        return (read_secrets().get("api_key") or "").strip()
 
     def _write_secret_key(self, api_key: str) -> None:
-        secrets_path = get_secrets_file()
-        os.makedirs(os.path.dirname(secrets_path), exist_ok=True)
-        payload = {"api_key": api_key}
-        with open(secrets_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
-        try:
-            os.chmod(secrets_path, stat.S_IRUSR | stat.S_IWUSR)
-        except Exception as e:
-            logger.warning(f"无法将 secrets.json 权限设为 0600（Windows 下尽力而为）: {e}")
+        data = read_secrets()
+        data["api_key"] = api_key
+        write_secrets(data)
 
     def _persist_non_secret_settings(self) -> None:
         settings_path = get_settings_file()
@@ -562,7 +644,8 @@ class UniversalLLMClient:
         """
         统一文本生成入口：
         自动路由云端 OpenAI 格式 / 本地 Ollama / 专家规则兜底
-        （若启用 PII 隐私网关，云端交互全程经本地加密脱敏与双向无损还原）
+        云端是否替换证件号取决于 pii_shield_enabled，不能当成已经脱敏。
+        能识别的未成年人信息和病历默认不外发；识别不了的不会被写成已经拦住。
         """
         provider = self.settings.get("provider", "auto")
 
@@ -608,17 +691,24 @@ class UniversalLLMClient:
         api_key = self.settings.get("api_key", "")
         model = self.settings.get("model", "deepseek-chat")
 
-        # 本地 PII 隐私脱敏处理 (出站拦截) — 云端默认启用
         mapping: Dict[str, str] = {}
-        send_prompt = prompt
+        mask = self._should_force_pii_mask("cloud")
+        send_prompt = self._prepare_outbound_text(
+            prompt,
+            network=True,
+            mask=mask,
+            custom_entities=custom_entities,
+            mapping=mapping,
+        )
         send_system = system_prompt
-
-        if self._should_force_pii_mask("cloud"):
-            send_prompt, mapping_p, _ = pii_sanitizer.mask(prompt, custom_entities)
-            mapping.update(mapping_p)
-            if system_prompt:
-                send_system, mapping_s, _ = pii_sanitizer.mask(system_prompt, custom_entities)
-                mapping.update(mapping_s)
+        if system_prompt:
+            send_system = self._prepare_outbound_text(
+                system_prompt,
+                network=True,
+                mask=mask,
+                custom_entities=custom_entities,
+                mapping=mapping,
+            )
 
         messages = []
         if send_system:
@@ -664,12 +754,21 @@ class UniversalLLMClient:
         use_pii = self._should_force_pii_mask("remote_ollama") if remote else bool(
             self.settings.get("pii_shield_enabled", True)
         )
-        if use_pii:
-            send_prompt, mapping_p, _ = pii_sanitizer.mask(prompt, custom_entities)
-            mapping.update(mapping_p)
-            if system_prompt:
-                send_system, mapping_s, _ = pii_sanitizer.mask(system_prompt, custom_entities)
-                mapping.update(mapping_s)
+        send_prompt = self._prepare_outbound_text(
+            prompt,
+            network=remote,
+            mask=use_pii,
+            custom_entities=custom_entities,
+            mapping=mapping,
+        )
+        if system_prompt:
+            send_system = self._prepare_outbound_text(
+                system_prompt,
+                network=remote,
+                mask=use_pii,
+                custom_entities=custom_entities,
+                mapping=mapping,
+            )
 
         payload = {
             "model": self.settings.get("ollama_model", "gemma4:12b"),
@@ -684,16 +783,33 @@ class UniversalLLMClient:
         if send_system:
             payload["system"] = send_system
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(f"{base_url}/api/generate", json=payload)
-            if resp.status_code == 200:
+        async def _post(body: Dict[str, Any]) -> Dict[str, Any]:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(f"{base_url}/api/generate", json=body)
+                if resp.status_code != 200:
+                    raise RuntimeError(f"Ollama 返回异常: HTTP {resp.status_code} - {resp.text}")
                 data = resp.json()
-                raw_reply = data.get("response", "").strip()
-                if mapping:
-                    raw_reply = pii_sanitizer.unmask(raw_reply, mapping)
-                return raw_reply
-            else:
-                raise RuntimeError(f"Ollama 返回异常: HTTP {resp.status_code} - {resp.text}")
+                if not isinstance(data, dict):
+                    raise RuntimeError("Ollama 返回的不是 JSON 对象")
+                return data
+
+        data = await _post(payload)
+        raw_reply = ollama_generated_text(data)
+        if not raw_reply and _ollama_eval_count(data) > 0:
+            logger.warning(
+                "Ollama 已计数 %s 个生成 token，但 response 正文为空，关闭思考后重试一次",
+                _ollama_eval_count(data),
+            )
+            retry_body = dict(payload)
+            retry_body["think"] = False
+            try:
+                retried = await _post(retry_body)
+                raw_reply = ollama_generated_text(retried) or raw_reply
+            except Exception as retry_err:
+                logger.warning("Ollama 空正文重试失败: %s", retry_err)
+        if mapping and raw_reply:
+            raw_reply = pii_sanitizer.unmask(raw_reply, mapping)
+        return raw_reply
 
     async def chat(
         self,
@@ -716,13 +832,14 @@ class UniversalLLMClient:
                 send_messages = []
                 use_pii = self._should_force_pii_mask("cloud")
                 for msg in messages:
-                    c = msg.get("content", "")
-                    if use_pii:
-                        m_c, m_map, _ = pii_sanitizer.mask(c, custom_entities)
-                        mapping.update(m_map)
-                        send_messages.append({"role": msg["role"], "content": m_c})
-                    else:
-                        send_messages.append(msg)
+                    content = self._prepare_outbound_text(
+                        msg.get("content", ""),
+                        network=True,
+                        mask=use_pii,
+                        custom_entities=custom_entities,
+                        mapping=mapping,
+                    )
+                    send_messages.append({"role": msg["role"], "content": content})
 
                 payload = {
                     "model": self.settings.get("model", "deepseek-chat"),
@@ -750,13 +867,14 @@ class UniversalLLMClient:
             )
             send_messages = []
             for msg in messages:
-                c = msg.get("content", "")
-                if use_pii:
-                    m_c, m_map, _ = pii_sanitizer.mask(c, custom_entities)
-                    mapping.update(m_map)
-                    send_messages.append({"role": msg["role"], "content": m_c})
-                else:
-                    send_messages.append(msg)
+                content = self._prepare_outbound_text(
+                    msg.get("content", ""),
+                    network=remote,
+                    mask=use_pii,
+                    custom_entities=custom_entities,
+                    mapping=mapping,
+                )
+                send_messages.append({"role": msg["role"], "content": content})
 
             payload = {
                 "model": self.settings.get("ollama_model", "gemma4:12b"),
@@ -767,7 +885,10 @@ class UniversalLLMClient:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 resp = await client.post(f"{base_url}/api/chat", json=payload)
                 if resp.status_code == 200:
-                    raw_reply = resp.json().get("message", {}).get("content", "").strip()
+                    payload_json = resp.json()
+                    raw_reply = ollama_generated_text(payload_json if isinstance(payload_json, dict) else {})
+                    if not raw_reply:
+                        raise RuntimeError("Ollama chat 返回空正文")
                     if mapping:
                         raw_reply = pii_sanitizer.unmask(raw_reply, mapping)
                     self.last_llm_mode = "ollama"
@@ -805,31 +926,36 @@ class UniversalLLMClient:
             cause_label = ""
             if "借贷" in cause:
                 cause_label = "民间借贷纠纷"
-                statute_quote = "《中华人民共和国民法典》第六百六十七条、第六百七十五条、第六百七十六条以及《最高人民法院关于审理民间借贷案件适用法律若干问题的规定》第二十八条"
+                statute_quote = (
+                    "《中华人民共和国民法典》第六百六十七条、第六百七十五条、第六百七十六条。"
+                    "利息、逾期利息、违约金和其他费用合计超过合同成立时一年期贷款市场报价利率四倍的部分不予支持；"
+                    "借期利率和逾期利率都没有约定的，逾期利息按当时一年期贷款市场报价利率，不是四倍"
+                    "（《民间借贷规定》第二十五条、第二十八条、第二十九条）。"
+                )
             elif "劳动" in cause:
                 cause_label = "劳动争议"
-                statute_quote = "《中华人民共和国劳动合同法》第三十条、第四十六条、第四十七条、第八十七条"
+                statute_quote = (
+                    "工资见《劳动合同法》第三十条。"
+                    "经济补偿见第四十六条、第四十七条，违法解除的赔偿见第八十七条，二者不要同时写成同一笔请求。"
+                    "仲裁时效见《劳动争议调解仲裁法》第二十七条。"
+                )
             elif "买卖" in cause:
                 cause_label = "买卖合同纠纷"
-                statute_quote = "《中华人民共和国民法典》第五百零九条、第五百七十七条、第五百七十九条、第六百二十六条"
+                statute_quote = "《中华人民共和国民法典》第五百零九条、第五百七十七条、第五百七十九条、第六百二十六条。没有约定逾期付款违约金的，另见买卖合同纠纷解释（2020年修正）第十八条第四款，本地库未收录该解释全文。"
             else:
-                # 案由不在支持列表：事实与理由留【待填写】，不得套用其他案由法条
                 return (
                     f"【待填写】\n\n"
-                    f"（案由「{cause or '未填写'}」暂无规则兜底模板，请律师核实后手工撰写事实与理由，"
-                    f"不得自动套用其他案由法条。）\n\n"
+                    f"案由「{cause or '未填写'}」没有现成的事实与理由模板。"
+                    f"下面只保留案情笔记，不补写履行、催告或损失，也不套用其他案由的法条。\n\n"
                     f"【案情笔记原文】：\n{notes}"
                 )
 
             return (
-                f"原告与被告之间存在真实、合法且有效的{cause_label}法律关系。\n\n"
-                f"【案件事实查明】：\n"
-                f"{notes}\n\n"
-                f"【法律责任认定】：\n"
-                f"合同履行过程中，原告已全面恪守并履行了自身的合同义务与法定责任。然而，被告无视双方约定及诚实信用原则，"
-                f"发生实质性违约行为，经原告多次以书面及口头形式催告，被告至今仍拖延拒绝履行，其行为已严重侵害了原告的合法财产权益。\n\n"
-                f"综上所述，根据{statute_quote}之规定，被告理应向原告清偿款项并承担违约及损失赔偿责任。为维护原告的合法民事权益，"
-                f"特向贵院提起诉讼，恳请贵院查明案件事实，依法支持原告的全部诉讼请求。"
+                f"【规则整理，未连接模型】只重排案情笔记，没有补写履行、催告或损失。\n\n"
+                f"案由：{cause_label}\n\n"
+                f"【案情笔记】\n{notes}\n\n"
+                f"【可对照的请求权基础】\n{statute_quote}\n"
+                f"笔记里没有写明的事实，不要写进起诉状。"
             )
 
         # 2. 证据目录提炼场景 (Phase 2)
@@ -856,29 +982,7 @@ class UniversalLLMClient:
                 if res_items:
                     return json.dumps(res_items, ensure_ascii=False, indent=2)
 
-            return json.dumps([
-                {
-                    "name": "《合同协议及补充约定书原件》",
-                    "category": "书证",
-                    "source": "原告持有原件",
-                    "purpose": "证明原被告之间成立合法有效的民事法律关系及权利义务约定事实",
-                    "pages": "第 1-3 页"
-                },
-                {
-                    "name": "《银行电子转账凭单及资金流水对账单》",
-                    "category": "电子数据",
-                    "source": "银行官方网银导出打印",
-                    "purpose": "证明款项已实际交付、资金流向清楚且款项性质确凿",
-                    "pages": "第 4-6 页"
-                },
-                {
-                    "name": "《微信/短信沟通往来记录及催款确认凭证》",
-                    "category": "电子数据",
-                    "source": "原告当事人手机微信聊天截屏",
-                    "purpose": "证明原告多次履行催告程序，被告明确承认欠款事实及存在违约行为",
-                    "pages": "第 7-10 页"
-                }
-            ], ensure_ascii=False, indent=2)
+            return json.dumps([], ensure_ascii=False)
 
         # 3. 五模块庭审提纲场景 (Phase 2)
         if "五模块结构" in prompt or "出庭提纲" in prompt:
@@ -891,7 +995,7 @@ class UniversalLLMClient:
                 "### 二、法庭争议焦点拆解\n"
                 "1. **焦点一**：原被告双方合同关系及权利凭证的真实性、合法性与证明力认定；\n"
                 "2. **焦点二**：原告履行义务是否符合约定，被告是否存在合法免责抗辩事由；\n"
-                "3. **焦点三**：诉请本金、利息标准（是否超逾央行 LPR 4倍红线）及损失赔偿的合法性。\n\n"
+                "3. **焦点三**：约定的利息或违约金是否应当支持。只有民间借贷，才把合同成立时一年期贷款市场报价利率的四倍作为利息、逾期利息、违约金和其他费用的合计上限；其他合同不要套这个四倍。\n\n"
                 "### 三、事实查明与证明责任矩阵\n"
                 "| 待证事实 | 举证责任承担方 | 核心支撑证据 | 证明标准要求 |\n"
                 "| :--- | :--- | :--- | :--- |\n"
@@ -899,13 +1003,13 @@ class UniversalLLMClient:
                 "| 履约瑕疵或付款抗辩 | 被告 | 验收异议单、函件往来 | 具有排他性与因果链 |\n"
                 "| 违约损失核算 | 原告 | 账期利息、催收费、律师费发票 | 确属实际合理支出 |\n\n"
                 "### 四、法律适用与裁判裁判指引\n"
-                "- 援引《中华人民共和国民法典》第509条（诚信履行）、第577条（违约责任）、第585条（违约金标准）；\n"
-                "- 结合最高人民法院《关于民事诉讼证据的若干规定》第85条电子证据审查标准。\n\n"
+                "- 援引《中华人民共和国民法典》第五百零九条、第五百七十七条、第五百八十五条；\n"
+                "- 电子数据真实性见《最高人民法院关于民事诉讼证据的若干规定》第九十三条。第八十五条是综合判断证明力，不是电子数据的专门规则。\n\n"
                 "### 五、法庭发问提纲与反制预案\n"
                 "- **发问1**：“请被告明确，原告所出示的微信转账/电子回单，款项是否已实际入账？”\n"
                 "  - *预案*：若被告承认，即坐实交付事实；若被告否认，立即申请法庭责令被告当庭核对银行流水。\n"
-                "- **发问2**：“被告声称原告履约存在瑕疵，是否有在合理检验期内提出过任何书面异议？”\n"
-                "  - *预案*：若被告无书面异议，直接引用《民法典》视为标的物/服务符合约定。"
+                "- **发问2**：“被告声称原告履约存在瑕疵，是否在合同约定的检验期内提出过书面异议？”\n"
+                "  - *预案*：没有书面异议不能直接写成已经验收合格，要先看合同约定的检验期限（《民法典》第六百二十一条、第六百二十二条）。"
             )
 
         # 4. 商业合同红线审查 (Phase 2)
@@ -951,19 +1055,19 @@ class UniversalLLMClient:
                     {
                         "clause_title": "违约金及惩罚性约定",
                         "original_clause": "违约方应按合同总金额的30%支付违约金，并赔偿全部预期利益损失。",
-                        "risk_analysis": "违约金比例达30%严重偏离司法实践标准，人民法院通常以实际损失的130%为限予以调减，缺乏抗辩空间。",
-                        "negotiation_tip": "建议明确约定按违约期间同期 LPR 的1至1.5倍计付逾期滞纳金，并设定合理宽限期。",
+                        "risk_analysis": "约定违约金超过造成损失的百分之三十，只是一般可以认定为过分高于造成的损失。法院综合合同履行、过错和预期利益后决定是否调减以及减多少，不是必须调到损失的百分之一百三十。",
+                        "negotiation_tip": "可以改成双方接受的逾期付款标准，并写明宽限期。不要把一年期贷款市场报价利率的一倍到一点五倍写成所有合同的法定违约金。",
                         "suggested_clause": "逾期履行的，每逾期一日，应按未付金额的万分之二向守约方支付违约金；经守约方书面催告后5个工作日内仍未纠正的，守约方有权解除合同。",
                         "playbook_deviation": "CRITICAL_BREACH",
-                        "matched_playbook_rule": "违约金总额必须设定上限（原则上不超过合同总金额的20%或以守约方实际直接损失为限）",
+                        "matched_playbook_rule": "违约金可以约定总额上限，但不要把合同金额的百分之二十写成法定上限。是否过分高于造成的损失，按《合同编通则解释》第六十五条判断：超过损失的百分之三十一般可以认定为过分高于，这不是调减后必须砍到的数字。",
                         "deviation_reason": "原条款每日扣5%且未设封顶，严重偏离红线规则并触碰司法裁判过高调减红线。"
                     },
                     {
                         "clause_title": "争议管辖权条款",
                         "original_clause": "本合同引起的争议提交甲方所在地仲裁委员会仲裁。",
                         "risk_analysis": "若甲方所在地存在多家仲裁机构或名称不规范，极易导致仲裁协议效力瑕疵引起管辖异议。",
-                        "negotiation_tip": "建议约定为原告住所地或合同履行地人民法院管辖，节约当事人维权差旅与仲裁费用。",
-                        "suggested_clause": "因本合同引起的或与本合同有关的任何争议，双方应友好协商解决；协商不成的，任何一方均有权向原告住所地有管辖权的人民法院提起诉讼。",
+                        "negotiation_tip": "约定签约时已经确定的法院，例如甲方住所地人民法院。只写原告所在地法院，或者只写甲方所在地仲裁委员会，起诉或申请仲裁时往往确定不了机构。",
+                        "suggested_clause": "因本合同引起的或与本合同有关的任何争议，由甲方住所地人民法院管辖。",
                         "playbook_deviation": "OUT_OF_SCOPE_DEVIATION",
                         "matched_playbook_rule": "争议解决管辖条款需明确合法有效机构",
                         "deviation_reason": "未设对等救济机制及管辖约定可能存在管辖异议风险。"

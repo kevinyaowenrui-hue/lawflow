@@ -330,26 +330,40 @@ def test_ollama_offline_and_online_transitions(client: TestClient):
         assert ol["status"] == "MISSING"
         assert "ollama serve" in ol["remediation"]
 
+    import httpx
+    from unittest.mock import MagicMock
+    orig_get = httpx.Client.get
+
+    def _mock_get_no_models(self, url, *args, **kwargs):
+        if "/api/tags" in str(url):
+            m = MagicMock()
+            m.status_code = 200
+            m.json.return_value = {"models": []}
+            return m
+        return orig_get(self, url, *args, **kwargs)
+
     # 模拟在线但无模型
     with patch("gateway.core.service_probe.is_ollama_available", return_value=True), \
-         patch("httpx.Client.get") as mock_get:
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"models": []}
-
+         patch.object(httpx.Client, "get", _mock_get_no_models):
         resp = client.get("/api/system/health?force=true")
         assert resp.status_code == 200
         ol = resp.json()["diagnostics"]["ollama"]
         assert ol["status"] == "DEGRADED"
         assert "ollama pull" in ol["remediation"]
 
+    def _mock_get_with_models(self, url, *args, **kwargs):
+        if "/api/tags" in str(url):
+            m = MagicMock()
+            m.status_code = 200
+            m.json.return_value = {
+                "models": [{"name": "qwen2.5:7b"}, {"name": "deepseek-r1:8b"}]
+            }
+            return m
+        return orig_get(self, url, *args, **kwargs)
+
     # 模拟在线且有模型
     with patch("gateway.core.service_probe.is_ollama_available", return_value=True), \
-         patch("httpx.Client.get") as mock_get:
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {
-            "models": [{"name": "qwen2.5:7b"}, {"name": "deepseek-r1:8b"}]
-        }
-
+         patch.object(httpx.Client, "get", _mock_get_with_models):
         resp = client.get("/api/system/health?force=true")
         assert resp.status_code == 200
         ol = resp.json()["diagnostics"]["ollama"]

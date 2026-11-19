@@ -99,6 +99,7 @@ from gateway.routers.matter_vault import router as matter_vault_router
 from gateway.routers.review_and_diff import router as review_and_diff_router
 from gateway.routers.phase8_ai_copilot import router as copilot_router
 from gateway.routers.converter_router import router as converter_router
+from gateway.routers.yuandian_router import router as yuandian_router
 from gateway.utils.matter_vault_db import init_matter_vault_db
 from gateway.utils.review_table_engine import init_review_tables_schema
 from gateway.utils.agent_task_db import init_agent_task_db
@@ -185,7 +186,63 @@ app = FastAPI(
 
 import uuid
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+
+_VALIDATION_LABELS = {
+    "title": "案件名称",
+    "cause_of_action": "案由",
+    "client_name": "委托人",
+    "lawyer_name": "承办律师",
+    "law_firm": "律师事务所",
+    "case_summary": "委托事由",
+    "contract_text": "合同正文",
+    "contract_title": "合同名称",
+    "perspective": "审查立场",
+    "plaintiff_name": "原告名称",
+    "defendant_name": "被告名称",
+    "due_date": "期限日期",
+    "fee_invoiced": "已开票金额",
+    "claim_amount": "诉讼标的",
+    "court_name": "法院",
+    "name": "姓名",
+}
+
+
+def _chinese_validation_message(exc: RequestValidationError) -> str:
+    parts = []
+    for err in exc.errors():
+        loc = [str(item) for item in (err.get("loc") or []) if str(item) not in {"body", "query", "path"}]
+        key = loc[-1] if loc else "提交内容"
+        label = _VALIDATION_LABELS.get(key, "提交内容" if key.isdigit() else key)
+        kind = str(err.get("type") or "")
+        msg = str(err.get("msg") or "").strip()
+        if msg.startswith("Value error,"):
+            msg = msg.split(",", 1)[1].strip()
+        if "missing" in kind:
+            parts.append(f"请填写{label}")
+        elif msg and not msg.lower().startswith("field required"):
+            parts.append(msg)
+        elif any(token in kind for token in ("float", "int", "decimal", "number")):
+            parts.append(f"{label}必须是数字")
+        else:
+            parts.append(f"请检查{label}")
+    text = "；".join(dict.fromkeys(parts))
+    if not text:
+        text = "提交的内容不完整，请核对必填项后再保存。"
+    return text if len(text) <= 160 else text[:160] + "…"
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": jsonable_encoder(exc.errors()),
+            "message": _chinese_validation_message(exc),
+        },
+    )
+
 
 @app.exception_handler(Exception)
 async def global_unhandled_exception_handler(request: Request, exc: Exception):
@@ -198,7 +255,7 @@ async def global_unhandled_exception_handler(request: Request, exc: Exception):
     if isinstance(exc, RequestValidationError):
         return JSONResponse(
             status_code=422,
-            content={"detail": exc.errors()}
+            content={"detail": jsonable_encoder(exc.errors()), "message": _chinese_validation_message(exc)},
         )
     req_id = request.headers.get("x-request-id") or str(uuid.uuid4())
     logger.exception(f"Unhandled exception [request_id={req_id}]: {exc}")
@@ -329,6 +386,7 @@ app.include_router(matter_vault_router)
 app.include_router(review_and_diff_router)
 app.include_router(copilot_router)
 app.include_router(converter_router)
+app.include_router(yuandian_router)
 
 # 挂载静态资源
 if os.path.exists(_frontend_dir()):

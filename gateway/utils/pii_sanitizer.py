@@ -9,6 +9,7 @@ LawFlow 智律工作台 - 本地 PII 隐私脱敏与还原网关 (Bi-directional
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -429,6 +430,132 @@ def build_entities_from_matter(matter_id: str) -> List[Dict[str, str]]:
                 parties.append({"name": node["name"], "party_type": "natural"})
 
     return build_entities_from_parties(parties)
+
+
+# 只有这些标记能确定是病历材料。没有标记就不拦截，也不能写成已经拦住。
+_MEDICAL_RECORD_MARKERS = (
+    "病历",
+    "出院小结",
+    "出院记录",
+    "入院记录",
+    "门诊病历",
+    "住院病案",
+    "病案号",
+    "诊断证明",
+    "病程记录",
+    "医嘱",
+    "现病史",
+    "既往史",
+    "检验报告",
+    "病理报告",
+    "影像报告",
+)
+_MINOR_WORDS = ("未成年人", "未成年子女", "未成年", "未满十八", "未满18", "未满１８")
+_MINOR_AGE = re.compile(r"(?<!\d)(?:1[0-7]|[1-9])\s*周岁")
+_LABELED_BIRTH = re.compile(
+    r"(?:出生(?:日期|年月)?|生于)\s*[:：]?\s*"
+    r"((?:19|20)\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?"
+)
+_LABELED_BIRTH_ISO = re.compile(
+    r"(?:出生(?:日期|年月)?|生于)\s*[:：]?\s*"
+    r"((?:19|20)\d{2})[-/.](\d{1,2})[-/.](\d{1,2})"
+)
+_SEGMENT_SPLIT = re.compile(r"(\n+|[。！？；])")
+NETWORK_WITHHELD_MARK = "[本地留存未外发]"
+
+
+def _age_is_minor(year: int, month: int, day: int, today: Optional[date] = None) -> Optional[bool]:
+    """出生日期能解析时返回是否未满 18 周岁。解析不了返回 None，不当成已经识别。"""
+    try:
+        born = date(int(year), int(month), int(day))
+    except (TypeError, ValueError):
+        return None
+    today = today or date.today()
+    if born > today or born.year < 1900:
+        return None
+    age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+    return age < 18
+
+
+def id_card_is_minor(id_card: str, today: Optional[date] = None) -> Optional[bool]:
+    """从身份证号里的出生日期判断是否未成年。日期不合法时返回 None。"""
+    text = (id_card or "").strip().upper()
+    if len(text) == 18 and text[:17].isdigit():
+        year, month, day = int(text[6:10]), int(text[10:12]), int(text[12:14])
+    elif len(text) == 15 and text.isdigit():
+        year, month, day = 1900 + int(text[6:8]), int(text[8:10]), int(text[10:12])
+    else:
+        return None
+    return _age_is_minor(year, month, day, today)
+
+
+def _labeled_birth_is_minor(segment: str) -> Optional[bool]:
+    """写明的出生日期。没有写明，或写了但解析不了，返回 None。"""
+    found = False
+    minor = False
+    for pattern in (_LABELED_BIRTH, _LABELED_BIRTH_ISO):
+        for match in pattern.finditer(segment):
+            found = True
+            flag = _age_is_minor(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+            if flag is True:
+                minor = True
+    if minor:
+        return True
+    if found:
+        return False
+    return None
+
+
+def _segment_withhold_reason(segment: str) -> str:
+    medical = any(marker in segment for marker in _MEDICAL_RECORD_MARKERS)
+    minor = any(word in segment for word in _MINOR_WORDS) or bool(_MINOR_AGE.search(segment))
+    if not minor:
+        for match in PIISanitizer.ID_CARD_PATTERN.finditer(segment):
+            if id_card_is_minor(match.group(0)) is True:
+                minor = True
+                break
+    if _labeled_birth_is_minor(segment) is True:
+        minor = True
+    if medical and minor:
+        return "both"
+    if medical:
+        return "medical"
+    if minor:
+        return "minor"
+    return ""
+
+
+def withhold_network_sensitive(text: str) -> Tuple[str, Dict[str, Any]]:
+    """外发前只拿掉能识别的未成年人信息和病历内容。
+
+    识别不了的原文保持不动，返回说明里也不会写成已经拦住。
+    """
+    report: Dict[str, Any] = {
+        "minor_withheld": False,
+        "medical_withheld": False,
+        "segments_withheld": 0,
+        "blocked_unidentified": False,
+        "note": "只留存已识别的未成年人信息或病历内容，识别不了的没有拦截。",
+    }
+    if not text:
+        return "", report
+    pieces = _SEGMENT_SPLIT.split(text)
+    kept: List[str] = []
+    for piece in pieces:
+        if not piece or piece in "。！？；" or piece.startswith("\n"):
+            kept.append(piece)
+            continue
+        reason = _segment_withhold_reason(piece)
+        if not reason:
+            kept.append(piece)
+            continue
+        report["segments_withheld"] += 1
+        if reason in ("minor", "both"):
+            report["minor_withheld"] = True
+        if reason in ("medical", "both"):
+            report["medical_withheld"] = True
+        kept.append(NETWORK_WITHHELD_MARK)
+    return "".join(kept), report
 
 
 # 全局单例

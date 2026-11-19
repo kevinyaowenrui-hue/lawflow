@@ -2,19 +2,19 @@
  * LawFlow Main Entry (main.js)
  * 组装与挂载 01~08 模块、初始化模态框、事件绑定与全局兼容导出
  */
-import { api, ApiError, API_BASE, getApiToken, withDownloadToken, escapeHtml } from './api.js';
+import { api, ApiError, API_BASE, getApiToken, withDownloadToken, escapeHtml } from './api.js?v=20261110a';
 import { showToast } from './ui/toast.js';
-import { initModals, setupModalFocusManagement } from './modules/modals.js';
-import * as CalcModule from './modules/01_calc.js';
-import * as LitigationModule from './modules/02_litigation.js';
-import * as EvidenceModule from './modules/03_evidence.js';
-import * as AppealSigningModule from './modules/04_appeal_signing.js';
-import * as EnforcementModule from './modules/05_enforcement.js';
-import * as CitationGuardModule from './modules/06_citation_guard.js';
-import * as MattersModule from './modules/07_matters.js';
-import * as CopilotModule from './modules/08_copilot.js';
-import * as SettingsModule from './modules/settings.js';
-import * as ConverterModule from './modules/converter.js';
+import { initModals, setupModalFocusManagement } from './modules/modals.js?v=20261111f';
+import * as CalcModule from './modules/01_calc.js?v=20261119b';
+import * as LitigationModule from './modules/02_litigation.js?v=20261119b';
+import * as EvidenceModule from './modules/03_evidence.js?v=20261119b';
+import * as AppealSigningModule from './modules/04_appeal_signing.js?v=20261119d';
+import * as EnforcementModule from './modules/05_enforcement.js?v=20261109a';
+import * as CitationGuardModule from './modules/06_citation_guard.js?v=20261119a';
+import * as MattersModule from './modules/07_matters.js?v=20261119b';
+import * as CopilotModule from './modules/08_copilot.js?v=20261119b';
+import * as SettingsModule from './modules/settings.js?v=20261110c';
+import * as ConverterModule from './modules/converter.js?v=20261027b';
 
 // 将所有模块导出的函数绑定到 window，保持原有 HTML onclick 属性兼容
 const allModules = [
@@ -61,9 +61,21 @@ if (typeof window !== 'undefined') {
       return `<div class="lf-disclaimer-line">${LAWFLOW_DISCLAIMER}</div>`;
     }
 
+    /**
+     * 立案页的起诉状、委托书、所函、保全申请结果卡不附这句。
+     * 律师函等内部底稿行自带 data-internal-draft，仍可保留。
+     */
+    function shouldSkipSoftwareDisclaimer(el) {
+      if (!el || !el.closest) return false;
+      if (el.closest('[data-internal-draft="1"]')) return false;
+      if (el.dataset && el.dataset.noSoftwareDisclaimer === '1') return true;
+      if (el.closest('[data-no-software-disclaimer="1"]')) return true;
+      return !!el.closest('#tab-litigation');
+    }
+
     /** 在结果容器底部追加免责声明小字（幂等） */
     function appendResultDisclaimer(el) {
-      if (!el) return;
+      if (!el || shouldSkipSoftwareDisclaimer(el)) return;
       if (el.querySelector && el.querySelector('.lf-disclaimer-line')) return;
       const wrap = document.createElement('div');
       wrap.className = 'lf-disclaimer-line';
@@ -119,6 +131,9 @@ if (typeof window !== 'undefined') {
       document.getElementById('current-module-title').innerText = title.substring(3).trim();
       updatePipelineStepperActive(tabId);
 
+      if (tabId === 'tab-litigation' && typeof window.fillLawyerProfileFields === 'function') {
+        window.fillLawyerProfileFields();
+      }
       if (tabId === 'tab-copilot') {
         if (typeof loadCopilotTasksUI === 'function') loadCopilotTasksUI();
         if (typeof resizeCopilotCanvas === 'function') setTimeout(resizeCopilotCanvas, 50);
@@ -203,16 +218,18 @@ window.addEventListener('DOMContentLoaded', () => {
   if (typeof renderGlobalCaseBar === 'function') renderGlobalCaseBar();
   if (typeof updateTabContextDisplays === 'function') updateTabContextDisplays();
   if (typeof initMatterVault === 'function') initMatterVault();
-  if (typeof runDualRAGSearch === 'function') runDualRAGSearch();
+  if (typeof runDualRAGSearch === 'function' && (document.getElementById('rag-q')?.value || '').trim()) runDualRAGSearch();
   if (typeof fetchEngineHealth === 'function') fetchEngineHealth();
   if (typeof fetchConverterStatus === 'function') fetchConverterStatus();
   if (typeof fetchSystemHealth === 'function') fetchSystemHealth();
-  if (typeof runDeepMatrixAnalyze === 'function') runDeepMatrixAnalyze();
+  // 打开工作台时不推演演示卷宗，避免把张三诉李四当成在办案件。
 
   if (window.CaseContextStore && typeof window.CaseContextStore.init === 'function') {
     window.CaseContextStore.init();
   }
   if (typeof loadVaultMatters === 'function') loadVaultMatters();
+  if (typeof loadTodayDeadlineBoard === 'function') loadTodayDeadlineBoard();
+  if (typeof refreshFilingStepLabel === 'function') refreshFilingStepLabel();
 
   // 4. 初始化法典库与副驾中枢
   if (typeof reloadStatutesCorpus === 'function') reloadStatutesCorpus();
@@ -221,21 +238,51 @@ window.addEventListener('DOMContentLoaded', () => {
   if (typeof onPlaybookChange === 'function') onPlaybookChange();
 });
 
-    function updatePipelineStepperActive(tabId) {
+    function updatePipelineStepperActive(tabId, forcedStep) {
       const stepMap = {
         'tab-graphs': 1,
         'tab-calc': 2,
         'tab-evidence': 3,
-        'tab-litigation': 4,
-        'tab-deep-matrix': 5
+        'tab-litigation': 4
       };
-      const activeStep = stepMap[tabId] || 0;
+      const activeStep = forcedStep || stepMap[tabId] || 0;
       for (let i = 1; i <= 5; i++) {
         const node = document.getElementById(`step-node-${i}`);
         if (node) {
           node.classList.toggle('active-step', i === activeStep);
         }
       }
+    }
+
+    function refreshFilingStepLabel() {
+      const name = document.querySelector('#step-node-4 .step-name');
+      const status = document.getElementById('step-status-4');
+      const card = document.getElementById('step-node-4');
+      if (!name || !status) return;
+      const route = matterFilingRoute();
+      if (route === 'commercial_arbitration') {
+        name.textContent = '仲裁材料清单';
+        status.textContent = '不要生成微法院起诉状';
+        if (card) card.title = '商事仲裁核对仲裁材料，不生成法院起诉状';
+      } else if (route === 'labor_or_arbitration') {
+        name.textContent = '仲裁申请书';
+        status.textContent = '不使用微法院四分卷';
+        if (card) card.title = '劳动争议生成仲裁申请书';
+      } else {
+        name.textContent = '法院立案文书';
+        status.textContent = '微法院只用于向法院起诉';
+        if (card) card.title = '向法院起诉时才使用微法院四分卷';
+      }
+    }
+    window.refreshFilingStepLabel = refreshFilingStepLabel;
+
+    function matterFilingRoute() {
+      const matter = window.activeMatterData || {};
+      const practice = matter.practice || {};
+      const cause = matter.cause_of_action || '';
+      if (practice.procedure === 'arbitration' && cause.indexOf('劳动') < 0) return 'commercial_arbitration';
+      if (practice.procedure === 'arbitration' || cause.indexOf('劳动') >= 0 || practice.filing_route === 'arbitration') return 'labor_or_arbitration';
+      return 'court';
     }
 
     function navigateToPipelineStep(stepIndex) {
@@ -252,13 +299,29 @@ window.addEventListener('DOMContentLoaded', () => {
         if (btn) switchNavTab('tab-evidence', '03 证据清洗与庭审', btn);
         showToast("阶段 3：证据合卷与绝对页码目录");
       } else if (stepIndex === 4) {
-        const btn = document.getElementById('nav-litigation');
-        if (btn) switchNavTab('tab-litigation', '02 立案文书流水线', btn);
-        showToast("阶段 4：移动微法院标准立案四件套生成");
+        const route = matterFilingRoute();
+        if (route === 'commercial_arbitration') {
+          const btn = document.getElementById('nav-graphs');
+          if (btn) switchNavTab('tab-graphs', '07 案件空间与核心图谱中枢', btn);
+          if (typeof switchVaultGraphTab === 'function') switchVaultGraphTab('filing');
+          showToast("商事仲裁：核对仲裁材料清单。不要生成微法院起诉状。");
+        } else if (route === 'labor_or_arbitration') {
+          const btn = document.getElementById('nav-litigation');
+          if (btn) switchNavTab('tab-litigation', '02 立案文书流水线', btn);
+          showToast("劳动争议生成仲裁申请书。不使用微法院四分卷。");
+        } else {
+          const btn = document.getElementById('nav-litigation');
+          if (btn) switchNavTab('tab-litigation', '02 立案文书流水线', btn);
+          showToast("阶段 4：法院立案文书。微法院四分卷只用于向法院起诉。");
+        }
       } else if (stepIndex === 5) {
-        const btn = document.getElementById('nav-deep-matrix');
-        if (btn) switchNavTab('tab-deep-matrix', '05 要件推演与执行破局', btn);
-        showToast("阶段 5：庭审对抗提纲与七维要件推演");
+        const btn = document.getElementById('nav-evidence');
+        if (btn) switchNavTab('tab-evidence', '03 证据清洗与庭审', btn);
+        if (typeof window.switchPhase2RightTab === 'function') window.switchPhase2RightTab('outline');
+        const outlineAnchor = document.getElementById('to-case-title') || document.getElementById('p2-pane-outline');
+        if (outlineAnchor && outlineAnchor.scrollIntoView) outlineAnchor.scrollIntoView({ block: 'nearest' });
+        updatePipelineStepperActive('tab-evidence', 5);
+        showToast("阶段 5：03 庭审提纲。执行追加从左侧 05 进入。");
       }
     }
 

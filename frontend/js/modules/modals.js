@@ -14,7 +14,7 @@ export const MODALS_HTML = `
         <div class="modal-title-group">
           <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
             <span>在办案件全局工作卡</span>
-            <span class="badge" id="modal-case-badge" style="background: rgba(197, 133, 50, 0.15); color: var(--accent-amber);">民间借贷纠纷</span>
+            <span class="badge" id="modal-case-badge" style="background: rgba(197, 133, 50, 0.15); color: var(--accent-amber);">待填写案由</span>
           </div>
           <div class="modal-subtitle">打通 01实务精算、02立案文书、03证据清洗、05深度要件推演与 06权威法典检索</div>
         </div>
@@ -31,7 +31,7 @@ export const MODALS_HTML = `
         <div class="form-row-3" style="margin-bottom: 12px;">
           <div class="form-group" style="margin-bottom: 0;">
             <label class="form-label">案由类型</label>
-            <input aria-label="modal case cause"  type="text" id="modal-case-cause" class="quick-input" value="民间借贷纠纷" oninput="syncModalCaseCauseBadge()">
+            <input aria-label="modal case cause"  type="text" id="modal-case-cause" class="quick-input" value="" placeholder="如：民间借贷纠纷" oninput="syncModalCaseCauseBadge()">
           </div>
           <div class="form-group" style="margin-bottom: 0; grid-column: span 2;">
             <label class="form-label">案件全称/标题</label>
@@ -41,11 +41,11 @@ export const MODALS_HTML = `
         <div class="form-row" style="grid-template-columns: 2fr 1fr; margin-bottom: 14px;">
           <div class="form-group" style="margin-bottom: 0;">
             <label class="form-label">受诉管辖法院</label>
-            <input aria-label="modal case court"  type="text" id="modal-case-court" class="quick-input" value="北京市朝阳区人民法院">
+            <input aria-label="modal case court"  type="text" id="modal-case-court" class="quick-input" value="" placeholder="受诉法院全称">
           </div>
           <div class="form-group" style="margin-bottom: 0;">
             <label class="form-label">主张诉讼标的额 (元)</label>
-            <input aria-label="modal case amount"  type="number" id="modal-case-amount" class="quick-input" value="500000" step="5000">
+            <input aria-label="modal case amount"  type="number" id="modal-case-amount" class="quick-input" value="" step="5000" placeholder="诉讼标的额">
           </div>
         </div>
 
@@ -57,18 +57,18 @@ export const MODALS_HTML = `
           <!-- 原告方 -->
           <div style="background: #F8FAFC; border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-sm); padding: 10px 12px;">
             <div style="font-size: 12px; font-weight: 700; color: #1e40af; margin-bottom: 8px;">原告 / 申请人</div>
-            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">姓名 / 企业主体</label><input aria-label="modal case p name"  type="text" id="modal-case-p-name" value="李四"></div>
-            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">身份证号 / 统一信用代码</label><input aria-label="modal case p id"  type="text" id="modal-case-p-id" value="110101199003072375"></div>
-            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">联系电话</label><input aria-label="modal case p phone"  type="text" id="modal-case-p-phone" value="13800000000"></div>
-            <div class="form-group" style="margin-bottom: 0;"><label class="form-label">住所地 / 送达地址</label><input aria-label="modal case p addr"  type="text" id="modal-case-p-addr" value="北京市朝阳区建国门外大街1号"></div>
+            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">姓名 / 企业主体</label><input aria-label="modal case p name"  type="text" id="modal-case-p-name" value="" placeholder="原告姓名或企业名称"></div>
+            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">身份证号 / 统一信用代码</label><input aria-label="modal case p id"  type="text" id="modal-case-p-id" value="" placeholder="身份证或统一社会信用代码"></div>
+            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">联系电话</label><input aria-label="modal case p phone"  type="text" id="modal-case-p-phone" value="" placeholder="联系电话"></div>
+            <div class="form-group" style="margin-bottom: 0;"><label class="form-label">住所地 / 送达地址</label><input aria-label="modal case p addr"  type="text" id="modal-case-p-addr" value="" placeholder="送达地址"></div>
           </div>
           <!-- 被告方 -->
           <div style="background: #FDF9F8; border: 1px solid rgba(180, 52, 52, 0.2); border-radius: var(--radius-sm); padding: 10px 12px;">
             <div style="font-size: 12px; font-weight: 700; color: #991b1b; margin-bottom: 8px;">被告 / 被申请人</div>
-            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">姓名 / 企业主体</label><input aria-label="modal case d name"  type="text" id="modal-case-d-name" value="张三"></div>
-            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">身份证号 / 统一信用代码</label><input aria-label="modal case d id"  type="text" id="modal-case-d-id" value="110101198506121234"></div>
-            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">联系电话</label><input aria-label="modal case d phone"  type="text" id="modal-case-d-phone" value="13900000000"></div>
-            <div class="form-group" style="margin-bottom: 0;"><label class="form-label">住所地 / 营业登记地</label><input aria-label="modal case d addr"  type="text" id="modal-case-d-addr" value="北京市海淀区中关村南大街5号"></div>
+            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">姓名 / 企业主体</label><input aria-label="modal case d name"  type="text" id="modal-case-d-name" value="" placeholder="被告姓名或企业名称"></div>
+            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">身份证号 / 统一信用代码</label><input aria-label="modal case d id"  type="text" id="modal-case-d-id" value="" placeholder="身份证或统一社会信用代码"></div>
+            <div class="form-group" style="margin-bottom: 6px;"><label class="form-label">联系电话</label><input aria-label="modal case d phone"  type="text" id="modal-case-d-phone" value="" placeholder="联系电话"></div>
+            <div class="form-group" style="margin-bottom: 0;"><label class="form-label">住所地 / 营业登记地</label><input aria-label="modal case d addr"  type="text" id="modal-case-d-addr" value="" placeholder="住所或主要经营地"></div>
           </div>
         </div>
 
@@ -81,19 +81,19 @@ export const MODALS_HTML = `
         </div>
         <div style="background: #FCFBF9; border: 1px solid #EAE6DD; border-radius: var(--radius-sm); padding: 12px; margin-bottom: 14px;">
           <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px;">
-            <div><span style="font-size: 11px; color: var(--text-muted);">拖欠本金基数</span><div id="modal-calc-p" style="font-size: 13px; font-weight: 700; font-family: var(--font-mono); color: var(--primary-navy);">¥500,000.00</div></div>
-            <div><span style="font-size: 11px; color: var(--text-muted);">已核算逾期利息</span><div id="modal-calc-interest" style="font-size: 13px; font-weight: 700; font-family: var(--font-mono); color: var(--accent-amber);">¥26,701.37</div></div>
-            <div><span style="font-size: 11px; color: var(--text-muted);">案件受理费 (预交)</span><div id="modal-calc-courtfee" style="font-size: 13px; font-weight: 700; font-family: var(--font-mono); color: var(--primary-navy);">¥8,800.00</div></div>
-            <div><span style="font-size: 11px; color: var(--text-muted);">诉讼保全申请费</span><div id="modal-calc-preservfee" style="font-size: 13px; font-weight: 700; font-family: var(--font-mono); color: var(--primary-navy);">¥3,020.00</div></div>
+            <div><span style="font-size: 11px; color: var(--text-muted);">拖欠本金基数</span><div id="modal-calc-p" style="font-size: 13px; font-weight: 700; font-family: var(--font-mono); color: var(--primary-navy);">¥0.00</div></div>
+            <div><span style="font-size: 11px; color: var(--text-muted);">已核算逾期利息</span><div id="modal-calc-interest" style="font-size: 13px; font-weight: 700; font-family: var(--font-mono); color: var(--accent-amber);">¥0.00</div></div>
+            <div><span style="font-size: 11px; color: var(--text-muted);">案件受理费 (预交)</span><div id="modal-calc-courtfee" style="font-size: 13px; font-weight: 700; font-family: var(--font-mono); color: var(--primary-navy);">¥0.00</div></div>
+            <div><span style="font-size: 11px; color: var(--text-muted);">诉讼保全申请费</span><div id="modal-calc-preservfee" style="font-size: 13px; font-weight: 700; font-family: var(--font-mono); color: var(--primary-navy);">¥0.00</div></div>
           </div>
           <div style="font-size: 11.5px; color: var(--text-secondary); background: #FAF9F6; border: 1px solid #EAE6DD; padding: 6px 10px; border-radius: 3px; font-family: var(--font-mono); line-height: 1.5;" id="modal-calc-statement">
-            自2023年01月01日起至实际清偿之日止，以本金500,000.00元为基数，按同期全国银行间同业拆借中心公布的一年期贷款市场报价利率（LPR）计算至2024年01月01日暂计为26,701.37元；
+            尚未同步利息明细。请先在 01 精算中核算，再点「从 01 精算结果重新拉取」。
           </div>
         </div>
 
         <!-- 四、请求权基础实体法条总线 -->
         <div style="font-size: 13px; font-weight: 700; color: var(--primary-navy); margin-bottom: 10px; border-top: 1px solid var(--border-hairline); padding-top: 12px; display: flex; justify-content: space-between; align-items: center;">
-          <span>四、请求权基础法条依据 (Statutes Basis, <span id="modal-statutes-count">3</span> 条)</span>
+          <span>四、请求权基础法条依据 (Statutes Basis, <span id="modal-statutes-count">0</span> 条)</span>
           <button type="button" class="btn btn-secondary btn-sm" onclick="closeCaseContextModal(); switchNavTab('tab-statutes', '06 法条库与子母法图谱', document.getElementById('nav-statutes'))" style="padding: 2px 8px; font-size: 11px;">
             🔍 前往 06 法条库选入新法条
           </button>
@@ -121,7 +121,7 @@ export const MODALS_HTML = `
       <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; gap: 8px;">
           <button type="button" class="btn btn-secondary btn-sm" onclick="resetCaseContextToDefault()">
-            🔄 恢复默认测试案
+            清空在办案件
           </button>
           <button type="button" class="btn btn-secondary btn-sm" onclick="clearCaseContextToNew()" style="color: var(--status-warn);">
             🗑️ 清空新建案
@@ -219,7 +219,7 @@ export const MODALS_HTML = `
               <span>🛡 启用本地 PII 隐私脱敏与还原网关 (建议开启)</span>
             </label>
             <div style="font-size: 11px; color: var(--text-muted); line-height: 1.5; padding-left: 23px;">
-              发送云端前自动将当事人姓名、公司名、身份证、手机号、银行卡号转为安全占位符，返回后再在本地无损还原。符合《个人信息保护法》与律师执业保密规程，核心案情零明文泄露。
+              案情、证据摘录、代理意见会发给上方所填服务商。开关开启时，发送前会替换已识别的身份证号、手机号、银行卡号等号码，返回后再在本机还原；开关关闭时，这些号码也会一起发送。无论开关开或关，都不要理解成已经脱敏。能从身份证出生日期或写明的出生日期识别的未成年人信息，以及写明病历、出院记录等的内容，默认不外发。识别不了的，不会显示成已经拦住。完全不出本机，请改用本地模型或规则模式。向元典发送核对文本不走这个开关，发送前会单独提示。
             </div>
           </div>
         </div>
@@ -267,6 +267,18 @@ export const MODALS_HTML = `
           <div id="pii-scan-result" style="display:none; background:#FAF9F6; border:1px solid #EAE6DD; border-radius:4px; padding:10px;"></div>
         </div>
 
+        <div style="margin-top: 12px; padding: 10px 12px; background: #F8FAFC; border: 1px solid var(--border-hairline); border-radius: 6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+            <label class="form-label" style="margin:0;">元典开放平台 API Key</label>
+            <span id="cfg-yuandian-status" style="font-size:11px; color:var(--accent-amber);">未配置</span>
+          </div>
+          <input aria-label="元典 API Key" type="password" id="cfg-yuandian-key" placeholder="留空则保持已保存的密钥" style="width:100%;" />
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px;">
+            <span style="font-size:11px; color:var(--text-muted);">用于法条、案例、企业和引用核对。法规检索里把来源改成「元典」后，检索词会发往 open.chineselaw.com。核对文本会把最多两万字原文发往该站，不经过上面的脱敏开关，也不能当成已经脱敏；发送前会单独提示。能识别的未成年人信息和病历默认不发送，识别不了的不会当成已经拦住。</span>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="testYuandianConnection()">测试元典</button>
+          </div>
+        </div>
+
         <!-- 测试连通性结果反馈区 -->
         <div class="cfg-test-feedback" id="cfg-test-feedback">
           <span id="cfg-test-text"></span>
@@ -301,7 +313,7 @@ export const MODALS_HTML = `
             <span>律所级利益冲突穿透排查中枢</span>
             <span class="badge" style="background: rgba(211, 47, 47, 0.12); color: #D32F2F; border: 1px solid rgba(211, 47, 47, 0.25);">执业合规护城河</span>
           </div>
-          <div class="modal-subtitle">《律师法》第39条 · 中华全国律协《律师执业行为规范》第50/51条 · 律所在办及常年顾问底档库穿透排查</div>
+          <div class="modal-subtitle">《律师法》（2017年修正文本）第三十九条；全国律协《律师执业行为规范》利益冲突条款（项次待核对）</div>
         </div>
         <button type="button" class="modal-close-btn" onclick="closeConflictCheckModal()" title="关闭">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -311,9 +323,10 @@ export const MODALS_HTML = `
       <div class="modal-body" style="max-height: 75vh; overflow-y: auto; padding: 18px 20px;">
         <!-- 标签切换：穿透排查 vs 底档库查看与录入 -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border-hairline); padding-bottom: 10px;">
-          <div class="segmented-control" style="max-width: 340px;">
+          <div class="segmented-control" style="max-width: 560px;">
             <button type="button" class="seg-btn active" id="tab-btn-conflict-check" onclick="switchConflictModalTab('check')">🔍 实时冲突穿透排查</button>
-            <button type="button" class="seg-btn" id="tab-btn-conflict-registry" onclick="switchConflictModalTab('registry')">📁 律所底档库 (<span id="conflict-registry-count-badge">4</span>)</button>
+            <button type="button" class="seg-btn" id="tab-btn-conflict-roster" onclick="switchConflictModalTab('roster')">👥 本所名册</button>
+            <button type="button" class="seg-btn" id="tab-btn-conflict-registry" onclick="switchConflictModalTab('registry')">📁 律所底档库 (<span id="conflict-registry-count-badge"></span>)</button>
           </div>
           <button type="button" class="btn btn-secondary btn-sm" onclick="syncConflictFormFromGlobalCase()" style="font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
@@ -355,15 +368,24 @@ export const MODALS_HTML = `
               </div>
             </div>
 
-            <!-- 穿透实体与案由 (横跨两列) -->
-            <div style="grid-column: span 2; display: grid; grid-template-columns: 2fr 1fr; gap: 12px; border-top: 1px dashed #E0DCD3; padding-top: 10px;">
+            <!-- 穿透实体、案由与同一案件判定 (横跨两列) -->
+            <div style="grid-column: span 2; display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 12px; border-top: 1px dashed #E0DCD3; padding-top: 10px;">
               <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label">关联穿透实体 (母子公司/控股股东/法定代表人，英文逗号分隔)</label>
-                <input aria-label="例: 宏达控股, 张三, 深圳华腾供应链"  type="text" id="chk-related-entities" class="quick-input" placeholder="例: 宏达控股, 张三, 深圳华腾供应链">
+                <label class="form-label">关联穿透实体 (母子公司/控股股东/实控人)</label>
+                <input aria-label="例: 宏达控股, 张三, 深圳华腾供应链"  type="text" id="chk-related-entities" class="quick-input" placeholder="例: 宏达控股, 张三">
               </div>
               <div class="form-group" style="margin-bottom: 0;">
                 <label class="form-label">拟委托争议案由 / 标的</label>
-                <input aria-label="例: 民间借贷纠纷 / 股权转让"  type="text" id="chk-case-subject" class="quick-input" placeholder="例: 民间借贷纠纷 / 股权转让">
+                <input aria-label="例: 民间借贷纠纷 / 股权转让"  type="text" id="chk-case-subject" class="quick-input" placeholder="例: 买卖合同纠纷">
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label"><span style="color:#D32F2F;">*</span> 是否同一法律事实/争议</label>
+                <select id="chk-is-same-matter" class="quick-input" aria-label="是否同一法律事实或争议">
+                  <option value="">请选择（未填按不确定）</option>
+                  <option value="是">是（属于同一案件或同源争议）</option>
+                  <option value="否">否（非同一法律事实/完全无关事务）</option>
+                  <option value="不确定">不确定（待人工核实）</option>
+                </select>
               </div>
             </div>
           </div>
@@ -379,6 +401,30 @@ export const MODALS_HTML = `
           <div id="conflict-result-box" style="display: none;">
             <!-- 动态渲染排查结论 -->
           </div>
+        </div>
+
+        <div id="view-firm-roster" style="display: none;">
+          <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px;">
+            登记本所律师、执业证号、身份证号、事务所和近亲属。近亲属也可以填身份证号。接案时先规范化姓名：去掉首尾和中间空格，全角转半角，去掉·・•。规范化后全同，或证件号相同，都按同一人，未勾选书面确认不能建案。姓名不全同但相近时，写明「姓名相近，需人工核对」，也不静默建案。名册为空时写明「本所人员未录入，此项未检查」，不会显示成已排除冲突。设为默认的律师会写入立案文书；名册和表单都没填时，文书仍是【待填写】。
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group"><label class="form-label">律师姓名</label><input id="roster-lawyer-name" class="quick-input" aria-label="本所律师姓名" placeholder="填写真实姓名"></div>
+            <div class="form-group"><label class="form-label">执业证号</label><input id="roster-license" class="quick-input" aria-label="执业证号" placeholder="执业证号，接案证件号相同则按同一人"></div>
+            <div class="form-group"><label class="form-label">身份证号</label><input id="roster-id-no" class="quick-input" aria-label="律师身份证号" placeholder="没有就留空"></div>
+            <div class="form-group"><label class="form-label">律师事务所</label><input id="roster-firm" class="quick-input" aria-label="律师事务所" placeholder="律师事务所全称"></div>
+            <div class="form-group"><label class="form-label">联系电话</label><input id="roster-phone" class="quick-input" aria-label="律师电话" placeholder="承办律师电话"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">近亲属（每行：姓名 关系 身份证号。身份证号可以不填）</label>
+            <textarea id="roster-relatives" rows="3" class="quick-input" aria-label="近亲属" placeholder="钱某 配偶 110101199001011234"></textarea>
+          </div>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:8px;">
+            <input type="checkbox" id="roster-is-default" checked aria-label="设为文书默认承办律师"> 设为立案文书的默认承办律师
+          </label>
+          <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+            <button type="button" class="btn btn-sm" onclick="saveFirmRosterLawyer()">保存到本所名册</button>
+          </div>
+          <div id="firm-roster-list" style="font-size:12px; color:var(--text-secondary);">名册还是空的。</div>
         </div>
 
         <!-- 视图 2：律所底档库与新案登记 -->
@@ -440,9 +486,7 @@ export const MODALS_HTML = `
 
       <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-          <span>🔒 SHA-256 数字水印验讫</span>
-          <span>·</span>
-          <span>律所全员实时同步</span>
+          <span>利冲结果来自本机底档。证件号未录入时，不能据此认定是同一主体。</span>
         </div>
         <button type="button" class="btn btn-secondary btn-sm" onclick="closeConflictCheckModal()">关闭排查窗口</button>
       </div>
@@ -458,7 +502,7 @@ export const MODALS_HTML = `
         <div class="modal-title-group">
           <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
             <span>本地库比对司法引注反查体检报告</span>
-            <span class="badge" id="cg-modal-badge" style="background: #2E7D32; color: #fff;">100% 权威现行有效</span>
+            <span class="badge" id="cg-modal-badge" style="background: #6B7280; color: #fff;">尚未核验</span>
           </div>
           <div class="modal-subtitle">穿透反查 SQLite 权威法典库 · 实时熔断《合同法》《物权法》等已废止旧法 · 拦截大模型捏造越界条号</div>
         </div>
@@ -475,7 +519,7 @@ export const MODALS_HTML = `
             <div id="cg-stat-total" style="font-size: 20px; font-weight: 700; color: var(--primary-navy); font-family: var(--font-mono);">0</div>
           </div>
           <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px; text-align: center;">
-            <div style="font-size: 11px; color: var(--text-muted);">权威现行吻合</div>
+            <div style="font-size: 11px; color: var(--text-muted);">本地库比对一致</div>
             <div id="cg-stat-verified" style="font-size: 20px; font-weight: 700; color: #2E7D32; font-family: var(--font-mono);">0</div>
           </div>
           <div style="background: #FAF9F6; border: 1px solid #EAE6DD; border-radius: 4px; padding: 10px; text-align: center;">
@@ -634,33 +678,114 @@ export const MODALS_HTML = `
             </div>
             <div class="form-group">
               <label class="form-label">法定案由 *</label>
-              <input aria-label="new matter cause"  type="text" id="new-matter-cause" class="quick-input" value="民间借贷纠纷">
+              <select aria-label="new matter cause" id="new-matter-cause" class="quick-input" onchange="toggleCustomCause()">
+                <option value="">请选择民事案由</option>
+              </select>
+              <input aria-label="手写案由" type="text" id="new-matter-cause-custom" class="quick-input" placeholder="目录里没有时手写，不会默认成民间借贷" style="display:none; margin-top:6px;">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">我方地位 *</label>
+              <select aria-label="委托人诉讼地位" id="new-matter-role" class="quick-input">
+                <option value="原告">原告 / 申请人</option>
+                <option value="被告">被告 / 被申请人</option>
+                <option value="第三人">第三人</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">程序</label>
+              <select aria-label="审理程序" id="new-matter-procedure" class="quick-input">
+                <option value="">请选择，不要默认成普通程序</option>
+                <option value="first_ordinary">一审普通程序</option>
+                <option value="first_summary">一审简易程序</option>
+                <option value="second_instance">二审</option>
+                <option value="arbitration">仲裁</option>
+                <option value="enforcement">执行</option>
+                <option value="non_litigation">非诉 / 律师函</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">是否同一法律事实或同一争议</label>
+              <select aria-label="是否同一争议" id="new-matter-same" class="quick-input">
+                <option value="不确定">不确定</option>
+                <option value="是">是</option>
+                <option value="否">否</option>
+              </select>
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">司法案号 (选填)</label>
-              <input aria-label="例: (2026)京0108民初1892号"  type="text" id="new-matter-caseno" class="quick-input" placeholder="例: (2026)京0108民初1892号">
+              <input aria-label="例: (2026)京0108民初1892号"  type="text" id="new-matter-caseno" class="quick-input" placeholder="立案前可空">
             </div>
             <div class="form-group">
-              <label class="form-label">受诉法院 (选填)</label>
-              <input aria-label="例: 北京市海淀区人民法院"  type="text" id="new-matter-court" class="quick-input" placeholder="例: 北京市海淀区人民法院">
+              <label class="form-label">法院或仲裁机构</label>
+              <input aria-label="例: 北京市海淀区人民法院"  type="text" id="new-matter-court" class="quick-input" placeholder="法院或仲裁委员会全称">
             </div>
             <div class="form-group">
-              <label class="form-label">诉讼标的金额 (元)</label>
-              <input aria-label="new matter amount"  type="number" id="new-matter-amount" class="quick-input" value="1000000">
+              <label class="form-label">标的金额 (元，没有财产请求可空)</label>
+              <input aria-label="new matter amount"  type="number" id="new-matter-amount" class="quick-input" value="" placeholder="不要预填金额">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">原告名称/主体</label>
-              <input aria-label="原告姓名或公司全称"  type="text" id="new-matter-pname" class="quick-input" placeholder="原告姓名或公司全称">
+              <label class="form-label">起诉方 / 申请人 *</label>
+              <input aria-label="原告姓名或公司全称"  type="text" id="new-matter-pname" class="quick-input" placeholder="原告真实姓名或企业全称">
             </div>
             <div class="form-group">
-              <label class="form-label">被告名称/主体</label>
-              <input aria-label="被告姓名或公司全称"  type="text" id="new-matter-dname" class="quick-input" placeholder="被告姓名或公司全称">
+              <label class="form-label">起诉方电话</label>
+              <input aria-label="原告电话" type="text" id="new-matter-pphone" class="quick-input" placeholder="联系电话">
+            </div>
+            <div class="form-group">
+              <label class="form-label">起诉方证件号</label>
+              <input aria-label="原告证件号" type="text" id="new-matter-pid" class="quick-input" placeholder="身份证或统一社会信用代码，用于利冲">
             </div>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">被诉方 / 被申请人 *</label>
+              <input aria-label="被告姓名或公司全称"  type="text" id="new-matter-dname" class="quick-input" placeholder="被告真实姓名或企业全称">
+            </div>
+            <div class="form-group">
+              <label class="form-label">被诉方电话</label>
+              <input aria-label="被告电话" type="text" id="new-matter-dphone" class="quick-input" placeholder="联系电话">
+            </div>
+            <div class="form-group">
+              <label class="form-label">被诉方证件号</label>
+              <input aria-label="被告证件号" type="text" id="new-matter-did" class="quick-input" placeholder="身份证或统一社会信用代码，用于利冲">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">收费方式</label>
+              <select aria-label="收费方式" id="new-matter-fee-type" class="quick-input">
+                <option value="unset">未约定</option>
+                <option value="fixed">固定收费</option>
+                <option value="staged">分阶段收费</option>
+                <option value="risk">风险代理</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">风险代理约定比例（%，财产案件必填）</label>
+              <input aria-label="风险代理约定比例" type="number" id="new-matter-risk-ratio" class="quick-input" min="0" max="100" step="0.1" placeholder="例如 15，表示按标的额的 15%">
+            </div>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px; line-height:1.6;">《律师服务收费管理办法》第十一条、第十二条禁止对婚姻、继承、社会保险待遇、最低生活保障、赡养费、抚养费、扶养费、抚恤金、救济金、工伤赔偿、劳动报酬，以及刑事诉讼、行政诉讼、国家赔偿、群体性诉讼实行风险代理。案由属于这些类型时不能保存。其他财产案件必须填写约定比例；超过标的额 30% 时会警告，当地收费办法可能更严。约定金额和到账在委托确定后，写到立案清单里。我方是被告或被申请人时，起诉方仍填第一栏，我方填第二栏。</div>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:4px;">
+            <input aria-label="已说明风险" type="checkbox" id="new-matter-risk"> 已向委托人说明代理风险和收费风险（风险代理时必须勾选）
+          </label>
+          <div style="font-size:12px; color:#92400E; line-height:1.6; margin-bottom:8px;">勾选「已说明」不能代替书面风险代理合同。</div>
+          <div style="font-size:12px; color:var(--text-secondary); line-height:1.6; margin-bottom:8px;">
+            本所人员比对有三种结果。姓名规范化后全同，或原告、被告证件号与名册里的执业证号、身份证号相同：按同一人，未勾选书面确认不能建案。姓名相近：写明「姓名相近，需人工核对」，未勾选也不能建案，这不是直接禁止代理。名册为空：写明「本所人员未录入，此项未检查」，不会写成已经排除冲突。两个字的姓名不会只因同姓就提示相近。
+          </div>
+          <div id="new-matter-personnel-result" style="display:none; white-space:pre-wrap; font-size:12px; line-height:1.6; border-radius:6px; padding:8px 10px; margin-bottom:8px;"></div>
+          <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="previewNewMatterPersonnel()">查看本所人员比对</button>
+          </div>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:8px;">
+            <input aria-label="已确认本所人员冲突" type="checkbox" id="new-matter-personnel-ack"> 对方与本所律师或近亲属为同一人，或姓名相近需人工核对时，我已书面确认仍要建档
+          </label>
           <div class="form-group">
             <label class="form-label">案件核心事实梗概 (系统将基于此自动抽取事实时间线与图谱)</label>
             <textarea aria-label="输入案情经过与关键约定..."  id="new-matter-summary" rows="3" class="quick-input" placeholder="输入案情经过与关键约定..."></textarea>
@@ -735,13 +860,49 @@ export const MODALS_HTML = `
           <select aria-label="new deadline kind"  id="new-deadline-kind" class="quick-input" onchange="onDeadlineKindChange()">
             <option value="statute_limitation">诉讼时效届满日 (statute_limitation)</option>
             <option value="appeal">上诉期截止日 (appeal)</option>
+            <option value="defense_answer">答辩期 (defense_answer)</option>
+            <option value="evidence_production">举证届满日 (evidence_production)</option>
             <option value="preservation_renewal">续行财产保全申请截止日 (preservation_renewal)</option>
             <option value="enforcement_application">执行申请期限截止日 (enforcement_application)</option>
             <option value="hearing">开庭审理日 (hearing)</option>
+            <option value="service_received">送达日 (service_received)</option>
+            <option value="labor_arbitration">劳动仲裁申请时效 (labor_arbitration)</option>
+            <option value="labor_award_sue">收到劳动裁决后起诉 (labor_award_sue)</option>
+            <option value="labor_award_revoke">用人单位申请撤销终局裁决 (labor_award_revoke)</option>
+            <option value="arbitration_set_aside">申请撤销商事仲裁裁决 (arbitration_set_aside)</option>
             <option value="custom">其他执业备忘期限 (custom)</option>
           </select>
+          <div class="form-group" style="margin-top: 10px;">
+            <label class="form-label">日期来源</label>
+            <select aria-label="期限来源" id="new-deadline-origin" class="quick-input">
+              <option value="court_notice">法院通知（传票、通知、送达回证上写明的日期）</option>
+              <option value="statutory_calc">法定推算（按条文算出的届满日）</option>
+              <option value="lawyer_note">律师备忘</option>
+            </select>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">法院已经写明的举证届满日、开庭日、送达日选「法院通知」，不要再用法定下限代替。</div>
+          </div>
           <div id="deadline-kind-tip" style="font-size: 11px; color: var(--accent-amber); margin-top: 4px; display: none;">
-            提示：执行申请期限的计算口径 TODO(律师核实)，当前仅支持手工录入，不提供自动计算。
+            申请执行期间为二年，从履行期间最后一日、最后一期届满日或文书生效日起算。开始的当日不计入。下面可以自动测算；有中止、中断时不要直接用这个日期。
+          </div>
+          <div id="deadline-enforcement-helper" style="display:none; margin-top: 10px; padding: 10px; background: #F8FAFC; border-radius: 6px;">
+            <div class="form-group">
+              <label class="form-label">起算类型</label>
+              <select aria-label="执行申请起算类型" id="enf-modal-anchor-type" class="quick-input" onchange="var w=document.getElementById('enf-modal-days-wrap'); if(w) w.style.display=this.value==='effective_plus_days'?'block':'none';">
+                <option value="performance_last_day">履行期间的最后一日</option>
+                <option value="last_installment">最后一期履行期限届满之日</option>
+                <option value="effective_date">未规定履行期间，自法律文书生效之日</option>
+                <option value="effective_plus_days">生效之日起若干日内履行</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">起算日期</label>
+              <input aria-label="执行申请起算日期" type="date" id="enf-modal-anchor-date" class="quick-input">
+            </div>
+            <div class="form-group" id="enf-modal-days-wrap" style="display:none;">
+              <label class="form-label">履行天数</label>
+              <input aria-label="履行天数" type="number" id="enf-modal-performance-days" class="quick-input" value="10" min="0">
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="fillEnforcementDeadlineFromCalc()">按第二百五十条测算并填入截止日期</button>
           </div>
         </div>
         <div class="form-group">

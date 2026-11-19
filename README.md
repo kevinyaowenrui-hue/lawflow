@@ -19,9 +19,9 @@
 | 合同审查 | 红线手册对比，可导出带 Word 修订轨的稿件 |
 | 法条库 | SQLite FTS5 关键词与条号检索、废止拦截、子母法关联（收录范围有限） |
 | 类案检索 | 关键词/FTS 检索与咨询注入；**非**向量 RAG |
-| 电子签约 | 可对接 DocuSeal；未配置时为**演示**签署流程 |
+| 电子签约 | 对接 DocuSeal；需配置 `DOCUSEAL_URL`、`DOCUSEAL_API_TOKEN` 与 `DOCUSEAL_WEBHOOK_SECRET`。令牌也可写在用户目录 `secrets.json` 的 `docuseal_api_token`，不要提交到仓库。未配齐时拒绝发起 |
 | 案件空间 | 卷宗挂载、图谱、阅卷表、工作流断点、任务看板 |
-| 深度屏 | 要件推演、上诉审计、执行穿透等；部分场景在接入真实数据前为**演示** |
+| 深度屏 | 要件推演、上诉审计、执行穿透等；按律师填写事实审查，缺事实返回不足 |
 
 架构细节见 [ARCHITECTURE.md](ARCHITECTURE.md)；能力状态见 [ROADMAP.md](ROADMAP.md)。
 
@@ -31,8 +31,8 @@
 
 - **法条库**需律师核验；未核验条文不得当作权威全文引用。
 - **判例库**默认可能为空；仅已核验案号可写入生成文书。
-- **电子签约**在未配置 `DOCUSEAL_*` 时仅为演示，不具生产签署效力。
-- **P3 / P4** 等攻防大屏在接入真实卷宗与财产线索前标注为演示。
+- **电子签约**必须配置 `DOCUSEAL_URL`、`DOCUSEAL_API_TOKEN` 与 `DOCUSEAL_WEBHOOK_SECRET`。API 令牌来自 DocuSeal 的 Settings → API，也可只放在用户目录 `~/.lawflow/secrets.json` 的 `docuseal_api_token`。未配齐、服务不可达或创建提交失败时接口拒绝，不生成演示签署链接。
+- **P3 / P4** 按律师输入的判决文本、当事人与财产线索运行；缺事实时返回事实不足，不编造结论。
 - 检索为 **SQLite FTS5**，不是向量 RAG；外部向量引擎 / RAGFlow 为规划中、未使用。
 - 可选 OCR/音频/HEIF 依赖见 `requirements-optional.txt`；缺失时自动降级。
 
@@ -86,7 +86,7 @@ docker compose up --build
 # 映射 127.0.0.1:5221
 ```
 
-Docassemble、RAGFlow 等为**规划中，当前代码未使用**（compose profile `planned`）。电子签容器：`docker compose --profile phase3 up`（需设置 `DOCUSEAL_WEBHOOK_SECRET`）。
+Docassemble、RAGFlow 等为**规划中，当前代码未使用**（compose profile `planned`）。电子签容器：`docker compose --profile phase3 up`（需设置 `DOCUSEAL_WEBHOOK_SECRET` 与 `DOCUSEAL_API_TOKEN`）。
 
 ---
 

@@ -19,8 +19,12 @@ export const COPILOT_TAB_HTML = `
               <span class="badge" style="background: rgba(34, 197, 94, 0.2); color: #4ADE80; font-size: 11px; border: 1px solid rgba(34, 197, 94, 0.3);">全域总线贯通</span>
             </div>
             <div style="font-size: 12px; color: #94A3B8; margin-top: 2px;">
-              支持免提连续通话与按键口述，一句话自动执行 01~07 全模块精算/法典检索/起诉状装配与办案任务自动归纳
+              任务看板可直接使用。语音默认关闭，打开后才会听写。
             </div>
+            <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; color:#E2E8F0;">
+              <input type="checkbox" id="copilot-voice-enable" aria-label="启用语音（实验）" onchange="setCopilotVoiceEnabled(this.checked)">
+              启用语音（实验）
+            </label>
           </div>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -204,7 +208,25 @@ export function renderTabCopilot() {
   if (el) {
     // safe-html: mount static tab template
     el.innerHTML = COPILOT_TAB_HTML;
+    applyCopilotVoiceGate();
   }
+}
+
+function setCopilotVoiceEnabled(on) {
+  try { localStorage.setItem('lawflow-voice-enabled', on ? '1' : '0'); } catch (e) { /* ignore */ }
+  applyCopilotVoiceGate();
+}
+
+function applyCopilotVoiceGate() {
+  let on = false;
+  try { on = localStorage.getItem('lawflow-voice-enabled') === '1'; } catch (e) { on = false; }
+  const box = document.getElementById('copilot-voice-enable');
+  if (box) box.checked = on;
+  document.querySelectorAll('.copilot-visualizer-container, .voice-control-toolbar').forEach((node) => {
+    node.style.display = on ? '' : 'none';
+  });
+  const headerBtn = document.getElementById('header-voice-btn');
+  if (headerBtn) headerBtn.style.display = on ? 'inline-flex' : 'none';
 }
 
 
@@ -800,6 +822,17 @@ export function renderTabCopilot() {
       executeCopilotCommand(val, "text");
     }
 
+    function selectedMatterId() {
+      const raw = window.activeMatterId;
+      const text = raw == null ? '' : String(raw).trim();
+      if (!text || text === 'default') return '';
+      return text;
+    }
+
+    function commandWouldSaveTask(text) {
+      return /完成|搞定|做完了|勾选|任务|待办|整理|记一下|加一个|提醒|调取|证据|核对/.test(String(text || ''));
+    }
+
     // 核心中枢：指令发送、LLM 编排与跨模块自动联动
     async function executeCopilotCommand(commandText, mode = "voice") {
       if (!commandText || !commandText.trim()) return;
@@ -836,16 +869,24 @@ export function renderTabCopilot() {
       const currentTab = activeNav ? activeNav.getAttribute('onclick')?.match(/switchNavTab\('([^']+)'/)?.[1] || "tab-copilot" : "tab-copilot";
 
       try {
+        if (!selectedMatterId() && commandWouldSaveTask(text)) {
+          appendCopilotMessageUI("assistant", "未选择案件，不能保存任务。请先打开案件，再记这条待办。");
+          showToast("未选择案件，不能保存任务");
+          setCopilotStatus('idle', '未选择案件');
+          return;
+        }
+        const matterId = selectedMatterId();
+        const converseBody = {
+          user_input: text,
+          current_tab: currentTab,
+          case_context: caseContext,
+          mode: mode
+        };
+        if (matterId) converseBody.matter_id = matterId;
         const resp = await api.request(`${API_BASE}/api/v1/copilot/converse`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_input: text,
-            matter_id: "default",
-            current_tab: currentTab,
-            case_context: caseContext,
-            mode: mode
-          })
+          body: JSON.stringify(converseBody)
         });
 
         if (!resp.ok) {
@@ -1023,8 +1064,17 @@ export function renderTabCopilot() {
 
     // 智能办案任务看板 CRUD 与交互
     async function loadCopilotTasksUI() {
+      const matterId = selectedMatterId();
+      if (!matterId) {
+        copilotTasksCache = [];
+        const container = document.getElementById('copilot-task-list');
+        if (container) container.textContent = '未选择案件，不能保存任务，也不会列出其他案件的待办。';
+        const headerCount = document.getElementById('task-header-count');
+        if (headerCount) headerCount.innerText = '共 0 项任务';
+        return;
+      }
       try {
-        const resp = await api.request(`${API_BASE}/api/v1/copilot/tasks?matter_id=default&status=all&stage=all`);
+        const resp = await api.request(`${API_BASE}/api/v1/copilot/tasks?matter_id=${encodeURIComponent(matterId)}&status=all&stage=all`);
         if (!resp.ok) return;
         const data = await resp.json();
         copilotTasksCache = data.tasks || [];
@@ -1118,7 +1168,7 @@ export function renderTabCopilot() {
                   <div style="font-size: 13px; font-weight: 700; color: var(--primary-navy); text-decoration: ${escapeHtml(isDone ? 'line-through' : 'none')}; word-break: break-all;">
                     ${escapeHtml(t.title)}
                   </div>
-                  ${t.description ? `<div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5;">${t.description}</div>` : ''} // safe-html: static or pre-escaped HTML fragment
+                  ${t.description ? `<div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5;">${t.description}</div>` : ''}
                 </div>
               </div>
               <div style="display: flex; align-items: center; gap: 4px;">
@@ -1299,6 +1349,11 @@ export function renderTabCopilot() {
         showToast("请输入任务名称！");
         return;
       }
+      const matterId = selectedMatterId();
+      if (!matterId) {
+        showToast("未选择案件，不能保存任务");
+        return;
+      }
       const stage = document.getElementById('task-form-stage').value;
       const priority = document.getElementById('task-form-priority').value;
       const due = document.getElementById('task-form-due').value.trim() || "待定";
@@ -1316,7 +1371,7 @@ export function renderTabCopilot() {
             due_date: due,
             linked_module: mod,
             description: desc,
-            matter_id: "default"
+            matter_id: matterId
           })
         });
 
@@ -1369,6 +1424,7 @@ export {
   batchMarkAllTasksDoneUI,
   jumpToTaskModule,
   toggleGlobalVoiceDrawer,
+  setCopilotVoiceEnabled,
   openCreateTaskModal,
   closeCreateTaskModal,
   handleTaskModalBackdropClick,

@@ -236,22 +236,28 @@ def _build_corporate_resolution_risk(
     guarantor_at_fault: Optional[bool],
 ) -> Dict[str, Any]:
     statute_basis = (
-        "《担保制度解释》第7、8、9、10、17条；《公司法》第15条"
+        "《最高人民法院关于适用〈中华人民共和国民法典〉有关担保制度的解释》（担保制度解释）第七条、第八条、第九条、第十条、第十七条；《公司法》第15条"
     )
     case_both_fault = (
         "债权人与担保人均有过错的，担保人承担的赔偿责任不应超过债务人不能清偿部分的二分之一"
-        "（《担保制度解释》第17条）"
+        "（《担保制度解释》第十七条第一款第一项）"
     )
     case_guarantor_only = (
         "担保人有过错而债权人无过错的，担保人对债务人不能清偿的部分承担赔偿责任"
-        "（《担保制度解释》第17条）"
+        "（《担保制度解释》第十七条第一款第二项）"
     )
     case_creditor_only = (
         "债权人有过错而担保人无过错的，担保人不承担赔偿责任"
-        "（《担保制度解释》第17条）"
+        "（《担保制度解释》第十七条第一款第三项）"
     )
     art8_note = (
-        "另有无需机构决议的情形（见《担保制度解释》第8条，具体情形请律师核实）"
+        "公司以未按公司法作出决议为由拒绝承担担保责任的，下列情形人民法院不予支持"
+        "（《担保制度解释》第八条）：金融机构开立保函或者担保公司提供担保；"
+        "公司为其全资子公司开展经营活动提供担保；"
+        "单独或者共同持有公司三分之二以上对担保事项有表决权的股东签字同意。"
+        "上市公司对外提供担保，不适用后两种情形。"
+        "一人有限责任公司为其股东提供担保的，也不能以没有决议为由拒绝承担担保责任（第十条）。"
+        "相对人根据上市公司已经公开披露的董事会或者股东会决议订立担保合同的，可以主张合同对上市公司发生效力（第九条）。"
     )
 
     cf = edge.get("creditor_at_fault") if "creditor_at_fault" in edge else creditor_at_fault
@@ -265,16 +271,24 @@ def _build_corporate_resolution_risk(
         elif cf and not gf:
             selected = case_creditor_only
         else:
-            selected = "双方均无过错时的责任承担，请结合《担保制度解释》第7、9、10条及案情由律师核实。"
+            selected = (
+                "法定代表人越权提供担保，相对人订立时不知道且不应当知道，并已对公司决议作合理审查的，"
+                "担保合同对公司发生效力，不转入赔偿责任（《担保制度解释》第七条）。"
+                "相对人非善意的，担保合同对公司不发生效力，赔偿责任才参照第十七条。"
+            )
         audit_note = (
             "公司对外担保可能涉及越权代表效力问题。"
             f"{selected}。{art8_note}。"
         )
     else:
         audit_note = (
-            "公司对外担保可能涉及越权代表效力问题。越权担保无效后的赔偿责任，依《担保制度解释》第17条区分："
+            "公司对外担保先看有没有决议、相对人是否善意，不能先假定担保无效。"
+            "相对人善意的，担保合同对公司发生效力（《担保制度解释》第七条）。"
+            "相对人非善意、担保合同对公司不发生效力时，赔偿责任才参照第十七条："
             f"（1）{case_both_fault}；（2）{case_guarantor_only}；（3）{case_creditor_only}。"
-            f"{art8_note}。"
+            "主合同无效导致担保合同无效的，担保人无过错的，不承担赔偿责任；"
+            "担保人有过错的，赔偿责任不超过债务人不能清偿部分的三分之一（第十七条第二款）。"
+            f"{art8_note}"
         )
 
     return {
@@ -869,7 +883,7 @@ def audit_and_reconcile_cashflow(
         if repay_amt <= interest_before and offset_fees == 0 and offset_principal == 0:
             legal_comment = (
                 f"名义还款 ¥{repay_amt:,.2f} 元不足以清偿本期利息（计息{days}天，利息 ¥{interest_before:,.2f} 元）。"
-                f"依法全额冲抵利息，冲抵本金为0元，剩余本金基数保持 ¥{current_principal:,.2f} 元不变！"
+                f"按本页顺序冲抵后，冲抵本金为0元，剩余本金基数 ¥{current_principal:,.2f} 元。双方另有约定的，按约定。"
             )
         else:
             legal_comment = (
@@ -1054,8 +1068,8 @@ def _generate_art_561_court_statement(
     unclassified_records: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     lines = []
-    lines.append("【原告方代理词/质证意见：依据《民法典》第561条驳斥被告清偿抗辩之抵充对账说明】")
-    lines.append("一、诉争借款本金基数与利率标准：")
+    lines.append("【抵充对账说明，供律师对照证据改写】")
+    lines.append("一、录入的借款本金与利率：")
     rate_line = (
         f"原告向被告出借本金人民币 {principal_amount:,.2f} 元，出借交付起算日为 {start_date}，"
         f"执行年化利率为 {rate*100:.2f}%。"
@@ -1073,8 +1087,8 @@ def _generate_art_561_court_statement(
         lines.append("本案双方就抵充顺序另有约定，故按约定顺序抵充。")
     else:
         lines.append(
-            "本案中双方并未特别约定利息与本金的任意冲抵顺序，故适用法定抵充顺序"
-            "（费用→利息→主债务）。"
+            "本页没有录入抵充顺序的特别约定，暂按法定顺序核算：先实现债权的费用，再利息，再主债务。"
+            "如果合同或还款协议另有约定，按约定。不要把本页写成双方已经确认没有约定。"
         )
     lines.append("")
 
@@ -1091,11 +1105,12 @@ def _generate_art_561_court_statement(
     else:
         lines.append("  • 被告自借款发生至今未向原告清偿任何款项，尚欠全额本金及逾期利息。")
 
-    lines.append("三、对账终审结论：")
+    lines.append("三、按本页顺序算出的余额：")
     lines.append(
-        f"截至最后结息日，被告仍拖欠原告借款本金人民币 {remaining_p:,.2f} 元，"
-        f"并拖欠未结清利息人民币 {unpaid_interest:,.2f} 元。"
-        "被告关于'还款全额冲抵本金'之抗辩，违背法定抵充顺序（当事人另有约定的除外），依法不应被采信！"
+        f"截至最后一笔已录入还款，本金余额人民币 {remaining_p:,.2f} 元，"
+        f"未结清利息人民币 {unpaid_interest:,.2f} 元。"
+        "如果没有另有约定，被告主张还款全部冲抵本金，与《民法典》第五百六十一条的顺序不一致。"
+        "是否采信由法庭结合约定和证据认定。本页不代替法庭结论。"
     )
 
     if unclassified_records:

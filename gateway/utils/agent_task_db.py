@@ -9,6 +9,7 @@ LawFlow 智律工作台 - 智能办案任务中枢与对话持久化引擎 (Agen
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -17,8 +18,12 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional
 
+from fastapi import HTTPException
+
 from gateway.core.db import connect
 from gateway.core.paths import get_vault_db_path
+
+logger = logging.getLogger("lawflow.agent_tasks")
 
 
 @contextmanager
@@ -80,6 +85,24 @@ def init_agent_task_db():
 
     if _should_seed_demo():
         seed_demo_agent_tasks()
+    scrub_demo_agent_placeholders()
+
+
+def scrub_demo_agent_placeholders() -> None:
+    """已写入的演示任务不再把占位符写成待核实的案件事实。"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE agent_tasks
+                SET description = REPLACE(description, '细节 TODO(律师核实)。', '这是功能走查任务，不是在办案件的事实或计算结果。')
+                WHERE IFNULL(description, '') LIKE '%TODO(律师核实)%'
+                  AND (title LIKE '%【演示】%' OR description LIKE '%【演示】%')
+                """
+            )
+    except Exception as e:
+        logger.warning(f"清理演示任务占位符失败: {e}")
 
 
 def seed_demo_agent_tasks() -> int:
@@ -96,35 +119,35 @@ def seed_demo_agent_tasks() -> int:
             (
                 f"task_seed_{uuid.uuid4().hex[:8]}", "default",
                 "【演示】在 02 模块生成起诉状、保全申请书与委托手续全套公文",
-                "【演示】案由为民间借贷纠纷示意。细节 TODO(律师核实)。",
+                "【演示】案由为民间借贷纠纷示意。这是功能走查任务，不是在办案件的事实或计算结果。",
                 "立案", "high", "in_progress", "2026-10-22 18:00:00", "phase1_litigation",
                 json.dumps({"target_tab": "tab-litigation"}), now_str, now_str
             ),
             (
                 f"task_seed_{uuid.uuid4().hex[:8]}", "default",
                 "【演示】核算逾期 LPR 利息并锁定证据链",
-                "【演示】按一年期 LPR 示意计算。细节 TODO(律师核实)。",
+                "【演示】按一年期 LPR 示意计算。这是功能走查任务，不是在办案件的事实或计算结果。",
                 "精算", "high", "done", "2026-10-21 17:00:00", "phase1_calc",
                 json.dumps({"target_tab": "tab-calc"}), now_str, now_str
             ),
             (
                 f"task_seed_{uuid.uuid4().hex[:8]}", "default",
                 "【演示】清洗借条与网银电子转账凭证并生成带三性核验的证据清单",
-                "【演示】核对转账回单示意。细节 TODO(律师核实)。",
+                "【演示】核对转账回单示意。这是功能走查任务，不是在办案件的事实或计算结果。",
                 "证据", "medium", "todo", "2026-10-23 12:00:00", "phase2_evidence",
                 json.dumps({"target_tab": "tab-evidence"}), now_str, now_str
             ),
             (
                 f"task_seed_{uuid.uuid4().hex[:8]}", "default",
                 "【演示】穿透检索《民法典》第667条及民间借贷司法解释关于借期利息口径",
-                "【演示】排查约定利息与逾期利息口径示意。细节 TODO(律师核实)。",
+                "【演示】排查约定利息与逾期利息口径示意。这是功能走查任务，不是在办案件的事实或计算结果。",
                 "检索", "medium", "todo", "2026-10-25 23:59:59", "phase5_statutes",
                 json.dumps({"target_tab": "tab-statutes"}), now_str, now_str
             ),
             (
                 f"task_seed_{uuid.uuid4().hex[:8]}", "default",
                 "【演示】在 05 模块进行七维深度要件推演与被告抗辩质证预案编制",
-                "【演示】推演抗辩示意。细节 TODO(律师核实)。",
+                "【演示】推演抗辩示意。这是功能走查任务，不是在办案件的事实或计算结果。",
                 "庭审", "low", "todo", "2026-11-10 09:00:00", "phase4_deep_matrix",
                 json.dumps({"target_tab": "tab-deep-matrix"}), now_str, now_str
             )
@@ -146,20 +169,32 @@ def delete_demo_agent_tasks() -> int:
         return cursor.rowcount
 
 
+def assigned_matter_id(matter_id: Optional[str]) -> str:
+    """没有选中案件时不使用 default 桶。"""
+    text = str(matter_id or "").strip()
+    if not text or text.lower() == "default":
+        return ""
+    return text
+
+
 def get_agent_tasks(
     matter_id: Optional[str] = None,
     status: Optional[str] = None,
     stage: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """查询办案任务列表"""
+    """查询办案任务列表。指定案件时不并入 matter_id = default。"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         query = "SELECT * FROM agent_tasks WHERE 1=1"
         params: List[Any] = []
 
-        if matter_id:
-            query += " AND (matter_id = ? OR matter_id = 'default')"
-            params.append(matter_id)
+        if matter_id is not None:
+            assigned = assigned_matter_id(matter_id)
+            if not assigned:
+                query += " AND 1=0"
+            else:
+                query += " AND matter_id = ?"
+                params.append(assigned)
 
         if status and status != 'all':
             query += " AND status = ?"
@@ -186,7 +221,10 @@ def get_agent_tasks(
 
 
 def create_agent_task(task_data: Dict[str, Any]) -> Dict[str, Any]:
-    """创建新办案任务"""
+    """创建新办案任务。未选择案件时不写入 default。"""
+    matter_id = assigned_matter_id(task_data.get("matter_id"))
+    if not matter_id:
+        raise HTTPException(status_code=422, detail="未选择案件，不能保存任务")
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     task_id = task_data.get("task_id") or f"task_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}"
 
@@ -203,7 +241,7 @@ def create_agent_task(task_data: Dict[str, Any]) -> Dict[str, Any]:
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             task_id,
-            task_data.get("matter_id", "default"),
+            matter_id,
             task_data.get("title", "未命名办案任务"),
             task_data.get("description", ""),
             task_data.get("stage", "立案"),
@@ -216,8 +254,10 @@ def create_agent_task(task_data: Dict[str, Any]) -> Dict[str, Any]:
             now_str
         ))
     task_data["task_id"] = task_id
+    task_data["matter_id"] = matter_id
     task_data["created_at"] = now_str
     task_data["updated_at"] = now_str
+    task_data["saved"] = True
     return task_data
 
 

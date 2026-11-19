@@ -380,6 +380,8 @@ def test_guarantee_general_6m(client):
     assert res_gen.get("is_preclusive") is True
     assert res_gen.get("final_expire_date") == "2023-07-01"
     assert "起诉主债务人" in res_gen.get("special_notice", "")
+    assert "没有约定" in res_gen.get("special_notice", "")
+    assert "不要用这六个月覆盖" in res_gen.get("special_notice", "")
 
 
 def test_guarantee_joint_6m(client):
@@ -657,24 +659,28 @@ def test_analyze_delegates_custom(client):
 # ---------------------------------------------------------------------------
 
 def test_conflict_waivable_advisor(client, seed_demo):
+    # LF-017 AC-11: 常年顾问相对方默认 PROHIBITED；开启 allow_retainer_consent 时为 WAIVABLE_WITH_CONSENT
     r_conflict_direct = client.post("/api/v1/conflict/check", json={
         "client_name": "北京知客云服科技有限公司",
         "opposing_party": "北京宏达商贸有限公司",
         "case_subject": "技术合同尾款争议",
+        "allow_retainer_consent": True,
     })
     assert r_conflict_direct.status_code == 200, r_conflict_direct.text
     c_direct = r_conflict_direct.json()
     assert c_direct.get("conflict_level") == "WAIVABLE_WITH_CONSENT"
     assert c_direct.get("requires_consent") is True
     assert c_direct.get("has_conflict") is True
-    assert any("律师法" in rule and "第三十九条" in rule for rule in c_direct.get("triggered_rules", []))
+    assert any("律师执业行为规范" in rule for rule in c_direct.get("triggered_rules", []))
 
 
 def test_conflict_prohibited_both_clients(client, seed_demo):
+    # LF-017 AC-6: 双方都是本所客户不再一律禁止，只有同一案件（is_same_matter=True）禁止代理
     r_conflict_both = client.post("/api/v1/conflict/check", json={
         "client_name": "李四",
         "opposing_party": "智科云服信息技术（北京）有限公司",
         "case_subject": "合同纠纷",
+        "is_same_matter": "是",
     })
     assert r_conflict_both.status_code == 200, r_conflict_both.text
     c_both = r_conflict_both.json()
@@ -693,7 +699,13 @@ def test_conflict_clear_certificate(client, seed_demo):
     cert = c_clear.get("clearance_certificate", {})
     assert c_clear.get("conflict_level") == "CLEAR"
     assert c_clear.get("has_conflict") is False
-    assert len(cert.get("sha256_fingerprint", "")) == 64
+    assert "在已登记的" in (c_clear.get("status_label") or "")
+    assert "未发现冲突" in (c_clear.get("status_label") or "")
+    assert cert.get("is_cleared") is False
+    assert not cert.get("certificate_no")
+    assert not cert.get("sha256_fingerprint")
+    assert "第四十二条" not in r_conflict_clear.text
+    assert "诉讼归档留底有效" not in r_conflict_clear.text
 
 
 def test_conflict_registry_list(client, seed_demo):

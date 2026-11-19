@@ -340,7 +340,10 @@ def test_i09_corporate_resolution_three_fault_cases():
     assert "不能清偿的部分承担赔偿责任" in note
     assert "不承担赔偿责任" in note
     assert "仅承担" not in note
-    assert "第8条" in note and "律师核实" in note
+    assert "第八条" in note
+    assert "全资子公司" in note
+    assert "三分之二" in note
+    assert "律师核实" not in note
 
 
 # ---------------------------------------------------------------------------

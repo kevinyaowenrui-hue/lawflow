@@ -153,6 +153,47 @@ def init_review_tables_schema():
 
     if _should_seed_demo():
         seed_demo_review_tables()
+    scrub_demo_review_placeholders()
+
+
+def scrub_demo_review_placeholders() -> None:
+    """已写入的演示阅卷表不再把占位符显示成已提取事实。"""
+    old_cell = '{"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE"'
+    new_cell = '{"value": "未录入", "confidence": 0, "source_quote": "【演示】没有对应原文", "status": "EMPTY"'
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE matter_review_tables
+                SET description = REPLACE(IFNULL(description, ''), 'TODO(律师核实)', '未录入'),
+                    rows_json = REPLACE(IFNULL(rows_json, ''), 'TODO(律师核实)', '未录入'),
+                    cells_json = REPLACE(IFNULL(cells_json, ''), ?, ?)
+                WHERE title LIKE '%【演示】%'
+                  AND (
+                    IFNULL(description, '') LIKE '%TODO(律师核实)%'
+                    OR IFNULL(rows_json, '') LIKE '%TODO(律师核实)%'
+                    OR IFNULL(cells_json, '') LIKE '%TODO(律师核实)%'
+                  )
+                """,
+                (old_cell, new_cell),
+            )
+            cursor.execute(
+                """
+                UPDATE matter_review_tables
+                SET cells_json = REPLACE(cells_json, 'TODO(律师核实)', '未录入'),
+                    rows_json = REPLACE(rows_json, 'TODO(律师核实)', '未录入'),
+                    description = REPLACE(description, 'TODO(律师核实)', '未录入')
+                WHERE title LIKE '%【演示】%'
+                  AND (
+                    IFNULL(cells_json, '') LIKE '%TODO(律师核实)%'
+                    OR IFNULL(rows_json, '') LIKE '%TODO(律师核实)%'
+                    OR IFNULL(description, '') LIKE '%TODO(律师核实)%'
+                  )
+                """
+            )
+    except Exception as e:
+        logger.warning(f"清理演示阅卷占位符失败: {e}")
 
 
 def seed_demo_review_tables() -> int:
@@ -179,48 +220,48 @@ def seed_demo_review_tables() -> int:
                 "doc_id": "doc_1",
                 "doc_title": "【演示】《企业间借款合同及最高额保证合同》.pdf",
                 "doc_type": "contract",
-                "content_text": "【演示】借款合同示意文本。细节 TODO(律师核实)。"
+                "content_text": "【演示】借款合同示意文本。日期、金额和条款都没有录入，不能当成已经提取的事实。"
             },
             {
                 "row_id": "row_doc_2",
                 "doc_id": "doc_2",
                 "doc_title": "【演示】《招商银行大额电子汇划业务凭单》.pdf",
                 "doc_type": "evidence",
-                "content_text": "【演示】电汇凭证示意。流水号 TODO(律师核实)。"
+                "content_text": "【演示】电汇凭证示意。流水号没有录入。"
             },
             {
                 "row_id": "row_doc_3",
                 "doc_id": "doc_3",
                 "doc_title": "【演示】《律师催告函及中国邮政EMS寄递详情单》.pdf",
                 "doc_type": "pleading",
-                "content_text": "【演示】催告函与 EMS 签收示意。编号 TODO(律师核实)。"
+                "content_text": "【演示】催告函与 EMS 签收示意。编号没有录入。"
             }
         ]
 
         seed_cells = {
             "row_doc_1": {
                 "col_parties": {"value": "【演示】出借人/借款人/保证人示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
-                "col_date": {"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
-                "col_amount": {"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_date": {"value": "未录入", "confidence": 0, "source_quote": "【演示】没有对应原文", "status": "EMPTY", "updated_at": now_str},
+                "col_amount": {"value": "未录入", "confidence": 0, "source_quote": "【演示】没有对应原文", "status": "EMPTY", "updated_at": now_str},
                 "col_breach": {"value": "【演示】利率约定示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
                 "col_dispute": {"value": "【演示】管辖法院示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
-                "col_evidence_opinion": {"value": "【演示】三性意见示意，细节 TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_evidence_opinion": {"value": "【演示】三性意见还没有写。真实性、合法性、关联性都要对照原件，不能把这一格当成已完成的质证意见。", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
             },
             "row_doc_2": {
                 "col_parties": {"value": "【演示】付款/收款方示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
-                "col_date": {"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
-                "col_amount": {"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_date": {"value": "未录入", "confidence": 0, "source_quote": "【演示】没有对应原文", "status": "EMPTY", "updated_at": now_str},
+                "col_amount": {"value": "未录入", "confidence": 0, "source_quote": "【演示】没有对应原文", "status": "EMPTY", "updated_at": now_str},
                 "col_breach": {"value": "凭证未约定，以主合同为准", "confidence": 0.9, "source_quote": "-", "status": "DONE", "updated_at": now_str},
                 "col_dispute": {"value": "无争议管辖约定", "confidence": 0.9, "source_quote": "-", "status": "DONE", "updated_at": now_str},
                 "col_evidence_opinion": {"value": "【演示】交付要件示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
             },
             "row_doc_3": {
                 "col_parties": {"value": "【演示】发函人/受送达人示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
-                "col_date": {"value": "TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_date": {"value": "未录入", "confidence": 0, "source_quote": "【演示】没有对应原文", "status": "EMPTY", "updated_at": now_str},
                 "col_amount": {"value": "【演示】催告清偿本息示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
                 "col_breach": {"value": "【演示】催要全部本息示意", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
                 "col_dispute": {"value": "【演示】保留起诉权利示意", "confidence": 0.9, "source_quote": "-", "status": "DONE", "updated_at": now_str},
-                "col_evidence_opinion": {"value": "【演示】时效中断示意，细节 TODO(律师核实)", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
+                "col_evidence_opinion": {"value": "【演示】催告是否中断时效，要看主张权利的日期和送达，这里没有录入，不能当成已经中断。", "confidence": 0.9, "source_quote": "【演示】", "status": "DONE", "updated_at": now_str},
             }
         }
 
@@ -232,7 +273,7 @@ def seed_demo_review_tables() -> int:
             t1_id,
             m1_id,
             "【演示】重点证据与借贷合同要素矩阵阅卷表",
-            "【演示】对本案借款协议等材料进行要素提取示意。细节 TODO(律师核实)。",
+            "【演示】对本案借款协议等材料做要素表的版式示意。没有原文的格子保持未录入，不能当成已经抽取的事实。",
             json.dumps(DEFAULT_REVIEW_COLUMNS, ensure_ascii=False),
             json.dumps(seed_rows, ensure_ascii=False),
             json.dumps(seed_cells, ensure_ascii=False),

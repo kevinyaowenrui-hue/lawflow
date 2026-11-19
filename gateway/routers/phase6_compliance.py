@@ -2,9 +2,10 @@
 LawFlow 智律工作台 - 阶段六：律所级风控合规与执业护城河 (phase6_compliance)
 核心功能：
 1. 利益冲突穿透排查中枢 (Conflict of Interest Check & Anti-Conflict Barrier):
-   - 依据《律师法》第39条及中华全国律协《律师执业行为规范》第50/51条
+   - 依据《律师法》（2017年修正文本）第三十九条；保密义务写第三十八条
+   - 全国律协《律师执业行为规范》利益冲突条款（项次待核对），未核对项次不标已核实
    - 查验直接代理冲突、常年法律顾问冲突、同案双方代理、关联企业穿透冲突、已结案历史承办冲突
-   - 签发 SHA-256 利益冲突数字无冲突验讫证书 (Clearance Certificate)
+   - 底档为空或未命中时不签发验讫证书号，也不把 is_cleared 标成真
    - 支持排查底档库查询与新案登记
 2. 大模型生成后法条强制反查与防幻觉熔断网关 (Zero-Hallucination Statute Circuit Breaker):
    - 针对大模型生成的文书、辩护词、提纲，自动正则抽取引用的所有法条
@@ -16,7 +17,7 @@ LawFlow 智律工作台 - 阶段六：律所级风控合规与执业护城河 (p
 import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from gateway.utils.conflict_checker import (
     check_conflict_of_interest,
@@ -32,6 +33,31 @@ from gateway.utils.citation_guard import (
 logger = logging.getLogger("lawflow.phase6")
 router = APIRouter(prefix="/api/v1", tags=["阶段六：律所风控合规与法条防幻觉熔断"])
 
+_NOT_CHECKED_ITEMS = (
+    "刑事案件被害人代理与辩护",
+    "分所及品牌关联所",
+    "本所人员近亲属以外的其他任职",
+)
+_NOT_CHECKED_NOTE = "本次未检查：" + "、".join(_NOT_CHECKED_ITEMS) + "。"
+
+
+def _public_conflict_result(res: Dict[str, Any]) -> Dict[str, Any]:
+    """对外结果不带验讫证书号。未核对的范围保持写明。"""
+    if not isinstance(res, dict):
+        return res
+    res.setdefault("not_checked", list(_NOT_CHECKED_ITEMS))
+    res.setdefault("not_checked_note", _NOT_CHECKED_NOTE)
+    cert = res.get("clearance_certificate")
+    if isinstance(cert, dict):
+        cert = dict(cert)
+        cert["certificate_no"] = ""
+        cert["is_cleared"] = False
+        cert["sha256_fingerprint"] = ""
+        cert["digital_fingerprint"] = ""
+        cert["handling_lawyer"] = ""
+        res["clearance_certificate"] = cert
+    return res
+
 # ==============================================================================
 # 数据模型定义
 # ==============================================================================
@@ -42,6 +68,10 @@ class ConflictCheckReq(BaseModel):
     opposing_id_or_code: Optional[str] = Field("", description="相对方身份证号或统一社会信用代码")
     related_entities: Optional[List[str]] = Field(default=[], description="关联方/母子公司/实际控制人")
     case_subject: Optional[str] = Field("", description="涉案由或争议标的")
+    is_same_matter: Optional[str] = Field(None, description="是否基于同一法律事实或同一争议（是 / 否 / 不确定）")
+    allow_retainer_consent: Optional[bool] = Field(False, description="常年顾问相对人是否允许各方知情同意豁免（默认False禁止）")
+    check_date: Optional[str] = Field(None, description="排查基准日期 YYYY-MM-DD")
+    subsequent_stage: Optional[bool] = Field(False, description="是否为原案后续审理、执行等阶段")
 
 class ConflictRegisterReq(BaseModel):
     case_name: str = Field(..., description="案件名称")
@@ -52,6 +82,16 @@ class ConflictRegisterReq(BaseModel):
     related_entities: Optional[List[str]] = Field(default=[], description="关联实体列表")
     handling_lawyer: Optional[str] = Field("主办律师", description="承办律师")
     notes: Optional[str] = Field("", description="备注说明")
+
+    @field_validator("status")
+    @classmethod
+    def validate_case_status(cls, v: Optional[str]) -> str:
+        if not v:
+            return "ACTIVE"
+        norm = v.strip().upper()
+        if norm not in ("ACTIVE", "CLOSED", "RETAINER"):
+            raise ValueError(f"status 必须为 ACTIVE / CLOSED / RETAINER 之一，非法值: '{v}'")
+        return norm
 
 class CitationAuditReq(BaseModel):
     text: str = Field(..., description="需要核验法条与司法案号真伪与现行有效性的文本")
@@ -81,10 +121,14 @@ async def api_check_conflict(req: ConflictCheckReq):
             client_id_or_code=req.client_id_or_code or "",
             opposing_id_or_code=req.opposing_id_or_code or "",
             related_entities=req.related_entities or [],
-            case_subject=req.case_subject or ""
+            case_subject=req.case_subject or "",
+            is_same_matter=req.is_same_matter,
+            allow_retainer_consent=bool(req.allow_retainer_consent),
+            check_date=req.check_date,
+            subsequent_stage=bool(req.subsequent_stage)
         )
-        # UNABLE_TO_CHECK 等业务结论直接返回（含 200），不得伪装为 CLEAR
-        return res
+        # UNABLE_TO_CHECK 等业务结论直接返回（含 200），不得伪装为已签发的无冲突证书
+        return _public_conflict_result(res)
     except Exception as e:
         logger.error(f"利益冲突排查失败: {e}", exc_info=True)
         return {

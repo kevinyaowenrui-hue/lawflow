@@ -46,6 +46,30 @@ class WorkflowStatus:
     COMPLETED = "COMPLETED"
 
 
+def _item_text(item: Any) -> str:
+    """取出诉请或抗辩里真正写了字的那一句。空对象不算已经抽出。"""
+    if isinstance(item, dict):
+        for key in ("text", "claim", "norm", "statute", "focus", "point", "defense_point"):
+            value = item.get(key)
+            if value and str(value).strip():
+                return str(value).strip()
+        return ""
+    return str(item or "").strip()
+
+
+def _has_usable_claims(step1_data: Any) -> bool:
+    """空列表、缺字段、只有空白，都要继续补全，不能当成已经有诉请。"""
+    if not isinstance(step1_data, dict) or "candidate_claims" not in step1_data:
+        return False
+    return any(_item_text(item) for item in (step1_data.get("candidate_claims") or []))
+
+
+def _has_usable_defenses(step3_data: Any) -> bool:
+    if not isinstance(step3_data, dict) or "defense_predictions" not in step3_data:
+        return False
+    return any(_item_text(item) for item in (step3_data.get("defense_predictions") or []))
+
+
 async def start_litigation_workflow(
     matter_id: str,
     case_title: str,
@@ -63,25 +87,21 @@ async def start_litigation_workflow(
 【事实陈述与案卷材料】
 {facts_text}
 
-请作为主办律师，提炼该案件的核心事实要素清单，并推荐 1-3 个适格法定案由，及建议初步诉讼请求。
+请作为办案辅助提炼事实。只使用下面已经写明的事实，不要补写协议、转账、催告或违约。
+案情没有写借款时，不要建议民间借贷，也不要引用借款合同条文。
+不要默认勾选保证责任、利息或诉讼费。把握不要写成百分比。
 严格输出 JSON 格式：
 {{
   "facts_summary": ["事实1...", "事实2..."],
   "disputed_amount": "涉案争议本金或标的额说明",
   "suggested_causes_of_action": [
-    {{"cause": "民间借贷纠纷", "confidence": "95%", "rationale": "出借转账凭证完备，借贷合同及借条明确"}},
-    {{"cause": "合同纠纷", "confidence": "70%", "rationale": "基于借款协议的通用违约责任"}}
+    {{"cause": "按录入事实选择，不要照抄", "confidence": "未计算", "rationale": "只根据上面已经写明的事实"}}
   ],
   "candidate_claims": [
-    {{"id": "claim_1", "text": "判令被告偿还原告借款本金", "default_selected": true, "category": "本金"}},
-    {{"id": "claim_2", "text": "判令被告支付利息及逾期利息（按合同约定或LPR4倍计算）", "default_selected": true, "category": "利息"}},
-    {{"id": "claim_3", "text": "判令保证人承担连带偿还责任", "default_selected": true, "category": "担保"}},
-    {{"id": "claim_4", "text": "判令被告承担本案全部诉讼费、保全费及律师费", "default_selected": true, "category": "费用"}}
+    {{"id": "claim_1", "text": "只写录入事实里已经出现的请求，不要预选，也不要写成借款", "default_selected": false, "category": "待填写"}}
   ],
   "candidate_legal_basis": [
-    {{"norm": "《中华人民共和国民法典》第六百七十五条", "desc": "借款人应当按照约定的期限返还借款"}},
-    {{"norm": "《中华人民共和国民法典》第六百七十六条", "desc": "借款人未按照约定期限返还借款应当支付逾期利息"}},
-    {{"norm": "《中华人民共和国民法典》第六百八十八条", "desc": "连带责任保证人偿还义务"}}
+    {{"norm": "只引用与录入事实对应的条文", "desc": "没有写到的请求权不要补，不要默认借款合同条文"}}
   ]
 }}
 """
@@ -97,31 +117,92 @@ async def start_litigation_workflow(
     except Exception as e:
         logger.warning(f"工作流 Step 1 大模型提取失败，启动规则兜底: {e}")
 
-    # 规则兜底保证 100% 可用
-    if not step1_data or "candidate_claims" not in step1_data:
+    # 模型没抽出，或抽出空列表时，只按录入文字补全。补不出就留空，不写入别的案子。
+    if not _has_usable_claims(step1_data):
+        facts = (facts_text or "").strip()
+        mentions_loan = any(word in facts for word in ("借款", "借贷", "出借"))
+        mentions_sale = any(word in facts for word in ("买卖", "货款", "购销"))
+        mentions_guarantee = any(word in facts for word in ("保证", "担保"))
+        if mentions_loan:
+            suggested = [{
+                "cause": "民间借贷纠纷",
+                "confidence": "未计算",
+                "rationale": "录入文字里出现借款或借贷。合同是否成立、款项是否交付，还要核对。",
+            }]
+            claims = [{
+                "id": "claim_1",
+                "text": "请求返还录入文字中的借款。金额以律师核对后的数字为准，本页不预选。",
+                "default_selected": False,
+                "category": "本金",
+            }]
+            basis = [
+                {"norm": "《中华人民共和国民法典》第六百六十七条", "desc": "借款合同是借款人向贷款人借款，到期返还借款并支付利息的合同。是否属于借款，以录入事实为准。"},
+                {"norm": "《中华人民共和国民法典》第六百七十五条", "desc": "借款人应当按照约定的期限返还借款。没有约定期限的，不能把本条直接写成已经到期。"},
+            ]
+        elif mentions_sale:
+            suggested = [{
+                "cause": "买卖合同纠纷",
+                "confidence": "未计算",
+                "rationale": "录入文字里出现买卖或货款。合同是否成立、货物是否交付，还要核对。",
+            }]
+            claims = [{
+                "id": "claim_1",
+                "text": "请求支付录入文字中的货款。金额以律师核对后的数字为准，本页不预选。",
+                "default_selected": False,
+                "category": "货款",
+            }]
+            basis = [
+                {"norm": "《中华人民共和国民法典》第五百九十五条", "desc": "买卖合同是出卖人转移标的物的所有权于买受人，买受人支付价款的合同。"},
+                {"norm": "《中华人民共和国民法典》第六百二十六条", "desc": "买受人应当按照约定的数额和支付方式支付价款。"},
+            ]
+        else:
+            suggested = [{
+                "cause": "案由待律师选择",
+                "confidence": "未计算",
+                "rationale": "录入文字不足以建议案由。不要默认成民间借贷。",
+            }]
+            claims = []
+            basis = []
+        if mentions_guarantee:
+            claims.append({
+                "id": "claim_guarantee",
+                "text": "录入文字提到保证。保证方式、保证期间和是否已经起诉主债务人，还要核对，不预选连带责任。",
+                "default_selected": False,
+                "category": "保证",
+            })
         step1_data = {
             "facts_summary": [
-                f"委托人【{client_role}】因合同履行与款项结算与对方发生实质争议。",
-                "双方此前签署有书面协议或转账往来记录，约定权利义务明确。",
-                "履行期届满后，对方未能依约清偿，构成实质性履约违约。"
+                "模型没有抽出事实。下面只保留律师录入的原文，不补写协议、转账或违约。",
+                facts[:800] if facts else "律师还没有录入事实。",
             ],
-            "disputed_amount": "以合同约定义务及实际银行打款凭据为准",
-            "suggested_causes_of_action": [
-                {"cause": "民间借贷纠纷", "confidence": "92%", "rationale": "符合《民法典》借款合同编及司法解释关于借贷关系的要件"},
-                {"cause": "买卖/服务合同违约纠纷", "confidence": "65%", "rationale": "备选违约金追偿路径"}
-            ],
-            "candidate_claims": [
-                {"id": "claim_1", "text": "判令被告偿还原告本金/货款/借款", "default_selected": True, "category": "本金"},
-                {"id": "claim_2", "text": "判令被告支付逾期利息与违约金（自违约之日起算至实际清偿之日止）", "default_selected": True, "category": "利息与违约金"},
-                {"id": "claim_3", "text": "判令连带责任人/保证人对上述款项承担连带清偿责任", "default_selected": True, "category": "担保追偿"},
-                {"id": "claim_4", "text": "本案全部案件受理费、保全费由各被告共同承担", "default_selected": True, "category": "程序费用"}
-            ],
-            "candidate_legal_basis": [
-                {"norm": "《中华人民共和国民法典》第五百零九条", "desc": "当事人应当按照约定全面履行自己的义务"},
-                {"norm": "《中华人民共和国民法典》第五百七十七条", "desc": "当事人一方不履行合同义务应当承担继续履行或者采取补救措施等违约责任"},
-                {"norm": "《中华人民共和国民法典》第六百七十五条", "desc": "借款人应当按照约定的期限返还借款"}
-            ]
+            "disputed_amount": "金额未从案情中算定，以律师核对后的数字为准",
+            "suggested_causes_of_action": suggested,
+            "candidate_claims": claims,
+            "candidate_legal_basis": basis,
         }
+
+    from gateway.utils.practice_workflow import suggest_claim_tracks
+    mixed_tracks = suggest_claim_tracks(facts_text or "")
+    if len(mixed_tracks) > 1:
+        step1_data["must_split"] = True
+        step1_data["suggested_causes_of_action"] = [
+            {
+                "cause": item["cause"],
+                "confidence": "未计算",
+                "rationale": item["reason"],
+                "track": item["track"],
+            }
+            for item in mixed_tracks
+        ]
+        step1_data["candidate_claims"] = [
+            {
+                "id": f"claim_{index}",
+                "text": item["pleading"],
+                "default_selected": False,
+                "category": item["track"],
+            }
+            for index, item in enumerate(mixed_tracks, 1)
+        ]
 
     # 工作流总状态持久化字典
     step_data = {
@@ -192,7 +273,7 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
     if current_step == WorkflowStep.STEP2_CLAIMS_BREAKPOINT:
         # 保存人工确认的 Step 2 数据
         step_data["step2"] = {
-            "confirmed_cause": human_confirmed_data.get("confirmed_cause") or human_confirmed_data.get("cause_of_action") or "民间借贷纠纷",
+            "confirmed_cause": human_confirmed_data.get("confirmed_cause") or human_confirmed_data.get("cause_of_action") or "案由待律师选择",
             "confirmed_claims": human_confirmed_data.get("confirmed_claims") or [],
             "confirmed_legal_basis": human_confirmed_data.get("confirmed_legal_basis") or human_confirmed_data.get("confirmed_statutes") or [],
             "human_notes": human_confirmed_data.get("human_notes") or human_confirmed_data.get("lawyer_notes") or "",
@@ -212,10 +293,8 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
 【案件事实】
 {step_data['facts_text']}
 
-请针对上述律师核准的诉讼请求，从对方被告律师（Red Team）视角深度预测：
-1. 对方最可能提出的 3 个实体或程序抗辩焦点；
-2. 每一个抗辩焦点的反驳预案与证据补强建议；
-3. 本案现行适用的裁判规则指引。
+请只根据上面已经确认的案由和事实预测抗辩。案由不是民间借贷时，不要预测砍头息、四倍利率或保证期间。不要把预测写成对方已经提出的抗辩。
+示例只说明字段，不要照抄示例里的借款抗辩。
 
 严格输出 JSON：
 {{
@@ -223,28 +302,28 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
     {{
       "id": "def_1",
       "focus": "诉讼时效是否经过抗辩",
-      "opponent_argument": "主张借款期限届满后超过3年未主张权利，胜诉权已消灭",
-      "counter_strategy": "出示微信催收记录、EMS寄递催告函，证明时效发生连续中断",
+      "opponent_argument": "主张借款期限届满后超过三年没有起诉，诉讼时效已过，可以拒绝履行",
+      "counter_strategy": "诉讼时效届满后，义务人可以提出不履行的抗辩，债权本身不消灭。催告、对方同意履行可以中断时效，但要核对主张权利的日期和送达，不能把没有日期的催告直接写成已经中断（《民法典》第一百八十八条、第一百九十二条、第一百九十五条）。",
       "recommended_action": "将催收函及邮寄签收单作为证据四重点质证"
     }},
     {{
       "id": "def_2",
       "focus": "利息超标或砍头息抗辩",
-      "opponent_argument": "主张出借时扣除了中介费或约定利率超过LPR4倍红线",
-      "counter_strategy": "依银行转账流水证明实际全额到账500万无扣减，年利率14.4%严守司法解释上限",
+      "opponent_argument": "主张出借时预先扣除了利息或费用，或者利息、逾期利息、违约金和其他费用合计超过合同成立时一年期贷款市场报价利率的四倍",
+      "counter_strategy": "用转账流水说明实际交付金额。预先在本金中扣除的利息，不能计入本金。超过四倍的合计部分不予支持，四倍以内仍可主张。不要把某一个固定年利率写成司法解释规定的上限（《民间借贷规定》第二十五条、第二十六条、第二十九条）。",
       "recommended_action": "在起诉状中附带利息精算清单附表"
     }},
     {{
       "id": "def_3",
       "focus": "保证人一般保证或保证期限抗辩",
-      "opponent_argument": "主张保证合同未明确连带责任推定为一般保证，或主债务到期后6个月内未起诉",
-      "counter_strategy": "出示《保证合同》第3条明确载明'连带责任保证'字样，且催告函在6个月内送达",
+      "opponent_argument": "主张没有约定保证方式所以是一般保证，或者保证期间已经过了",
+      "counter_strategy": "没有约定保证方式或者约定不明的，按一般保证。已经写明连带责任保证的，从约定。保证期间没有约定、约定不明，或者约定期间早于主债务履行期限或同时届满的，才是届满之日起六个月。一般保证必须在保证期间内起诉主债务人或者申请仲裁，催告函不够。连带责任保证必须在保证期间内向保证人请求承担保证责任（《民法典》第六百八十六条、第六百九十二条、第六百九十三条）。",
       "recommended_action": "诉状中单列保证合同条款字样与送达凭证"
     }}
   ],
   "applicable_rules": [
-    "最高人民法院关于审理民间借贷案件适用法律若干问题的规定（2020修正）第二十八条",
-    "中华人民共和国民法典第六百八十八条（连带责任保证）"
+    "《最高人民法院关于审理民间借贷案件适用法律若干问题的规定》第二十五条、第二十六条、第二十九条",
+    "《中华人民共和国民法典》第一百九十二条、第六百八十六条、第六百八十八条、第六百九十二条、第六百九十三条"
   ]
 }}
 """
@@ -260,29 +339,55 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
         except Exception as e:
             logger.warning(f"Step 3 预测失败，使用标准规则库兜底: {e}")
 
-        if not step3_data or "defense_predictions" not in step3_data:
-            step3_data = {
-                "defense_predictions": [
-                    {
-                        "id": "def_1",
-                        "focus": "诉讼时效抗辩",
-                        "opponent_argument": "对方常以债权超期、未及时催告为由主张时效抗辩",
-                        "counter_strategy": "通过出借后持续催款凭据、还款承诺书主张时效中断",
-                        "recommended_action": "固定时效中断的电子数据与通信记录"
-                    },
-                    {
-                        "id": "def_2",
-                        "focus": "款项性质与对价真实性抗辩",
-                        "opponent_argument": "主张转账款项系投资款、预付款或其他往来款而非借款",
-                        "counter_strategy": "结合双方往来合同、汇款凭据附言及结算确认书形成闭环证据链",
-                        "recommended_action": "提供完整银行交易电子回单"
-                    }
-                ],
-                "applicable_rules": [
-                    "《中华人民共和国民法典》第六百七十五条、第六百七十六条",
-                    "《最高人民法院关于审理民间借贷案件适用法律若干问题的规定》"
-                ]
-            }
+        if not _has_usable_defenses(step3_data):
+            facts = step_data.get("facts_text") or ""
+            is_loan = ("借贷" in cause) or ("借款" in cause) or any(word in facts for word in ("借款", "借贷", "出借"))
+            if is_loan:
+                step3_data = {
+                    "defense_predictions": [
+                        {
+                            "id": "def_1",
+                            "focus": "诉讼时效是否经过",
+                            "opponent_argument": "如果期限届满后超过三年没有主张权利，对方可能提出诉讼时效抗辩。本案是否超过，要核对起算日，本页没有计算。",
+                            "counter_strategy": "催告或对方同意履行，要留下日期和能够证明送达的记录，才讨论是否中断。一次记录不能写成已经中断。债权不因期间届满而消灭。",
+                            "recommended_action": "核对主张权利的日期和送达材料",
+                        },
+                        {
+                            "id": "def_2",
+                            "focus": "款项性质",
+                            "opponent_argument": "对方可能主张转账不是借款。本页没有认定款项性质。",
+                            "counter_strategy": "把约定、转账和聊天记录对照着看。聊天承认不等于利息约定已经证明。",
+                            "recommended_action": "核对实际交付凭证和款项用途",
+                        },
+                    ],
+                    "applicable_rules": [
+                        "《中华人民共和国民法典》第一百八十八条、第一百九十二条、第一百九十五条",
+                        "《中华人民共和国民法典》第六百六十七条、第六百七十五条",
+                    ],
+                }
+            else:
+                step3_data = {
+                    "defense_predictions": [
+                        {
+                            "id": "def_1",
+                            "focus": "合同是否成立、是否已经履行",
+                            "opponent_argument": "对方可能否认合同成立，或者否认已经收货、付款。本页没有认定。",
+                            "counter_strategy": "对照录入的合同、签收和付款材料。没有写进案情的交付或违约，不要补写。",
+                            "recommended_action": "核对原件和签收人是否有权受领",
+                        },
+                        {
+                            "id": "def_2",
+                            "focus": "诉讼时效是否经过",
+                            "opponent_argument": "期间是否经过要核对起算日。本页没有计算。",
+                            "counter_strategy": "催告或对方同意履行，要有日期和送达记录，才讨论是否中断。不能把没有日期的催告写成已经中断。",
+                            "recommended_action": "核对主张权利的日期",
+                        },
+                    ],
+                    "applicable_rules": [
+                        "《中华人民共和国民法典》第五百零九条、第五百七十七条",
+                        "《中华人民共和国民法典》第一百八十八条、第一百九十二条",
+                    ],
+                }
 
         step_data["step3"] = step3_data
 
@@ -302,7 +407,7 @@ async def _advance_workflow_step_core(conn, workflow_id: str, human_confirmed_da
             "current_step": next_step,
             "step_status": step_status,
             "step_name": "攻防策略与争议焦点核准（人工断点）",
-            "instruction": "系统已穿透法规库并预测对方 3 大抗辩焦点，请律师勾选应对策略与补充论辩意见，点击'核准并生成文书终稿'。",
+            "instruction": "抗辩预测来自模型或规则提示，不是已经检索到的裁判。请律师勾选后再生成文书。",
             "step_data": step_data
         }
 

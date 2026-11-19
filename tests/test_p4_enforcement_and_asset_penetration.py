@@ -96,19 +96,36 @@ def test_full_facts_legal_wording_i11():
     # 加速到期仅可在带公司不能清偿到期债务条件时出现
     if "加速到期" in app_doc:
         assert "公司不能清偿到期债务" in app_doc
-    assert "裁定追加" in app_doc or "申请追加" in app_doc
+    assert "依法裁定追加" not in app_doc
+    assert "第八十八条" in app_doc
+    assert "不要把第十七条、第十九条直接作为" in app_doc
 
     probes_blob = json.dumps(res["probes"], ensure_ascii=False)
+    assert "不能直接按《追加规定》第二十条申请追加" in app_doc
+    assert "财产不足以清偿" in app_doc
+    assert "未在线逐字核对" not in probes_blob
+    assert "一年内行使" in probes_blob
     assert "另行提起诉讼" in probes_blob
     assert "第28条" not in probes_blob and "第31条" not in probes_blob
     assert "第二十八条" not in probes_blob and "第三十一条" not in probes_blob
     assert "第七百四十五条" in probes_blob or "第745条" in probes_blob
+    assert "第六十五条" in probes_blob
+    assert "第六十七条" in probes_blob
+    assert "TODO(律师核实)" not in probes_blob
     assert "第五百四十一条" in probes_blob or "第541条" in probes_blob
     assert "所有权保留" not in probes_blob or "融资租赁" in probes_blob
 
     lawsuit = res["objection_lawsuit_text"]
-    assert "判令" in lawsuit  # 执行异议之诉起诉状可保留判令
+    assert "判令" in lawsuit
     assert "第二十八条" not in lawsuit and "第三十一条" not in lawsuit
+    assert "原告是案外人" in lawsuit
+    assert "准予继续执行" not in lawsuit
+    assert "属于第三人的责任财产" not in lawsuit
+    assert "裁定驳回案外人异议" in probes_blob
+    assert "不是申请执行人起诉" in probes_blob
+    assert res.get("recoverable_potential") in (None, 0, 0.0)
+    assert "不把这些金额计入已经可以执行的财产" in res["overall_strategy"]
+    assert "不能计入已经可以执行的财产" in probes_blob
 
 
 def test_qualitative_labels_only_with_evidence():

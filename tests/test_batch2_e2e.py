@@ -15,6 +15,7 @@ def vault_ready(client, seed_demo):
     return client
 
 
+# 下面的 350 万和 14.5% 是本测试自己提交的示例案情和律师勾选，不是抽不出诉请时的默认值。
 @pytest.fixture
 def loan_matter(vault_ready):
     client = vault_ready
@@ -203,3 +204,36 @@ def test_workflow_completes_with_final_draft(vault_ready, started_workflow):
     assert len(final_draft["final_pleading_text"]) > 400
     assert "citation_audit" in final_draft
     assert final_draft["citation_audit"].get("has_abrogated_laws") is False
+
+
+def test_workflow_fallback_does_not_invent_a_loan(vault_ready, monkeypatch):
+    async def _no_model(*args, **kwargs):
+        raise RuntimeError("no model")
+
+    monkeypatch.setattr("gateway.utils.workflow_engine.ollama_client.generate", _no_model)
+    client = vault_ready
+    matter = client.post("/api/v1/vault/matters", json={
+        "title": "钢材买卖欠款",
+        "cause_of_action": "买卖合同纠纷",
+        "court_name": "某基层人民法院",
+        "plaintiff_name": "甲公司",
+        "defendant_name": "乙公司",
+        "summary": "甲公司向乙公司供应钢材，乙公司签收后未付货款。",
+    })
+    assert matter.status_code == 200, matter.text
+    matter_id = matter.json()["matter"]["matter_id"]
+    started = client.post("/api/v1/vault/workflows/start", json={
+        "matter_id": matter_id,
+        "initial_facts": "甲公司向乙公司供应钢材，乙公司签收后未付货款。",
+        "cause_of_action": "买卖合同纠纷",
+    })
+    assert started.status_code == 200, started.text
+    blob = started.text
+    assert "92%" not in blob
+    assert "实质性履约违约" not in blob
+    assert "连带清偿责任" not in blob
+    wf = started.json()["workflow"]
+    assert wf["step1_facts"]["cause_of_action"] == "买卖合同纠纷"
+    claims = wf["step2_claims"]["candidate_claims"]
+    assert claims
+    assert all("连带" not in text for text in claims)

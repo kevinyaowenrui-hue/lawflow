@@ -11,7 +11,7 @@ export const ENFORCEMENT_TAB_HTML = `
       <div style="display: flex; gap: 10px; margin-bottom: 16px; border-bottom: 2px solid rgba(0,0,0,0.06); padding-bottom: 8px;">
         <button id="btn-subtab-enforcement" class="tab-sub-btn active" onclick="switchDeepMatrixSubTab('pane-deep-enforcement')" style="font-weight: 700; font-size: 13px; padding: 7px 16px; border-radius: 6px; cursor: pointer; border: 1px solid var(--accent-amber-border); background: var(--bg-card); color: var(--accent-amber); display: inline-flex; align-items: center; gap: 6px;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-          <span>⚡ 执行终本破局·财产线索穿透与追加被执行人大屏 (P4 级)</span>
+          <span>执行追加要件审查</span>
         </button>
         <button id="btn-subtab-classic-matrix" class="tab-sub-btn" onclick="switchDeepMatrixSubTab('pane-deep-matrix-classic')" style="font-weight: 600; font-size: 13px; padding: 7px 16px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border-color); background: transparent; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
@@ -27,24 +27,37 @@ export const ENFORCEMENT_TAB_HTML = `
             <div>
               <div style="display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 16px; font-weight: 800; color: var(--text-primary); letter-spacing: 0.5px;">执行财产线索穿透与追加被执行人工作台</span>
-                <span class="badge" style="background: rgba(180, 52, 52, 0.12); color: #B43434; font-weight: 700; border: 1px solid rgba(180, 52, 52, 0.2);">终本破局</span>
+                <span class="badge" style="background: rgba(180, 52, 52, 0.12); color: #B43434; font-weight: 700; border: 1px solid rgba(180, 52, 52, 0.2);">追加审查</span>
                 <span class="badge" style="background: rgba(46, 125, 50, 0.12); color: #2E7D32; font-weight: 700; border: 1px solid rgba(46, 125, 50, 0.2);">新《公司法》&追加规定</span>
               </div>
               <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                基于用户输入事实运行四大探针；缺事实时返回 INSUFFICIENT_FACTS。演示案请点「载入演示案（use_demo）」。
+                基于下方已填事实运行四大探针；缺事实时返回事实不足，不编造结论。
               </div>
             </div>
             <div style="display: flex; gap: 8px;">
-              <button class="btn btn-secondary" onclick="load120MEnforcementPreset()" style="font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
-                <span>⚡ 载入演示案（use_demo）· 非真实案例</span>
-              </button>
-              <span id="enf-demo-badge" style="display:none; font-size:11px; color:#B45309; background:#FEF3C7; padding:2px 8px; border-radius:4px; align-self:center;">演示数据·非真实案例</span>
               <button class="btn btn-primary" onclick="runEnforcementAuditUI()" style="font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                <span>启动穿透式财产侦测与责任倒置引擎</span>
+                <span>按已填事实审查追加要件</span>
               </button>
             </div>
+          </div>
+
+          <div style="margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+            <div class="form-group"><label class="form-label">执行法院</label><input aria-label="执行法院" type="text" id="enf-input-court" value=""></div>
+            <div class="form-group"><label class="form-label">执行案号</label><input aria-label="执行案号" type="text" id="enf-input-case-no" value=""></div>
+            <div class="form-group"><label class="form-label">申请执行人</label><input aria-label="申请执行人" type="text" id="enf-input-applicant" value=""></div>
+            <div class="form-group"><label class="form-label">被执行人企业</label><input aria-label="被执行人企业" type="text" id="enf-input-debtor" value=""></div>
+            <div class="form-group"><label class="form-label">标的额（元）</label><input aria-label="执行标的额" type="number" id="enf-input-claim" value=""></div>
+            <div class="form-group"><label class="form-label">查明账面存款（元）</label><input aria-label="查明账面存款" type="number" id="enf-input-balance" value=""></div>
+            <div class="form-group"><label class="form-label">实控人/原股东</label><input aria-label="实控人或原股东" type="text" id="enf-input-controller" value=""></div>
+            <div class="form-group"><label class="form-label">受让人</label><input aria-label="股权受让人" type="text" id="enf-input-transferee" value=""></div>
+            <div class="form-group"><label class="form-label">注册资本（元）</label><input aria-label="注册资本" type="number" id="enf-input-capital" value=""></div>
+            <div class="form-group"><label class="form-label">认缴比例（0-1）</label><input aria-label="认缴比例" type="number" step="0.01" id="enf-input-ratio" value=""></div>
+            <div class="form-group" style="display:flex; align-items:flex-end; gap:8px;">
+              <label style="font-size:12px; color:var(--text-secondary);"><input type="checkbox" id="enf-input-one-person" aria-label="一人有限责任公司"> 一人有限公司</label>
+              <label style="font-size:12px; color:var(--text-secondary);"><input type="checkbox" id="enf-input-unable-pay" aria-label="公司不能清偿到期债务"> 不能清偿到期债务</label>
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;"><label class="form-label">股权转让 / 混同流水等事实备注</label><textarea aria-label="执行事实备注" id="enf-input-notes" rows="3" class="quick-input" placeholder="例如：某年某月股权零对价转让；公私账户混同流水要点。缺证据处写明待补。"></textarea></div>
           </div>
 
           <!-- 核心指标条 -->
@@ -60,14 +73,14 @@ export const ENFORCEMENT_TAB_HTML = `
               <div style="font-size: 11px; color: #B43434; margin-top: 2px;">无车无房无社保 (终本死局)</div>
             </div>
             <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px;">
-              <div style="font-size: 11px; color: #2E7D32; font-weight: 600;">穿透锁定可执行责任财产</div>
+              <div style="font-size: 11px; color: #2E7D32; font-weight: 600;">另诉财产不计入可执行金额</div>
               <div style="font-size: 20px; font-weight: 800; color: #2E7D32; margin-top: 2px;" id="enf-kpi-recoverable">【待填写】</div>
-              <div style="font-size: 11px; color: #2E7D32; margin-top: 2px;">覆盖率 99.6% (出资+豪宅+设备)</div>
+              <div style="font-size: 11px; color: #2E7D32; margin-top: 2px;">须有证据，不预估覆盖率</div>
             </div>
             <div style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px;">
-              <div style="font-size: 11px; color: var(--accent-amber); font-weight: 600;">击穿破局执行胜率预估</div>
-              <div style="font-size: 20px; font-weight: 800; color: var(--accent-amber); margin-top: 2px;" id="enf-kpi-rate">92%</div>
-              <div style="font-size: 11px; color: var(--accent-amber); margin-top: 2px;">四维法定请求权完备度 100%</div>
+              <div style="font-size: 11px; color: var(--accent-amber); font-weight: 600;">要件是否齐备</div>
+              <div style="font-size: 20px; font-weight: 800; color: var(--accent-amber); margin-top: 2px;" id="enf-kpi-rate">—</div>
+              <div style="font-size: 11px; color: var(--accent-amber); margin-top: 2px;">不提供胜率</div>
             </div>
           </div>
         </div>
@@ -126,7 +139,7 @@ export const ENFORCEMENT_TAB_HTML = `
 
           <!-- 文书正文预览区 -->
           <div id="enf-doc-preview" style="background: #FFFFFF; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; font-family: '仿宋_GB2312', 'FangSong', 'SimSun', serif; font-size: 13.5px; line-height: 1.8; color: #1c1c1c; max-height: 400px; overflow-y: auto; white-space: pre-wrap;">
-            点击上方【启动穿透式财产侦测与责任倒置引擎】即可生成符合执行局审查标准的规范公文...
+            点击上方【按已填事实审查追加要件】生成申请书草稿。缺事实时只提示事实不足，不估算胜率。
           </div>
         </div>
       </div><!-- /#pane-deep-enforcement -->
@@ -139,11 +152,11 @@ export const ENFORCEMENT_TAB_HTML = `
           <!-- 卷宗选择器 -->
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <div style="display: flex; flex-direction: column; gap: 3px;">
-              <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.5px;">一手真实卷宗预置载入</span>
+              <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.5px;">本案事实，或手动打开演示卷宗</span>
               <select aria-label="deep case preset"  id="deep-case-preset" onchange="changeDeepPreset()" style="font-weight: 600; min-width: 200px; max-width: 100%; padding: 6px 10px;">
-                <option value="case_loan_intermingled">张三诉李四民间借贷纠纷案（涉及第三方代付王五与定金抗辩）</option>
-                <option value="case_tech_development">智科云服诉华腾物流技术开发合同纠纷案（上线商用拟制验收与无纸质终验单抗辩）</option>
-                <option value="custom">🎯 当前在办真实卷宗（自定义输入 / 全局上下文实时推演）</option>
+                <option value="custom" selected>当前案件（填写事实后再推演）</option>
+                <option value="case_loan_intermingled">演示：张三诉李四民间借贷（不是在办案件）</option>
+                <option value="case_tech_development">演示：智科云服诉华腾物流（不是在办案件）</option>
               </select>
             </div>
             
@@ -170,7 +183,7 @@ export const ENFORCEMENT_TAB_HTML = `
         </div>
 
         <!-- 真实卷宗动态喂入输入面板 (当选择自定义卷宗或点击流转时展开) -->
-        <div id="deep-custom-dossier-panel" style="display: none; margin-top: 16px; border-top: 1px solid var(--border-hairline); padding-top: 14px; background: #FCFBF9; border-radius: var(--radius-sm); padding: 14px 16px;">
+        <div id="deep-custom-dossier-panel" style="display: block; margin-top: 16px; border-top: 1px solid var(--border-hairline); padding-top: 14px; background: #FCFBF9; border-radius: var(--radius-sm); padding: 14px 16px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 13px; font-weight: 700; color: var(--primary-navy);">在办真实卷宗深度推演输入面板 (Real Dossier Input)</span>
@@ -199,34 +212,32 @@ export const ENFORCEMENT_TAB_HTML = `
             </div>
             <div>
               <label style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">原告/权利人</label>
-              <input aria-label="deep custom p"  type="text" id="deep-custom-p" class="quick-input" value="李四" style="margin-top: 3px;">
+              <input aria-label="deep custom p"  type="text" id="deep-custom-p" class="quick-input" value="" placeholder="填写本案原告" style="margin-top: 3px;">
             </div>
             <div>
               <label style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">被告/义务人</label>
-              <input aria-label="deep custom d"  type="text" id="deep-custom-d" class="quick-input" value="张三" style="margin-top: 3px;">
+              <input aria-label="deep custom d"  type="text" id="deep-custom-d" class="quick-input" value="" placeholder="填写本案被告" style="margin-top: 3px;">
             </div>
             <div>
               <label style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">主张标的额 (元)</label>
-              <input aria-label="deep custom amount"  type="number" id="deep-custom-amount" class="quick-input" value="500000" step="5000" style="margin-top: 3px;">
+              <input aria-label="deep custom amount"  type="number" id="deep-custom-amount" class="quick-input" value="" placeholder="主张金额" step="5000" style="margin-top: 3px;">
             </div>
           </div>
 
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 10px;">
             <div>
               <label style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">案件事实经过与争议要点 (Facts & Narrative)</label>
-              <textarea aria-label="粘贴案件事实、借款或交易往来经过..."  id="deep-custom-facts" class="quick-input" rows="3" placeholder="粘贴案件事实、借款或交易往来经过..." style="margin-top: 3px; font-size: 12px; line-height: 1.5;">2023年3月10日，被告张三因资金周转困难向原告李四借款50万元，约定借期半年，年利率6%。原告当天通过招商银行全额转账。借期届满后原告多次通过微信及电话催讨，被告以工程款未结为由推脱，至今分文未还。</textarea>
+              <textarea aria-label="粘贴案件事实、借款或交易往来经过..."  id="deep-custom-facts" class="quick-input" rows="3" placeholder="粘贴本案事实、借款或交易往来经过。不要留示例故事。" style="margin-top: 3px; font-size: 12px; line-height: 1.5;"></textarea>
             </div>
             <div>
               <label style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">原始在卷证据材料清单 (Evidence Notes)</label>
-              <textarea aria-label="证据一：借条原件&#10;证据二：招行转账50万网银电子回单&#10;证据三：公证书提取微信催款记录"  id="deep-custom-evidence" class="quick-input" rows="3" placeholder="证据一：借条原件&#10;证据二：招行转账50万网银电子回单&#10;证据三：公证书提取微信催款记录" style="margin-top: 3px; font-size: 12px; line-height: 1.5; font-family: var(--font-mono);">证据一：2023年3月10日李四出具借条原件
-证据二：招商银行个人网银电子回单（转入指定王五建行账户50万元）
-证据三：方圆公证处电子数据保全公证书（微信催讨与李四自认欠款语音）</textarea>
+              <textarea aria-label="证据一：借条原件&#10;证据二：招行转账50万网银电子回单&#10;证据三：公证书提取微信催款记录"  id="deep-custom-evidence" class="quick-input" rows="3" placeholder="证据一：借条原件&#10;证据二：银行转账回单&#10;证据三：催款记录" style="margin-top: 3px; font-size: 12px; line-height: 1.5; font-family: var(--font-mono);"></textarea>
             </div>
           </div>
 
           <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
             <div style="font-size: 11.5px; color: var(--text-muted);" id="deep-custom-statutes-hint">
-              已关联当前在办案件请求权实体法条: <span id="deep-custom-statutes-count" style="color:var(--accent-amber); font-weight:700;">3</span> 条
+              已关联当前在办案件请求权实体法条: <span id="deep-custom-statutes-count" style="color:var(--accent-amber); font-weight:700;">0</span> 条
             </div>
             <button type="button" class="btn btn-primary btn-sm" onclick="submitCustomDeepMatrixAnalyze()" style="display: inline-flex; align-items: center; gap: 6px;">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
@@ -239,23 +250,23 @@ export const ENFORCEMENT_TAB_HTML = `
         <div class="metric-summary-box" style="margin-top: 16px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
           <div class="metric-item">
             <span class="metric-label">构成要件完备率</span>
-            <span class="metric-value highlight" id="deep-metric-score">100%</span>
-            <span class="metric-sub" id="deep-metric-status" style="color: var(--status-valid); font-weight: 600;">【闭环完备·已达起诉标准】</span>
+            <span class="metric-value highlight" id="deep-metric-score">—</span>
+            <span class="metric-sub" id="deep-metric-status" style="color: var(--status-warn); font-weight: 600;">尚未推演，不能据此决定起诉</span>
           </div>
           <div class="metric-item">
             <span class="metric-label">一手原始卷宗锚定</span>
-            <span class="metric-value" id="deep-metric-raw">4 份原件</span>
-            <span class="metric-sub">100% 具备行号与 SHA-256 防伪</span>
+            <span class="metric-value" id="deep-metric-raw">—</span>
+            <span class="metric-sub" id="deep-metric-raw-sub">还没有录入材料，不能代替原件</span>
           </div>
           <div class="metric-item">
             <span class="metric-label">侦测到的致命冲突</span>
-            <span class="metric-value" id="deep-metric-conflicts" style="color: var(--status-warn);">3 项高危破绽</span>
-            <span class="metric-sub">代付主体 / 利率超标 / 倒签反言</span>
+            <span class="metric-value" id="deep-metric-conflicts" style="color: var(--status-warn);">—</span>
+            <span class="metric-sub">推演后显示冲突项</span>
           </div>
           <div class="metric-item">
             <span class="metric-label">执业红线安全门禁</span>
-            <span class="metric-value" id="deep-metric-guard" style="color: var(--status-valid);">PASS</span>
-            <span class="metric-sub">已阻断 24% 高利 / 时效充裕</span>
+            <span class="metric-value" id="deep-metric-guard" style="color: var(--text-muted);">未审查</span>
+            <span class="metric-sub" id="deep-metric-guard-sub">不代表利率或时效已经处理</span>
           </div>
         </div>
       </div>
@@ -402,35 +413,47 @@ export function renderTabEnforcement() {
       }
     }
 
-    let enforcementUseDemoFlag = false;
-
-    function load120MEnforcementPreset() {
-      enforcementUseDemoFlag = true;
-      const badge = document.getElementById('enf-demo-badge');
-      if (badge) badge.style.display = 'inline-block';
-      showToast("已载入演示数据·非真实案例（use_demo=true）");
-      runEnforcementAuditUI();
+    function _enfNum(id) {
+      const raw = document.getElementById(id)?.value;
+      if (raw === undefined || raw === null || String(raw).trim() === '') return null;
+      const n = parseFloat(raw);
+      return Number.isNaN(n) ? null : n;
     }
 
     async function runEnforcementAuditUI() {
       try {
-        showToast("正在调用执行穿透引擎（缺事实时探针为 INSUFFICIENT_FACTS）...");
+        showToast("正在按已填事实审查追加要件（缺事实时返回事实不足）...");
+        const notes = (document.getElementById('enf-input-notes')?.value || '').trim();
+        const payload = {
+          use_demo: false,
+          court_name: (document.getElementById('enf-input-court')?.value || '').trim() || null,
+          execution_case_no: (document.getElementById('enf-input-case-no')?.value || '').trim() || null,
+          applicant_name: (document.getElementById('enf-input-applicant')?.value || '').trim() || null,
+          debtor_name: (document.getElementById('enf-input-debtor')?.value || '').trim() || null,
+          claim_amount: _enfNum('enf-input-claim'),
+          book_balance: _enfNum('enf-input-balance'),
+          controller_name: (document.getElementById('enf-input-controller')?.value || '').trim() || null,
+          transferee_name: (document.getElementById('enf-input-transferee')?.value || '').trim() || null,
+          share_capital: _enfNum('enf-input-capital'),
+          subscribed_share_ratio: _enfNum('enf-input-ratio'),
+          is_one_person_company: !!document.getElementById('enf-input-one-person')?.checked,
+          company_unable_to_pay: !!document.getElementById('enf-input-unable-pay')?.checked,
+          related_company_note: notes || null,
+        };
+        if (notes) {
+          payload.equity_transfers = [{ evidence_note: notes }];
+          payload.capital_flows = [{ evidence_note: notes }];
+        }
         const resp = await api.request(`${API_BASE}/api/v1/enforcement/penetration-audit`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            use_demo: !!enforcementUseDemoFlag
-          })
+          body: JSON.stringify(payload)
         });
-        enforcementUseDemoFlag = false;
 
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
         currentEnforcementData = data;
-
-        const enfBadge = document.getElementById('enf-demo-badge');
-        if (enfBadge) enfBadge.style.display = data.is_demo ? 'inline-block' : 'none';
-        if (data.is_demo) showToast(data.demo_notice || '演示数据·非真实案例');
+        showToast('执行穿透审查完成');
 
         // 1. 更新顶部指标条
         const elClaim = document.getElementById('enf-kpi-claim');
@@ -440,8 +463,12 @@ export function renderTabEnforcement() {
         const fmt = (v) => (v === null || v === undefined) ? '【待填写】' : `¥ ${Number(v).toLocaleString('zh-CN', {minimumFractionDigits: 2})}`;
         if (elClaim) elClaim.innerText = fmt(data.claim_amount);
         if (elBalance) elBalance.innerText = fmt(data.book_balance);
-        if (elRecoverable) elRecoverable.innerText = fmt(data.recoverable_potential);
-        if (elRate) elRate.innerText = data.is_demo ? "演示" : "—";
+        if (elRecoverable) {
+          elRecoverable.innerText = (data.recoverable_potential === null || data.recoverable_potential === undefined)
+            ? '另诉金额未计入'
+            : fmt(data.recoverable_potential);
+        }
+        if (elRate) elRate.innerText = "—";
 
         // 2. 渲染四大穿透探针诊断卡片
         const probesContainer = document.getElementById('enf-probes-container');
@@ -467,7 +494,7 @@ export function renderTabEnforcement() {
                 </div>
                 <span class="badge" style="background: ${escapeHtml(badgeBg)}; color: ${escapeHtml(badgeColor)}; font-size: 10px; font-weight: 700;">${escapeHtml(badge)}</span>
               </div>
-              ${body} // safe-html: static or pre-escaped HTML fragment
+              ${body}
             </div>`;
           }).join('');
         }
@@ -486,7 +513,7 @@ export function renderTabEnforcement() {
             <svg width="100%" height="210" viewBox="0 0 920 210" style="font-family: -apple-system, sans-serif;">
               <rect x="360" y="75" width="200" height="60" rx="8" fill="#14233C" stroke="#2B3A4F" stroke-width="2"/>
               <text x="460" y="100" fill="#FFFFFF" font-size="13" font-weight="bold" text-anchor="middle">被执行人（用户输入）</text>
-              <text x="460" y="122" fill="#E2E8F0" font-size="11" text-anchor="middle">${escapeHtml(data.is_demo ? '演示数据·非真实案例' : '按探针事实生成')}</text>
+              <text x="460" y="122" fill="#E2E8F0" font-size="11" text-anchor="middle">按探针事实生成</text>
               <rect x="20" y="15" width="250" height="60" rx="6" fill="#FFF5F5" stroke="#FEB2B2" stroke-width="1.5"/>
               <text x="145" y="48" fill="#9B2C2C" font-size="11" font-weight="bold" text-anchor="middle">${escapeHtml(labelOf('ENF-01','ENF-01'))}</text>
               <rect x="20" y="135" width="250" height="60" rx="6" fill="#FFF5F5" stroke="#FEB2B2" stroke-width="1.5"/>
@@ -501,8 +528,6 @@ export function renderTabEnforcement() {
 
         // 4. 渲染公文预览
         renderEnforcementDocPreview();
-
-        showToast(data.is_demo ? (data.demo_notice || '演示数据·非真实案例') : '执行穿透分析完成');
       } catch (e) {
         showToast("执行穿透审计失败: " + e);
       }
@@ -643,7 +668,7 @@ export function renderTabEnforcement() {
 
     async function runDeepMatrixAnalyze() {
       const presetSelect = document.getElementById('deep-case-preset');
-      const preset = presetSelect ? presetSelect.value : "case_loan_intermingled";
+      const preset = presetSelect ? presetSelect.value : "custom";
       if (preset === 'custom') {
         return submitCustomDeepMatrixAnalyze();
       }
@@ -660,7 +685,8 @@ export function renderTabEnforcement() {
 
         // 渲染四大实证指标卡
         const scoreEl = document.getElementById('deep-metric-score');
-        if (scoreEl) scoreEl.innerText = `${d.scorecard.completeness_score}%`;
+        const readyScore = !!(d.scorecard && d.scorecard.is_litigation_ready);
+        if (scoreEl) scoreEl.innerText = readyScore ? `${d.scorecard.completeness_score}%` : '未达起诉';
         const statusEl = document.getElementById('deep-metric-status');
         if (statusEl) {
           statusEl.innerText = d.scorecard.status_label;
@@ -668,9 +694,21 @@ export function renderTabEnforcement() {
         }
         
         const rawEl = document.getElementById('deep-metric-raw');
-        if (rawEl) rawEl.innerText = `${d.raw_documents.length} 份一手原件`;
+        if (rawEl) rawEl.innerText = `${(d.raw_documents || []).length} 份录入材料`;
+        const rawSub = document.getElementById('deep-metric-raw-sub');
+        if (rawSub) rawSub.innerText = '坐标来自录入文本，没有和原件比对';
         const confEl = document.getElementById('deep-metric-conflicts');
-        if (confEl) confEl.innerText = `${d.detected_conflicts.length} 项破绽`;
+        if (confEl) confEl.innerText = `${(d.detected_conflicts || []).length} 项需核对`;
+        const ready = !!(d.scorecard && d.scorecard.is_litigation_ready);
+        const guard = document.getElementById('deep-metric-guard');
+        const guardSub = document.getElementById('deep-metric-guard-sub');
+        if (guard) {
+          guard.innerText = ready ? '可以对照要件' : '不能据此起诉';
+          guard.style.color = ready ? 'var(--status-valid)' : 'var(--status-warn)';
+        }
+        if (guardSub) {
+          guardSub.innerText = ready ? '仍须核对原件后再决定是否起诉' : '演示样例或证据未核对原件';
+        }
         
         // 渲染一手卷宗库
         renderRawDossierList(d.raw_documents);
@@ -684,7 +722,7 @@ export function renderTabEnforcement() {
         // 渲染可验证账本
         renderVerifiabilityLedger(d.verifiability_ledger, d.scorecard);
 
-        showToast(`七维深度推演已完成 · ${perspective === 'adversarial_red_team' ? '对方红队质证攻击视角' : '己方完备性已闭环'}`);
+        showToast(`推演已完成。${(d.scorecard && d.scorecard.status_label) || '不能据此决定起诉'}`);
       } catch (e) {
         showToast("深度推演请求失败: " + e);
       }
@@ -709,7 +747,8 @@ export function renderTabEnforcement() {
           linesHtml += `</div>`;
         }
 
-        card.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
+        // safe-html: pre-escaped or nested HTML fragment
+        card.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:6px;">
               <span class="badge" style="background:#14233C; color:#FFF; font-weight:700;">${escapeHtml(doc.doc_id)}</span>
@@ -719,12 +758,12 @@ export function renderTabEnforcement() {
           </div>
           <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-secondary);">
             <span>类别：${escapeHtml(doc.doc_type)} · 来源：${escapeHtml(doc.source)}</span>
-            <span style="color:var(--status-valid); font-size:10.5px;">✓ SHA-256 存证一致</span>
+            <span style="color:var(--text-muted); font-size:10.5px;">${doc.hash_sha256 ? '文本哈希已记录，未与原件比对' : '未记录文本哈希'}</span>
           </div>
           <div style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); word-break:break-all;">
             哈希: ${escapeHtml(doc.hash_sha256)}
           </div>
-          ${linesHtml} // safe-html: static or pre-escaped HTML fragment
+          ${linesHtml}
         `;
         container.appendChild(card);
       });
@@ -759,14 +798,15 @@ export function renderTabEnforcement() {
         events.forEach(ev => {
           const step = document.createElement('div');
           step.className = "timeline-step";
-          step.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
+          // safe-html: pre-escaped or nested HTML fragment
+          step.innerHTML = `
             <div class="timeline-dot ${escapeHtml(ev.risk_flag || '')}"></div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <strong style="font-size:12px; font-family:var(--font-mono); color:var(--primary-navy);">${escapeHtml(ev.date)}</strong>
               <span style="font-size:10.5px; color:var(--text-muted);">${escapeHtml(ev.source)}</span>
             </div>
             <div style="font-size:12px; color:var(--text-secondary); line-height:1.4;">${escapeHtml(ev.summary)}</div>
-            ${ev.conflict_note ? `<div style="font-size:11px; color:var(--status-warn); font-weight:600; margin-top:2px;">${ev.conflict_note}</div>` : ''} // safe-html: static or pre-escaped HTML fragment
+            ${ev.conflict_note ? `<div style="font-size:11px; color:var(--status-warn); font-weight:600; margin-top:2px;">${ev.conflict_note}</div>` : ''}
           `;
           track.appendChild(step);
         });
@@ -823,14 +863,15 @@ export function renderTabEnforcement() {
           `;
         }
 
-        card.innerHTML = ` // safe-html: pre-escaped or nested HTML fragment
+        // safe-html: pre-escaped or nested HTML fragment
+        card.innerHTML = `
           <div class="element-card-header">
             <div style="display:flex; align-items:center; gap:8px;">
               <span class="badge" style="background:var(--primary-navy); color:#FFF; font-weight:700;">${escapeHtml(el.element_id)}</span>
               <strong style="color:var(--primary-navy); font-size:13.5px;">${escapeHtml(el.element_name)}</strong>
             </div>
             <span class="element-badge ${escapeHtml(el.proof_status === 'PROVEN' ? 'valid' : 'warn')}">
-              ${escapeHtml(el.proof_status === 'PROVEN' ? '✓ PROVEN 证明闭环' : '⚠ 待补强')}
+              ${escapeHtml(el.proof_status === 'PROVEN' ? '✓ 摘录已对应' : '⚠ 待补强')}
             </span>
           </div>
           <div>
@@ -841,12 +882,12 @@ export function renderTabEnforcement() {
           </div>
           <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11.5px;">
             <span style="color:var(--text-muted);">一手卷宗锚点：</span>
-            ${pillsHtml} // safe-html: static or pre-escaped HTML fragment
+            ${pillsHtml}
           </div>
           <div style="font-size:11px; color:var(--text-secondary); background:var(--bg-subtle); padding:6px 8px; border-radius:3px;">
             <strong>举证责任分配：</strong>${escapeHtml(el.burden_of_proof)}
           </div>
-          ${perspectiveSectionHtml} // safe-html: static or pre-escaped HTML fragment
+          ${perspectiveSectionHtml}
         `;
         container.appendChild(card);
       });
@@ -862,14 +903,14 @@ export function renderTabEnforcement() {
             <strong style="color:var(--primary-navy); font-size:12.5px;">${escapeHtml(ledger.verifier_name)}</strong>
           </div>
           <div style="background:#FFFFFF; border:1px solid #E2DFD7; padding:8px 10px; border-radius:4px;">
-            <div style="color:var(--text-muted); font-size:11px;">布尔门禁裁决</div>
+            <div style="color:var(--text-muted); font-size:11px;">能否据此起诉</div>
             <strong style="color:${escapeHtml(scorecard.is_litigation_ready ? 'var(--status-valid)' : 'var(--status-warn)')}; font-size:12.5px;">${escapeHtml(scorecard.status_label)}</strong>
           </div>
         </div>
-        <div>• <strong>防伪哈希可复现核验：</strong>${escapeHtml(ledger.hash_verification)}</div>
-        <div>• <strong>要件坐标穿透率：</strong>${escapeHtml(ledger.grounding_coverage)}</div>
-        <div>• <strong>时效与法规有效性：</strong>${escapeHtml(ledger.statute_validity_check)}</div>
-        <div>• <strong>执业红线熔断拦截：</strong>${escapeHtml(ledger.redline_risk_status)}</div>
+        <div>• <strong>素材指纹：</strong>${escapeHtml(ledger.hash_verification)}</div>
+        <div>• <strong>坐标说明：</strong>${escapeHtml(ledger.grounding_coverage)}</div>
+        <div>• <strong>法条检索：</strong>${escapeHtml(ledger.statute_validity_check)}</div>
+        <div>• <strong>利率与违约金：</strong>${escapeHtml(ledger.redline_risk_status)}</div>
       `;
     }
 
@@ -912,19 +953,23 @@ export function renderTabEnforcement() {
         md += `- **[${c.severity}] ${c.conflict_type}**：${c.description}\n  *应对方案*：${c.remedy}\n`;
       });
       md += `\n## 三、外部客观实证验证账本\n\n`;
-      md += `- 哈希验真：${d.verifiability_ledger.hash_verification}\n`;
-      md += `- 坐标覆盖：${d.verifiability_ledger.grounding_coverage}\n`;
-      md += `- 法规有效性：${d.verifiability_ledger.statute_validity_check}\n`;
-      md += `- 红线熔断：${d.verifiability_ledger.redline_risk_status}\n`;
+      md += `- 素材指纹：${d.verifiability_ledger.hash_verification}\n`;
+      md += `- 坐标说明：${d.verifiability_ledger.grounding_coverage}\n`;
+      md += `- 法条检索：${d.verifiability_ledger.statute_validity_check}\n`;
+      md += `- 利率与违约金：${d.verifiability_ledger.redline_risk_status}\n`;
 
       copyToClipboard(md, "已成功导出《要件事实与出庭质证对抗报告》！");
     }
 
 
     async function runAdversarialAttackUI() {
-      const evName = document.getElementById('ev-attack-name')?.value.trim() || "关键书证";
+      const evName = document.getElementById('ev-attack-name')?.value.trim() || "";
       const plaintiffPurpose = document.getElementById('ev-attack-purpose')?.value.trim() || "";
       const rawSnippet = document.getElementById('ev-attack-snippet')?.value.trim() || "";
+      if (!evName || !plaintiffPurpose || !rawSnippet) {
+        showToast("请填写我方证据名称、证明目的和可能被抓住的原文");
+        return;
+      }
       showToast("正在模拟对方资深争议解决律师发动红队质证攻击...");
       try {
         const resp = await api.request(`${API_BASE}/api/v1/deep-matrix/adversarial-attack`, {
@@ -945,7 +990,7 @@ export function renderTabEnforcement() {
         switchPhase2RightTab('tools');
         showToast("红队质证攻击预案已生成");
       } catch (e) {
-        showToast(err instanceof ApiError ? err.userMessage : (err && err.userMessage ? err.userMessage : `操作失败：${err.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
+        showToast(e instanceof ApiError ? e.userMessage : (e && e.userMessage ? e.userMessage : `操作失败：${e.message || "请求异常"}（错误码 CLIENT_ERROR）`), "error");
       }
     }
 
@@ -965,7 +1010,8 @@ export function renderTabEnforcement() {
         `;
       }).join('');
       const remedies = (data.remedy_checklist || []).map(r => `<div style="font-size: 11.5px; color: #065F46; line-height: 1.5;">${escapeHtml(r)}</div>`).join('');
-      container.innerHTML = ` // safe-html: adversarial attack cards and remedy checklist
+      // safe-html: adversarial attack cards and remedy checklist
+      container.innerHTML = `
         <div style="padding: 12px 14px;">
           <div style="margin-bottom: 12px;">
             <strong style="font-size: 14px; color: #991B1B;">《对方代理律师红队攻击预警与防御预案》</strong>
@@ -982,7 +1028,6 @@ export function renderTabEnforcement() {
 
 export {
   switchDeepMatrixSubTab,
-  load120MEnforcementPreset,
   runEnforcementAuditUI,
   switchEnforcementDocView,
   renderEnforcementDocPreview,

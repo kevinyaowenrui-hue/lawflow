@@ -105,6 +105,9 @@ def test_civil_code_art_561_mathematical_precision():
     assert "5,000,000.00" in statement
     assert "未逾越" not in statement
     assert "强制性" not in statement
+    assert "并未特别约定" not in statement
+    assert "不应被采信" not in statement
+    assert "本页没有录入抵充顺序" in statement
 
 
 def test_civil_code_art_692_guarantee_expiry_deadlines():
@@ -132,6 +135,7 @@ def test_civil_code_art_692_guarantee_expiry_deadlines():
     timeline = [
         {"date": "2023-01-01", "event": "签订借款合同与担保合同", "legal_tag": "合同成立"},
         {"date": "2023-07-01", "event": "借款到期届满，债务人违约", "legal_tag": "主债务到期"},
+        # 示例催告日期，只用于核算保证期间是否届满，不是工作流空结果兜底。
         {"date": "2023-11-15", "event": "原告向华夏智融融资租赁有限公司发送EMS催告函要求承担保证", "legal_tag": "催要主张"},
         {"date": "2024-03-20", "event": "原告向张某某发送律师函催告", "legal_tag": "逾期催要"}
     ]

@@ -32,8 +32,20 @@ def test_matter_lifecycle_and_status_transitions(tmp_path):
     mid = m["matter_id"]
 
     with TestClient(app, headers=AUTH) as client:
+        # 没有结案确认不能归档
+        blocked = client.patch(f"/api/v1/vault/matters/{mid}/status", json={"status": "archived"})
+        assert blocked.status_code == 422, blocked.text
         # active -> archived
-        r1 = client.patch(f"/api/v1/vault/matters/{mid}/status", json={"status": "archived"})
+        r1 = client.patch(f"/api/v1/vault/matters/{mid}/status", json={
+            "status": "archived",
+            "closeout": {
+                "judgment_result": "调解结案，被告支付货款",
+                "appeal_window_cleared": True,
+                "originals_returned": True,
+                "fees_settled": True,
+                "conflict_closed_on": "2026-11-11",
+            },
+        })
         assert r1.status_code == 200, r1.text
         assert r1.json()["matter"]["status"] == "archived"
 
@@ -102,6 +114,13 @@ def test_deadlines_calendar_and_calculator_integration(tmp_path):
 
 def test_task_due_date_iso_validation(tmp_path):
     from gateway.main import app
+    from gateway.utils.matter_vault_db import create_new_matter
+
+    matter = create_new_matter({
+        "title": "任务日期案件",
+        "cause_of_action": "买卖合同纠纷",
+        "status": "active",
+    })
 
     with TestClient(app, headers=AUTH) as client:
         # tasks due_date="下周三" -> 422
@@ -114,12 +133,13 @@ def test_task_due_date_iso_validation(tmp_path):
         r_bad = client.post("/api/v1/copilot/tasks", json=bad_task)
         assert r_bad.status_code == 422, f"tasks due_date='下周三' 必须返回 422，实际返回 {r_bad.status_code}"
 
-        # 正确 ISO 日期
+        # 正确 ISO 日期，并且已经选了案件
         good_task = {
             "title": "合法日期任务",
             "due_date": "2026-10-30",
             "priority": "high",
-            "stage": "证据"
+            "stage": "证据",
+            "matter_id": matter["matter_id"],
         }
         r_good = client.post("/api/v1/copilot/tasks", json=good_task)
         assert r_good.status_code in (200, 201), r_good.text

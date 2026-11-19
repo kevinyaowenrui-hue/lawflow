@@ -30,6 +30,15 @@ def test_adoption_law_abrogated_blocked():
     assert res["citations"][0]["status"] == "ABROGATED_BLOCKED"
 
 
+def test_abrogated_contract_interpretation_names_the_instrument():
+    res = audit_citations_in_text(raw_text="依据《合同法解释（二）》第十条。", auto_sanitize=False)
+    blob = json.dumps(res, ensure_ascii=False)
+    assert "TODO(律师核实)" not in blob
+    assert "法释〔2020〕16号" in blob
+    assert "若干问题的解释（二）" in blob
+    assert "不是逐条对应" in blob
+
+
 def test_private_lending_old_rate_yellow_hint():
     res = audit_citations_in_text(
         raw_text="双方约定年利率24%，依据《民间借贷规定》第二十五条。",
@@ -104,6 +113,18 @@ def test_a01_statute_max_versions():
         raw_text="依据《反不正当竞争法》第四十一条", auto_sanitize=False
     )
     assert r41["citations"][0]["status"] != "HALLUCINATION_EXCEEDED"
+    old41 = audit_citations_in_text(
+        raw_text="依据《反不正当竞争法》第四十一条",
+        auto_sanitize=False,
+        incident_date="2024-06-01",
+    )
+    assert old41["citations"][0]["status"] == "HALLUCINATION_EXCEEDED"
+    mid33 = audit_citations_in_text(
+        raw_text="依据《反不正当竞争法》第三十三条",
+        auto_sanitize=False,
+        incident_date="2020-01-01",
+    )
+    assert mid33["citations"][0]["status"] != "HALLUCINATION_EXCEEDED"
 
 
 def test_a02_case_type_and_legacy():

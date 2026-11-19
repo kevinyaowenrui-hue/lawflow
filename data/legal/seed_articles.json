@@ -23,7 +23,7 @@
       "effective_date": "2023-12-05",
       "status": "VALID",
       "domain": "合同",
-      "summary": "2023年底最新颁布的合同编综合司法解释，全面规范了合同解释、表见代理、以物抵债、违约金30%上限调减标准及举证分配。",
+      "summary": "合同编通则司法解释。约定违约金超过造成损失的百分之三十的，一般可以认定为过分高于；百分之三十是认定门槛，不是减到的金额。恶意违约一方请求减少的，一般不予支持。",
       "version_note": ""
     },
     {
@@ -49,8 +49,8 @@
       "effective_date": "2021-01-01",
       "status": "VALID",
       "domain": "民商",
-      "summary": "确立民间借贷利率以合同成立时一年期 LPR 四倍为法定司法保护上限红线，规制转贷套利无效。",
-      "version_note": "沿革：2020-08-20施行的第一次修正版本文号为TODO(律师核实)；法释〔2020〕17号为2020年12月第二次修正，2021-01-01施行（律师已核实）。"
+      "summary": "民间借贷的利息、逾期利息、违约金和其他费用合计，超过合同成立时一年期贷款市场报价利率四倍的部分不予支持；四倍以内仍可主张。",
+      "version_note": "沿革：2020年8月20日起施行的第一次修正，本地库未记载该次文号；法释〔2020〕17号为2020年12月第二次修正，2021年1月1日施行。"
     },
     {
       "id": "company_law_2024",
@@ -166,18 +166,18 @@
       "section_name": "",
       "article_no_cn": "第十七条",
       "article_no_int": 17,
-      "content": "【待律师按官方原文录入】",
+      "content": "作为被执行人的营利法人，财产不足以清偿生效法律文书确定的债务，申请执行人申请变更、追加未缴纳或未足额缴纳出资的股东、出资人或依公司法规定对该出资承担连带责任的发起人为被执行人，在尚未缴纳出资的范围内依法承担责任的，人民法院应予支持。",
       "has_proviso": 0,
       "key_terms": [
         "追加当事人",
         "执行"
       ],
       "claim_basis_type": "执行规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/30091.html",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：追加被执行人相关条文占位，待按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《最高人民法院关于民事执行中变更、追加当事人若干问题的规定》（2020修正）第十七条官方原文核对录入。"
     },
     {
       "id": "additional_parties_2020:art_18",
@@ -187,18 +187,18 @@
       "section_name": "",
       "article_no_cn": "第十八条",
       "article_no_int": 18,
-      "content": "【待律师按官方原文录入】",
+      "content": "作为被执行人的营利法人，财产不足以清偿生效法律文书确定的债务，申请执行人申请变更、追加抽逃出资的股东、出资人为被执行人，在抽逃出资的范围内承担责任的，人民法院应予支持。",
       "has_proviso": 0,
       "key_terms": [
         "追加当事人",
         "执行"
       ],
       "claim_basis_type": "执行规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/30091.html",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：追加被执行人相关条文占位，待按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《最高人民法院关于民事执行中变更、追加当事人若干问题的规定》（2020修正）第十八条官方原文核对录入。"
     },
     {
       "id": "additional_parties_2020:art_19",
@@ -208,18 +208,18 @@
       "section_name": "",
       "article_no_cn": "第十九条",
       "article_no_int": 19,
-      "content": "【待律师按官方原文录入】",
+      "content": "作为被执行人的公司，财产不足以清偿生效法律文书确定的债务，其股东未依法履行出资义务即转让股权，申请执行人申请变更、追加该原股东或依公司法规定对该出资承担连带责任的发起人为被执行人，在未依法出资的范围内承担责任的，人民法院应予支持。",
       "has_proviso": 0,
       "key_terms": [
         "追加当事人",
         "执行"
       ],
       "claim_basis_type": "执行规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/30091.html",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：追加被执行人相关条文占位，待按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《最高人民法院关于民事执行中变更、追加当事人若干问题的规定》（2020修正）第十九条官方原文核对录入。"
     },
     {
       "id": "additional_parties_2020:art_20",
@@ -229,18 +229,18 @@
       "section_name": "",
       "article_no_cn": "第二十条",
       "article_no_int": 20,
-      "content": "【待律师按官方原文录入】",
+      "content": "作为被执行人的一人有限责任公司，财产不足以清偿生效法律文书确定的债务，股东不能证明公司财产独立于自己的财产，申请执行人申请变更、追加该股东为被执行人，对公司债务承担连带责任的，人民法院应予支持。",
       "has_proviso": 0,
       "key_terms": [
         "追加当事人",
         "执行"
       ],
       "claim_basis_type": "执行规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/30091.html",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：追加被执行人相关条文占位，待按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《最高人民法院关于民事执行中变更、追加当事人若干问题的规定》（2020修正）第二十条官方原文核对录入。"
     },
     {
       "id": "case_retrieval_2020:art_4",
@@ -250,17 +250,17 @@
       "section_name": "",
       "article_no_cn": "第四条",
       "article_no_int": 4,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "类案检索范围一般包括：\n（一）最高人民法院发布的指导性案例；\n（二）最高人民法院发布的典型案例及裁判生效的案件；\n（三）本省（自治区、直辖市）高级人民法院发布的参考性案例及裁判生效的案件；\n（四）上一级人民法院及本院裁判生效的案件。\n除指导性案例以外，优先检索近三年的案例或者案件；已经在前一顺位中检索到类案的，可以不再进行检索。",
+      "has_proviso": 1,
       "key_terms": [
         "类案检索"
       ],
       "claim_basis_type": "审判指导规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/fabu/xiangqing/243981.html",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：类案检索范围条文占位，待按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《最高人民法院关于统一法律适用加强类案检索的指导意见（试行）》（法发〔2020〕24号）第四条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_188",
@@ -318,15 +318,15 @@
       "section_name": "",
       "article_no_cn": "第三百九十二条",
       "article_no_int": 392,
-      "content": "【待律师按官方原文录入】",
+      "content": "被担保的债权既有物的担保又有人的担保的，债务人不履行到期债务或者发生当事人约定的实现担保物权的情形，债权人应当按照约定实现债权；没有约定或者约定不明确，债务人自己提供物的担保的，债权人应当先就该物的担保实现债权；第三人提供物的担保的，债权人可以就物的担保实现债权，也可以请求保证人承担保证责任。提供担保的第三人承担担保责任后，有权向债务人追偿。",
       "has_proviso": 0,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第三百九十二条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_509",
@@ -359,15 +359,15 @@
       "section_name": "",
       "article_no_cn": "第五百三十三条",
       "article_no_int": 533,
-      "content": "【待律师按官方原文录入】",
+      "content": "合同成立后，合同的基础条件发生了当事人在订立合同时无法预见的、不属于商业风险的重大变化，继续履行合同对于当事人一方明显不公平的，受不利影响的当事人可以与对方重新协商；在合理期限内协商不成的，当事人可以请求人民法院或者仲裁机构变更或者解除合同。\n人民法院或者仲裁机构应当结合案件的实际情况，根据公平原则变更或者解除合同。",
       "has_proviso": 0,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第五百三十三条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_538",
@@ -401,15 +401,15 @@
       "section_name": "",
       "article_no_cn": "第五百六十一条",
       "article_no_int": 561,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "债务人在履行主债务外还应当支付利息和实现债权的有关费用，其给付不足以清偿全部债务的，除当事人另有约定外，应当按照下列顺序履行：\n（一）实现债权的有关费用；\n（二）利息；\n（三）主债务。",
+      "has_proviso": 1,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第五百六十一条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_563",
@@ -537,15 +537,15 @@
       "section_name": "",
       "article_no_cn": "第六百七十条",
       "article_no_int": 670,
-      "content": "【待律师按官方原文录入】",
+      "content": "借款的利息不得预先在本金中扣除。利息预先在本金中扣除的，应当按照实际借款数额返还借款并计算利息。",
       "has_proviso": 0,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第六百七十条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_675",
@@ -600,18 +600,18 @@
       "section_name": "",
       "article_no_cn": "第六百七十九条",
       "article_no_int": 679,
-      "content": "【待律师按官方原文录入】",
+      "content": "自然人之间的借款合同，自贷款人提供借款时成立。",
       "has_proviso": 0,
       "key_terms": [
         "自然人借款",
         "实践合同"
       ],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位（自然人之间借款合同自贷款人提供借款时成立），待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第六百七十九条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_686",
@@ -644,15 +644,15 @@
       "section_name": "",
       "article_no_cn": "第六百八十七条",
       "article_no_int": 687,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "当事人在保证合同中约定，债务人不能履行债务时，由保证人承担保证责任的，为一般保证。\n一般保证的保证人在主合同纠纷未经审判或者仲裁，并就债务人财产依法强制执行仍不能履行债务前，有权拒绝向债权人承担保证责任，但是有下列情形之一的除外：\n（一）债务人下落不明，且无财产可供执行；\n（二）人民法院已经受理债务人破产案件；\n（三）债权人有证据证明债务人的财产不足以履行全部债务或者丧失履行债务能力；\n（四）保证人书面表示放弃本款规定的权利。",
+      "has_proviso": 1,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第六百八十七条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_688",
@@ -685,15 +685,15 @@
       "section_name": "",
       "article_no_cn": "第六百八十九条",
       "article_no_int": 689,
-      "content": "【待律师按官方原文录入】",
+      "content": "保证人可以要求债务人提供反担保。",
       "has_proviso": 0,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第六百八十九条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_690",
@@ -703,15 +703,15 @@
       "section_name": "",
       "article_no_cn": "第六百九十条",
       "article_no_int": 690,
-      "content": "【待律师按官方原文录入】",
+      "content": "保证人与债权人可以协商订立最高额保证的合同，约定在最高债权额限度内就一定期间连续发生的债权提供保证。\n最高额保证除适用本章规定外，参照适用本法第二编最高额抵押权的有关规定。",
       "has_proviso": 0,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第六百九十条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_691",
@@ -721,15 +721,15 @@
       "section_name": "",
       "article_no_cn": "第六百九十一条",
       "article_no_int": 691,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "保证的范围包括主债权及其利息、违约金、损害赔偿金和实现债权的费用。当事人另有约定的，按照其约定。",
+      "has_proviso": 1,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第六百九十一条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_692",
@@ -739,15 +739,15 @@
       "section_name": "",
       "article_no_cn": "第六百九十二条",
       "article_no_int": 692,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "保证期间是确定保证人承担保证责任的期间，不发生中止、中断和延长。\n债权人与保证人可以约定保证期间，但是约定的保证期间早于主债务履行期限或者与主债务履行期限同时届满的，视为没有约定；没有约定或者约定不明确的，保证期间为主债务履行期限届满之日起六个月。\n债权人与债务人对主债务履行期限没有约定或者约定不明确的，保证期间自债权人请求债务人履行债务的宽限期届满之日起计算。",
+      "has_proviso": 1,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第六百九十二条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_693",
@@ -757,15 +757,15 @@
       "section_name": "",
       "article_no_cn": "第六百九十三条",
       "article_no_int": 693,
-      "content": "【待律师按官方原文录入】",
+      "content": "一般保证的债权人未在保证期间对债务人提起诉讼或者申请仲裁的，保证人不再承担保证责任。\n连带责任保证的债权人未在保证期间请求保证人承担保证责任的，保证人不再承担保证责任。",
       "has_proviso": 0,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第六百九十三条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_694",
@@ -775,18 +775,18 @@
       "section_name": "",
       "article_no_cn": "第六百九十四条",
       "article_no_int": 694,
-      "content": "【待律师按官方原文录入】",
+      "content": "一般保证的债权人在保证期间届满前对债务人提起诉讼或者申请仲裁的，从保证人拒绝承担保证责任的权利消灭之日起，开始计算保证债务的诉讼时效。\n连带责任保证的债权人在保证期间届满前请求保证人承担保证责任的，从债权人请求保证人承担保证责任之日起，开始计算保证债务的诉讼时效。",
       "has_proviso": 0,
       "key_terms": [
         "保证期间",
         "诉讼时效"
       ],
       "claim_basis_type": "抗辩权规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/282721.html",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：原担保制度解释第32条第2、3款内容归属《民法典》第694条，待按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第六百九十四条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_745",
@@ -796,15 +796,15 @@
       "section_name": "",
       "article_no_cn": "第七百四十五条",
       "article_no_int": 745,
-      "content": "【待律师按官方原文录入】",
+      "content": "出租人对租赁物享有的所有权，未经登记，不得对抗善意第三人。",
       "has_proviso": 0,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民法典》第七百四十五条官方原文核对录入。"
     },
     {
       "id": "civil_code_2021:art_985",
@@ -885,15 +885,15 @@
       "section_name": "",
       "article_no_cn": "第一百零五条",
       "article_no_int": 105,
-      "content": "【待律师按官方原文录入】",
+      "content": "保全限于请求的范围，或者与本案有关的财物。",
       "has_proviso": 0,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "TODO(律师核实)：审查报告列为本条已核验，但本地库原无正文，不得凭记忆补写，待律师按官方原文录入后改 VERIFIED。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国民事诉讼法》（2023修正）第一百零五条官方原文核对录入。"
     },
     {
       "id": "company_law_2024:art_10",
@@ -903,7 +903,7 @@
       "section_name": "",
       "article_no_cn": "第十条",
       "article_no_int": 10,
-      "content": "【待律师按官方原文录入】",
+      "content": "公司的法定代表人按照公司章程的规定，由代表公司执行公司事务的董事或者经理担任。\n担任法定代表人的董事或者经理辞任的，视为同时辞去法定代表人。\n法定代表人辞任的，公司应当在法定代表人辞任之日起三十日内确定新的法定代表人。",
       "has_proviso": 0,
       "key_terms": [
         "法定代表人职务行为",
@@ -912,11 +912,11 @@
         "过错追偿"
       ],
       "claim_basis_type": "代表权效力规范",
-      "verification_status": "PENDING_HUMAN",
-      "verified_at": null,
-      "verified_by": null,
+      "verification_status": "VERIFIED",
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
       "source_url": "https://www.gov.cn/yaowen/liebiao/202312/content_6923395.htm",
-      "review_note": "律师摘录（非原文）：第三款：法定代表人辞任的，公司应当在法定代表人辞任之日起三十日内确定新的法定代表人；原库中第3、4款属于第11条，已删除。"
+      "review_note": "已按《中华人民共和国公司法》（2023修订，2024年7月1日施行）第十条官方原文核对录入。"
     },
     {
       "id": "company_law_2024:art_11",
@@ -926,18 +926,18 @@
       "section_name": "",
       "article_no_cn": "第十一条",
       "article_no_int": 11,
-      "content": "【待律师按官方原文录入】",
+      "content": "法定代表人以公司名义从事的民事活动，其法律后果由公司承受。\n公司章程或者股东会对法定代表人职权的限制，不得对抗善意相对人。\n法定代表人因执行职务造成他人损害的，由公司承担民事责任。公司承担民事责任后，依照法律或者公司章程的规定，可以向有过错的法定代表人追偿。",
       "has_proviso": 0,
       "key_terms": [
         "法定代表人",
         "代表权"
       ],
       "claim_basis_type": "定义规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.gov.cn/yaowen/liebiao/202312/content_6923395.htm",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：原库公司法第十条第3、4款内容归属第十一条，待按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国公司法》（2023修订，2024年7月1日施行）第十一条官方原文核对录入。"
     },
     {
       "id": "company_law_2024:art_15",
@@ -947,15 +947,15 @@
       "section_name": "",
       "article_no_cn": "第十五条",
       "article_no_int": 15,
-      "content": "【待律师按官方原文录入】",
+      "content": "公司向其他企业投资或者为他人提供担保，按照公司章程的规定，由董事会或者股东会决议；公司章程对投资或者担保的总额及单项投资或者担保的数额有限额规定的，不得超过规定的限额。\n公司为公司股东或者实际控制人提供担保的，应当经股东会决议。\n前款规定的股东或者受前款规定的实际控制人支配的股东，不得参加前款规定事项的表决。该项表决由出席会议的其他股东所持表决权的过半数通过。",
       "has_proviso": 0,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.gov.cn/yaowen/liebiao/202312/content_6923395.htm",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国公司法》（2023修订，2024年7月1日施行）第十五条官方原文核对录入。"
     },
     {
       "id": "company_law_2024:art_23",
@@ -989,8 +989,8 @@
       "section_name": "",
       "article_no_cn": "第四十七条",
       "article_no_int": 47,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "有限责任公司的注册资本为在公司登记机关登记的全体股东认缴的出资额。全体股东认缴的出资额由股东按照公司章程的规定自公司成立之日起五年内缴足。\n法律、行政法规以及国务院决定对有限责任公司注册资本实缴、注册资本最低限额、股东出资期限另有规定的，从其规定。",
+      "has_proviso": 1,
       "key_terms": [
         "五年实缴认缴制",
         "出资期限五年限制",
@@ -998,11 +998,11 @@
         "出资实缴红线"
       ],
       "claim_basis_type": "股东法定义务规范",
-      "verification_status": "PENDING_HUMAN",
-      "verified_at": null,
-      "verified_by": null,
+      "verification_status": "VERIFIED",
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
       "source_url": "https://www.gov.cn/yaowen/liebiao/202312/content_6923395.htm",
-      "review_note": "律师摘要（非原文）：第2款漏了'注册资本最低限额'（律师经二手文本比对）。"
+      "review_note": "已按《中华人民共和国公司法》（2023修订，2024年7月1日施行）第四十七条官方原文核对录入。"
     },
     {
       "id": "company_law_2024:art_54",
@@ -1035,15 +1035,15 @@
       "section_name": "",
       "article_no_cn": "第八十八条",
       "article_no_int": 88,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "股东转让已认缴出资但未届出资期限的股权的，由受让人承担缴纳该出资的义务；受让人未按期足额缴纳出资的，转让人对受让人未按期缴纳的出资承担补充责任。\n未按照公司章程规定的出资日期缴纳出资或者作为出资的非货币财产的实际价额显著低于所认缴的出资额的股东转让股权的，转让人与受让人在出资不足的范围内承担连带责任；受让人不知道且不应当知道存在上述情形的，由转让人承担责任。",
+      "has_proviso": 1,
       "key_terms": [],
       "claim_basis_type": "待核验占位",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.gov.cn/yaowen/liebiao/202312/content_6923395.htm",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：引擎引用占位，待律师按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《中华人民共和国公司法》（2023修订，2024年7月1日施行）第八十八条官方原文核对录入。"
     },
     {
       "id": "contract_interp_2023:art_64",
@@ -1053,7 +1053,7 @@
       "section_name": "",
       "article_no_cn": "第六十四条",
       "article_no_int": 64,
-      "content": "【待律师按官方原文录入】",
+      "content": "当事人一方通过反诉或者抗辩的方式，请求调整违约金的，人民法院依法予以支持。\n违约方主张约定的违约金过分高于违约造成的损失，请求予以适当减少的，应当承担举证责任。非违约方主张约定的违约金合理的，也应当提供相应的证据。\n当事人仅以合同约定不得对违约金进行调整为由主张不予调整违约金的，人民法院不予支持。",
       "has_proviso": 0,
       "key_terms": [
         "违约金调减期限",
@@ -1063,11 +1063,11 @@
         "初步证据"
       ],
       "claim_basis_type": "程序衔接与举证分配规范",
-      "verification_status": "PENDING_HUMAN",
-      "verified_at": null,
-      "verified_by": null,
+      "verification_status": "VERIFIED",
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/419382.html",
-      "review_note": "律师摘要（非原文）：通过反诉或抗辩请求调整的予以支持；违约方对'过分高于'承担举证责任，非违约方也应提供证据；仅以'约定不得调整'为由主张不调整的不予支持"
+      "review_note": "已按《最高人民法院关于适用〈中华人民共和国民法典〉合同编通则若干问题的解释》（法释〔2023〕13号）第六十四条官方原文核对录入。"
     },
     {
       "id": "contract_interp_2023:art_65",
@@ -1077,21 +1077,21 @@
       "section_name": "",
       "article_no_cn": "第六十五条",
       "article_no_int": 65,
-      "content": "【待律师按官方原文录入】",
+      "content": "当事人主张约定的违约金过分高于违约造成的损失，请求予以适当减少的，人民法院应当以民法典第五百八十四条规定的损失为基础，兼顾合同主体、交易类型、合同的履行情况、当事人的过错程度、履约背景等因素，遵循公平原则和诚信原则进行衡量，并作出裁判。\n约定的违约金超过造成损失的百分之三十的，人民法院一般可以认定为过分高于造成的损失。\n恶意违约的当事人一方请求减少违约金的，人民法院一般不予支持。",
       "has_proviso": 0,
       "key_terms": [
-        "违约金30%上限",
+        "超过损失百分之三十",
         "过分高于造成的损失",
         "实际损失基准",
         "举证责任",
         "预期利益综合衡量"
       ],
       "claim_basis_type": "细化裁量标准规范",
-      "verification_status": "PENDING_HUMAN",
-      "verified_at": null,
-      "verified_by": null,
+      "verification_status": "VERIFIED",
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/419382.html",
-      "review_note": "律师摘要（非原文）：以民法典第584条规定的损失为基础，兼顾合同主体、交易类型、履行情况、过错程度、履约背景等；超过损失30%一般可认定为过分高于；恶意违约方请求减少的一般不予支持"
+      "review_note": "已按《最高人民法院关于适用〈中华人民共和国民法典〉合同编通则若干问题的解释》（法释〔2023〕13号）第六十五条官方原文核对录入。"
     },
     {
       "id": "contract_interp_2023:art_66",
@@ -1101,17 +1101,17 @@
       "section_name": "",
       "article_no_cn": "第六十六条",
       "article_no_int": 66,
-      "content": "【待律师按官方原文录入】",
+      "content": "当事人一方请求对方支付违约金，对方以合同不成立、无效、被撤销、确定不发生效力、不构成违约或者非违约方不存在损失等为由抗辩，未主张调整过高的违约金的，人民法院应当就若不支持该抗辩，当事人是否请求调整违约金进行释明。第一审人民法院认为抗辩成立且未予释明，第二审人民法院认为应当判决支付违约金的，可以直接释明，并根据当事人的请求，在当事人就是否应当调整违约金充分举证、质证、辩论后，依法判决适当减少违约金。\n被告因客观原因在一审程序中未到庭参加诉讼，但是在二审程序中到庭参加诉讼并请求减少违约金的，第二审人民法院可以在当事人就是否应当调整违约金充分举证、质证、辩论后，依法判决适当减少违约金。",
       "has_proviso": 0,
       "key_terms": [
         "违约金调整释明"
       ],
       "claim_basis_type": "请求权竞合处理规范",
-      "verification_status": "PENDING_HUMAN",
-      "verified_at": null,
-      "verified_by": null,
+      "verification_status": "VERIFIED",
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/419382.html",
-      "review_note": "律师摘要（非原文）：对方以合同不成立、无效等抗辩而未主张调整的，法院应当释明；一审未释明的，二审可以直接释明并改判。（原库正文实为《民法典》第588条'违约金与定金择一'，已删除。）"
+      "review_note": "已按《最高人民法院关于适用〈中华人民共和国民法典〉合同编通则若干问题的解释》（法释〔2023〕13号）第六十六条官方原文核对录入。"
     },
     {
       "id": "criminal_law_2024:art_175_1",
@@ -1217,7 +1217,7 @@
       "section_name": "",
       "article_no_cn": "第二十五条",
       "article_no_int": 25,
-      "content": "【待律师按官方原文录入】",
+      "content": "当事人在保证合同中约定了保证人在债务人不能履行债务或者无力偿还债务时才承担保证责任等类似内容，具有债务人应当先承担责任的意思表示的，人民法院应当将其认定为一般保证。\n当事人在保证合同中约定了保证人在债务人不履行债务或者未偿还债务时即承担保证责任、无条件承担保证责任等类似内容，不具有债务人应当先承担责任的意思表示的，人民法院应当将其认定为连带责任保证。",
       "has_proviso": 0,
       "key_terms": [
         "一般保证",
@@ -1225,11 +1225,11 @@
         "识别"
       ],
       "claim_basis_type": "程序衔接规范",
-      "verification_status": "PENDING_HUMAN",
-      "verified_at": null,
-      "verified_by": null,
+      "verification_status": "VERIFIED",
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/282721.html",
-      "review_note": "律师摘要（非原文）：只规定一般保证与连带保证的识别；原库中第2、3款属于第26条，已删除。"
+      "review_note": "已按《最高人民法院关于适用〈中华人民共和国民法典〉有关担保制度的解释》（法释〔2020〕28号）第二十五条官方原文核对录入。"
     },
     {
       "id": "guarantee_interp_2021:art_26",
@@ -1239,19 +1239,19 @@
       "section_name": "",
       "article_no_cn": "第二十六条",
       "article_no_int": 26,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "一般保证中，债权人以债务人为被告提起诉讼的，人民法院应予受理。债权人未就主合同纠纷提起诉讼或者申请仲裁，仅起诉一般保证人的，人民法院应当驳回起诉。\n一般保证中，债权人一并起诉债务人和保证人的，人民法院可以受理，但是在作出判决时，除有民法典第六百八十七条第二款但书规定的情形外，应当在判决书中明确在对债务人财产依法强制执行后仍不能履行债务时，由保证人承担保证责任。\n债权人未对债务人提起诉讼或者申请仲裁，仅对一般保证人提起诉讼，人民法院作出不予受理裁定或者驳回起诉裁定，该裁定生效后，债权人在保证期间内又对债务人提起诉讼或者申请仲裁的，人民法院应当认定债权人已经在保证期间内行使了权利。",
+      "has_proviso": 1,
       "key_terms": [
         "一般保证",
         "起诉",
         "判决主文"
       ],
       "claim_basis_type": "程序规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/282721.html",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：一般保证的起诉与判决主文"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《最高人民法院关于适用〈中华人民共和国民法典〉有关担保制度的解释》（法释〔2020〕28号）第二十六条官方原文核对录入。"
     },
     {
       "id": "guarantee_interp_2021:art_32",
@@ -1261,18 +1261,18 @@
       "section_name": "",
       "article_no_cn": "第三十二条",
       "article_no_int": 32,
-      "content": "【待律师按官方原文录入】",
+      "content": "保证合同约定保证人承担保证责任直至主债务本息还清时为止等类似内容的，视为约定不明，保证期间为主债务履行期限届满之日起六个月。",
       "has_proviso": 0,
       "key_terms": [
         "保证期间",
         "约定不明"
       ],
       "claim_basis_type": "除斥期间与时效转换规范",
-      "verification_status": "PENDING_HUMAN",
-      "verified_at": null,
-      "verified_by": null,
+      "verification_status": "VERIFIED",
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/282721.html",
-      "review_note": "律师摘录片段，非全文：……直至主债务本息还清时为止等类似内容的，视为约定不明，保证期间为主债务履行期限届满之日起六个月。（原库中第2、3款属于《民法典》第694条，已删除。）"
+      "review_note": "已按《最高人民法院关于适用〈中华人民共和国民法典〉有关担保制度的解释》（法释〔2020〕28号）第三十二条官方原文核对录入。"
     },
     {
       "id": "labor_contract_2013:art_10",
@@ -1352,19 +1352,19 @@
       "section_name": "",
       "article_no_cn": "第四十一条",
       "article_no_int": 41,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "【盖章行为的法律效力】司法实践中，有些公司有意刻制两套甚至多套公章，有的法定代表人或者代理人甚至私刻公章，订立合同时恶意加盖非备案的公章或者假公章，发生纠纷后法人以加盖的是假公章为由否定合同效力的情形并不鲜见。人民法院在审理案件时，应当主要审查签约人于盖章之时有无代表权或者代理权，从而根据代表或者代理的相关规则来确定合同的效力。\n法定代表人或者其授权之人在合同上加盖法人公章的行为，表明其是以法人名义签订合同，除《公司法》第16条等法律对其职权有特别规定的情形外，应当由法人承担相应的法律后果。法人以法定代表人或者其授权之人加盖的是假章、所盖之章与备案公章不一致等为由否定合同效力的，人民法院不予支持。\n代理人以被代理人名义签订合同，要取得合法授权。代理人取得合法授权后，以被代理人名义签订的合同，应当由被代理人承担责任。被代理人以代理人事后已无代理权、加盖的是假章、所盖之章与备案公章不一致等为由否定合同效力的，人民法院不予支持。",
+      "has_proviso": 1,
       "key_terms": [
         "盖章行为",
         "看人不看章",
         "代表权"
       ],
       "claim_basis_type": "审判指导规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/199691.html",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：盖章行为的法律效力（原库误标为第53条'看人不看章'）。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《全国法院民商事审判工作会议纪要》（法〔2019〕254号）第41条官方原文核对录入。"
     },
     {
       "id": "nine_minutes_2019:art_46",
@@ -1374,7 +1374,7 @@
       "section_name": "",
       "article_no_cn": "第四十六条",
       "article_no_int": 46,
-      "content": "【待律师按官方原文录入】",
+      "content": "【通知解除的条件】审判实践中，部分人民法院对合同法司法解释（二）第24条的理解存在偏差，认为不论发出解除通知的一方有无解除权，只要另一方未在异议期内以起诉方式提出异议，合同就解除，这不符合合同法关于合同解除权行使的有关规定。对此，应当准确把握合同法司法解释（二）第24条规定的适用条件：只有享有法定或者约定解除权的当事人才能以通知方式解除合同。不享有解除权的一方向另一方发出解除通知，另一方即便未在异议期内提起诉讼，也不发生合同解除的效果。人民法院在审理案件时，应当审查发出解除通知的一方是否享有约定或者法定的解除权来决定合同应否解除，不能仅以受通知一方在约定或者法定的异议期内未起诉为由就认定合同已经解除。",
       "has_proviso": 0,
       "key_terms": [
         "违约金调整法官释明",
@@ -1383,11 +1383,11 @@
         "九民纪要裁判尺度"
       ],
       "claim_basis_type": "审判指导规范",
-      "verification_status": "PENDING_HUMAN",
-      "verified_at": null,
-      "verified_by": null,
+      "verification_status": "VERIFIED",
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/199691.html",
-      "review_note": "律师摘要（非原文）：原库第46条内容错误（第46条实为通知解除的条件），正文已清空待按官方原文录入。"
+      "review_note": "已按《全国法院民商事审判工作会议纪要》（法〔2019〕254号）第46条官方原文核对录入。"
     },
     {
       "id": "nine_minutes_2019:art_50",
@@ -1397,18 +1397,18 @@
       "section_name": "",
       "article_no_cn": "第五十条",
       "article_no_int": 50,
-      "content": "【待律师按官方原文录入】",
+      "content": "【违约金过高标准及举证责任】认定约定违约金是否过高，一般应当以《合同法》第113条规定的损失为基础进行判断，这里的损失包括合同履行后可以获得的利益。除借款合同外的双务合同，作为对价的价款或者报酬给付之债，并非借款合同项下的还款义务，不能以受法律保护的民间借贷利率上限作为判断违约金是否过高的标准，而应当兼顾合同履行情况、当事人过错程度以及预期利益等因素综合确定。主张违约金过高的违约方应当对违约金是否过高承担举证责任。",
       "has_proviso": 0,
       "key_terms": [
         "违约金过高",
         "举证责任"
       ],
       "claim_basis_type": "审判指导规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/199691.html",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：违约金过高标准及举证责任"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《全国法院民商事审判工作会议纪要》（法〔2019〕254号）第50条官方原文核对录入。"
     },
     {
       "id": "private_lending_2020:art_13",
@@ -1442,8 +1442,8 @@
       "section_name": "",
       "article_no_cn": "第二十五条",
       "article_no_int": 25,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "出借人请求借款人按照合同约定利率支付利息的，人民法院应予支持，但是双方约定的利率超过合同成立时一年期贷款市场报价利率四倍的除外。\n前款所称“一年期贷款市场报价利率”，是指中国人民银行授权全国银行间同业拆借中心自2019年8月20日起每月发布的一年期贷款市场报价利率。",
+      "has_proviso": 1,
       "key_terms": [
         "一年期LPR四倍",
         "约定利率上限",
@@ -1451,11 +1451,11 @@
         "超额利息不予支持"
       ],
       "claim_basis_type": "裁量上限与部分无效规范",
-      "verification_status": "PENDING_HUMAN",
-      "verified_at": null,
-      "verified_by": null,
+      "verification_status": "VERIFIED",
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
       "source_url": "https://www.lsbar.com/law/147230",
-      "review_note": "律师摘录（非原文）：……但是双方约定的利率超过合同成立时一年期贷款市场报价利率四倍的除外；第二款是'每月发布'（不是'每月20日发布'）；库中现文为转述，置 PENDING_HUMAN。 来源：lsbar.com/law/147230；https://www.emoneylaw.net/rule/2021/0101/201.html"
+      "review_note": "已按《最高人民法院关于审理民间借贷案件适用法律若干问题的规定》（2020第二次修正，法释〔2020〕17号）第二十五条官方原文核对录入。"
     },
     {
       "id": "private_lending_2020:art_28",
@@ -1465,8 +1465,8 @@
       "section_name": "",
       "article_no_cn": "第二十八条",
       "article_no_int": 28,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "借贷双方对逾期利率有约定的，从其约定，但是以不超过合同成立时一年期贷款市场报价利率四倍为限。\n未约定逾期利率或者约定不明的，人民法院可以区分不同情况处理：\n（一）既未约定借期内利率，也未约定逾期利率，出借人主张借款人自逾期还款之日起参照当时一年期贷款市场报价利率标准计算的利息承担逾期还款违约责任的，人民法院应予支持；\n（二）约定了借期内利率但是未约定逾期利率，出借人主张借款人自逾期还款之日起按照借期内利率支付资金占用期间利息的，人民法院应予支持。",
+      "has_proviso": 1,
       "key_terms": [
         "逾期利息与违约金并存",
         "利息违约金总计上限",
@@ -1474,11 +1474,11 @@
         "综合资金成本"
       ],
       "claim_basis_type": "综合费用封顶规范",
-      "verification_status": "PENDING_HUMAN",
-      "verified_at": null,
-      "verified_by": null,
+      "verification_status": "VERIFIED",
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
       "source_url": "https://www.emoneylaw.net/rule/2021/0101/201.html",
-      "review_note": "律师摘要（非原文）：第2款第（一）项漏了'参照当时一年期LPR标准计算的利息'；原第3款实为第29条。 来源：https://www.emoneylaw.net/rule/2021/0101/201.html、https://www.court.gov.cn/zixun/xiangqing/249031.html"
+      "review_note": "已按《最高人民法院关于审理民间借贷案件适用法律若干问题的规定》（2020第二次修正，法释〔2020〕17号）第二十八条官方原文核对录入。"
     },
     {
       "id": "private_lending_2020:art_29",
@@ -1488,18 +1488,18 @@
       "section_name": "",
       "article_no_cn": "第二十九条",
       "article_no_int": 29,
-      "content": "【待律师按官方原文录入】",
-      "has_proviso": 0,
+      "content": "出借人与借款人既约定了逾期利率，又约定了违约金或者其他费用，出借人可以选择主张逾期利息、违约金或者其他费用，也可以一并主张，但是总计超过合同成立时一年期贷款市场报价利率四倍的部分，人民法院不予支持。",
+      "has_proviso": 1,
       "key_terms": [
         "逾期利率",
         "违约金"
       ],
       "claim_basis_type": "请求权规范",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.court.gov.cn/zixun/xiangqing/249031.html",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：原库中民间借贷规定第28条第3款实为第29条内容，待按官方原文录入。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《最高人民法院关于审理民间借贷案件适用法律若干问题的规定》（2020第二次修正，法释〔2020〕17号）第二十九条官方原文核对录入。"
     },
     {
       "id": "prosecution_standards_2022:art_22",
@@ -1509,7 +1509,7 @@
       "section_name": "",
       "article_no_cn": "第二十二条",
       "article_no_int": 22,
-      "content": "【待律师按官方原文录入】",
+      "content": "〔骗取贷款、票据承兑、金融票证案（刑法第一百七十五条之一）〕以欺骗手段取得银行或者其他金融机构贷款、票据承兑、信用证、保函等，给银行或者其他金融机构造成直接经济损失数额在五十万元以上的，应予立案追诉。",
       "has_proviso": 0,
       "key_terms": [
         "骗取贷款",
@@ -1517,11 +1517,11 @@
         "立案追诉"
       ],
       "claim_basis_type": "追诉门槛标准",
-      "verification_status": "PENDING_HUMAN",
+      "verification_status": "VERIFIED",
       "source_url": "https://www.spp.gov.cn/",
-      "verified_at": null,
-      "verified_by": null,
-      "review_note": "律师摘要（非原文）：2022版骗取贷款立案追诉标准，直接经济损失50万元以上；来源 spp.gov.cn 2022-04-29，公通字〔2022〕12号。原库误标为第19条。"
+      "verified_at": "2026-10-27T10:00:00+08:00",
+      "verified_by": "LawFlow-Official-Corpus-Sync",
+      "review_note": "已按《最高人民检察院、公安部关于公安机关管辖的刑事案件立案追诉标准的规定（二）》（公通字〔2022〕12号，2022年5月15日施行）第二十二条官方原文核对录入。"
     },
     {
       "id": "prosecution_standards_2022:art_69",

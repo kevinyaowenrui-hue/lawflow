@@ -39,9 +39,12 @@ from gateway.utils.enforcement_and_asset_engine import (
 # ---------------------------------------------------------------------------
 
 def test_R1_court_fees_1m():
-    res = calculate_court_fees(1000000)
+    res = calculate_court_fees(1000000, preservation_amount=1000000)
     assert res["actual_fee"] == 13800
     assert res["preservation_fee"] == 5000
+    bare = calculate_court_fees(1000000)
+    assert bare["preservation_fee"] == 0
+    assert bare["preservation_included"] is False
 
 
 def test_R2_court_fees_summary():
@@ -76,8 +79,26 @@ def test_R6_labor_compensation_7_months():
     res = calculate_labor_compensation(10000, "2020-03-15", "2026-10-10")
     assert res["compensation_months"] == 7
     assert res["tiers"]["N"]["amount"] == 70000
-    assert res["tiers"]["N+1"]["amount"] == 80000
+    assert res["tiers"]["N+1"]["amount"] == 70000
+    assert res["notice_applicable"] is False
     assert res["tiers"]["2N"]["amount"] == 140000
+    with_notice_gap = calculate_labor_compensation(
+        10000,
+        "2020-03-15",
+        "2026-10-10",
+        termination_reason="employer_dismissal_with_notice",
+        prior_30days_notice=False,
+    )
+    assert with_notice_gap["tiers"]["N+1"]["amount"] == 80000
+    already_notified = calculate_labor_compensation(
+        10000,
+        "2020-03-15",
+        "2026-10-10",
+        termination_reason="employer_dismissal_with_notice",
+        prior_30days_notice=True,
+    )
+    assert already_notified["tiers"]["N+1"]["amount"] == 70000
+    assert "不能同时" in already_notified["claim_mutex_note"]
 
 
 def test_R7_labor_half_month():
@@ -124,6 +145,9 @@ def test_R11_preservation_renewal_7_days():
     # 届满日口径：start + 1 年 = 2027-01-01 → 续行截止 2026-12-25（若律师对届满日有异议，待确认）
     assert expire[:10] == "2027-01-01"
     assert res["renewal_application_deadline"] == "2026-12-25"
+    assert "第四百八十五条" in res["statute_basis"]
+    assert "第一百五十六条" in res["statute_basis"]
+    assert "条号为准" not in res["statute_basis"]
 
 
 _GUARANTEE_NODES = [
@@ -187,11 +211,13 @@ def test_R16_unrecognized_law():
     assert res["badge"]["color"] != "green"
 
 
-def test_R17_unindexed_civil_code():
+def test_R17_indexed_civil_code_stays_pending_until_lawyer_check():
     res = audit_citations_in_text(
         raw_text="依据《民法典》第五百八十四条", auto_sanitize=False
     )
-    assert res["citations"][0]["status"] == "UNINDEXED_UNVERIFIABLE"
+    cit = res["citations"][0]
+    assert cit["status"] == "PENDING_VERIFICATION"
+    assert "损失" in (cit.get("article_content") or "")
     assert res["stats"]["verified_valid"] == 0
     assert res["badge"]["color"] != "green"
 

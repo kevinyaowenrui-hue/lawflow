@@ -417,14 +417,21 @@ def _find_article_row(cursor, canon: str, norm_art_no: Optional[int], art_no_cn:
         JOIN laws l ON a.law_id = l.id
         """
     )
+    candidates = []
     for row in cursor.fetchall():
         ln = normalize_law_name(row["full_name"])
         sn = normalize_law_name(row["short_name"])
         if ln != canon and sn != canon:
             continue
-        if norm_art_no is not None and row["article_no_int"] == norm_art_no:
-            return row
+        candidates.append(row)
+    for row in candidates:
         if row["article_no_cn"] == art_no_cn:
+            return row
+    for row in candidates:
+        cn = row["article_no_cn"] or ""
+        if "之" in cn:
+            continue
+        if norm_art_no is not None and row["article_no_int"] == norm_art_no:
             return row
     return None
 
@@ -610,7 +617,7 @@ def _audit_citations_core(conn, content_text, auto_sanitize, incident_date=None)
                 yellow_count += 1
                 citation_entry["notes"] = (
                     f"【历史实体法适用】法律事实发生于 {incident_date}（2021-01-01 民法典施行前）。"
-                    f"依据《最高人民法院关于适用〈中华人民共和国民法典〉时间效力的若干规定》第一条第二款：{CIVIL_CODE_TIME_EFFECT_ART1_PARA2}，依法适用当时的法律规定。"
+                    f"依据《最高人民法院关于适用〈中华人民共和国民法典〉时间效力的若干规定》第一条第二款：{CIVIL_CODE_TIME_EFFECT_ART1_PARA2}。"
                     f"对应《民法典》参照条文为：{ab_info.get('replaced_by') or '民法典相关条文'}。"
                 )
                 citation_entry["risk_tip"] = citation_entry["notes"]
@@ -627,7 +634,7 @@ def _audit_citations_core(conn, content_text, auto_sanitize, incident_date=None)
             tip = ab_info.get("risk_tip") or ""
             citation_entry["notes"] = (
                 f"《{canon}》已于 {ab_info.get('abrogated_date')} 废止。"
-                f"{tip} 依据：{ab_info.get('basis') or 'TODO(律师核实)'}"
+                f"{tip} 依据：{ab_info.get('basis') or '本地库未记载废止决定文号，引用前请核对废止该法的决定原文。'}"
             )
             citation_entry["risk_tip"] = citation_entry["notes"]
             citation_entry["replacement_suggestion"] = f"建议替换援引：{ab_info.get('replaced_by')}"
@@ -751,6 +758,17 @@ def _audit_citations_core(conn, content_text, auto_sanitize, incident_date=None)
                     citation_entry["meeting_minutes_caveat"] = (
                         "不得作为裁判依据直接援引，只能在说理部分参考"
                     )
+            elif vstatus == "OFFICIAL_SOURCE":
+                yellow_count += 1
+                unverified_count += 1
+                citation_entry["status"] = "PENDING_VERIFICATION"
+                citation_entry["audit_status"] = "PENDING_VERIFICATION"
+                citation_entry["risk_level"] = "MODERATE_WARNING"
+                citation_entry["notes"] = "已收录国家法律法规数据库现行全文，待律师抽核"
+                citation_entry["official_content"] = art_row["content"]
+                citation_entry["article_content"] = art_row["content"]
+                if canon in ("九民纪要", "类案检索指导意见"):
+                    citation_entry["notes"] += "；不得作为裁判依据直接援引，只能在说理部分参考"
             else:
                 # PENDING_HUMAN / USER_IMPORTED_UNVERIFIED 等一律黄标，绝不当作绿标标准答案
                 yellow_count += 1

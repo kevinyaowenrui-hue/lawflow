@@ -135,6 +135,51 @@ def test_idcard_cadre_flag_changes_orig_retire_age():
     assert worker["gender"] == "女"
     assert worker["orig_retire_age"] == 50
     assert cadre["orig_retire_age"] == 55
+    assert "律师选择" in worker["retirement_note"]
+    assert "工人" in worker["retirement_note"]
+    assert "不是从身份证推出来的" in worker["retirement_note"]
+    assert "律师选择" in cadre["retirement_note"]
+    assert "管理/技术" in cadre["retirement_note"]
+    assert "不是从身份证推出来的" in cadre["retirement_note"]
+    assert worker["statutory_retire_date"]
+    assert cadre["statutory_retire_date"]
+    assert worker["statutory_retire_date"] != cadre["statutory_retire_date"]
+
+
+def test_female_retirement_requires_post_before_date():
+    card = _idcard_with_check("11010119900101122")
+    missing = validate_and_parse_idcard(card)
+    assert missing["valid"] is True
+    assert missing["gender"] == "女"
+    assert missing["statutory_retire_date"] is None
+    assert missing["orig_retire_age"] is None
+    assert missing["delay_months"] is None
+    assert missing["retirement_date_available"] is False
+    assert missing["badge_text"] == "请先选岗位"
+    assert "法定退休时间" not in missing["badge_text"]
+    assert "请先选岗位" in missing["retirement_note"]
+    assert "不是身份证号码推出来的" in missing["retirement_note"]
+    explicit_worker = validate_and_parse_idcard("110101197501150023", is_cadre=False)
+    explicit_cadre = validate_and_parse_idcard("110101197001150027", is_cadre=True)
+    assert explicit_worker["delay_months"] == 1
+    assert explicit_worker["statutory_retire_date"] == "2025年02月"
+    assert explicit_cadre["delay_months"] == 1
+    assert explicit_cadre["statutory_retire_date"] == "2025年02月"
+    assert explicit_worker["position_source"] == "lawyer_selected"
+    assert explicit_cadre["position_source"] == "lawyer_selected"
+
+
+def test_male_retirement_schedule_unchanged_without_post():
+    res = validate_and_parse_idcard("110101196501150010")
+    assert res["gender"] == "男"
+    assert res["orig_retire_age"] == 60
+    assert res["delay_months"] == 1
+    assert res["statutory_retire_date"] == "2025年02月"
+    assert res["retirement_date_available"] is True
+    marked = validate_and_parse_idcard("110101196501150010", is_cadre=True)
+    assert marked["statutory_retire_date"] == res["statutory_retire_date"]
+    assert marked["delay_months"] == res["delay_months"]
+    assert "男职工" in res["retirement_note"]
 
 
 def test_uscc_r24_known_valid():
@@ -160,9 +205,10 @@ def test_uscc_wrong_length_and_illegal_char():
 # ---------------------------------------------------------------------------
 
 def test_court_fees_r1_regression():
-    res = calculate_court_fees(1000000)
+    res = calculate_court_fees(1000000, preservation_amount=1000000)
     assert res["actual_fee"] == 13800
     assert res["preservation_fee"] == 5000
+    assert calculate_court_fees(1000000)["preservation_fee"] == 0
 
 
 def test_court_fees_summary_r2():
@@ -191,7 +237,7 @@ def test_court_fees_divorce_tiers_structural():
 
 
 def test_court_fees_property_small_tier():
-    res = calculate_court_fees(5000)
+    res = calculate_court_fees(5000, preservation_amount=5000)
     assert res["actual_fee"] == 50.0
     assert res["preservation_fee"] == 30.0 + (5000 - 1000) * 0.01
 

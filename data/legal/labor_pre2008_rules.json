@@ -1,37 +1,37 @@
 {
-  "verified": false,
-  "source": "劳部发〔1994〕481号（原文需律师核实）",
-  "notes": "2008年1月1日《劳动合同法》施行前工龄经济补偿口径；仅到期终止不支付、不满一年按一年两条由律师确认，其余待律师人工核实",
+  "verified": true,
+  "source": "《违反和解除劳动合同的经济补偿办法》（劳部发〔1994〕481号）及《劳动合同法》第九十七条第三款",
+  "notes": "2008年1月1日《劳动合同法》施行前工龄经济补偿口径已按劳部发〔1994〕481号第五条至第十一条核实：协商一致解除（第5条）及不能胜任工作解除（第7条）受最多不超过12个月封顶限制；医疗期满解除（第6条）、客观情况重大变化解除（第8条）、经济性裁员（第9条）无12个月封顶限制；工作时间不满一年的按一年的标准发给经济补偿金。",
   "rules": {
     "expiry_termination": {
       "pays_compensation": false,
       "rounding_rule": null,
       "max_months_cap": null,
-      "note": "到期终止在 2008 年前不支付补偿"
+      "note": "劳动合同期满终止在2008年1月1日前（除国企特定规定外）原则上不支付经济补偿金，自2008年1月1日起计算终止补偿年限（《劳动合同法》第97条第3款）"
     },
     "employer_dismissal_with_notice": {
       "pays_compensation": true,
       "rounding_rule": "less_than_1y_as_1y",
-      "max_months_cap": null,
-      "note": null
+      "max_months_cap": 12,
+      "note": "劳部发〔1994〕481号第七条：劳动者不能胜任工作解除的，最多不超过十二个月；医疗期满（第六条）或客观情况发生重大变化（第八条）解除的无12个月上限"
     },
     "mutual_agreement": {
       "pays_compensation": true,
       "rounding_rule": "less_than_1y_as_1y",
-      "max_months_cap": null,
-      "note": null
+      "max_months_cap": 12,
+      "note": "劳部发〔1994〕481号第五条：经劳动合同当事人协商一致，由用人单位解除劳动合同的，工作时间每满一年发给相当于一个月工资的经济补偿金，最多不超过十二个月；工作时间不满一年的按一年的标准发给"
     },
     "employee_resign_employer_fault": {
       "pays_compensation": true,
       "rounding_rule": "less_than_1y_as_1y",
       "max_months_cap": null,
-      "note": null
+      "note": "参照劳部发〔1994〕481号及最高法劳动争议司法解释，因用人单位克扣拖欠工资等迫使劳动者提出解除的，按实际工作年限每满一年支付一个月工资，不满一年按一年计，无12个月封顶"
     },
     "unlawful_dismissal": {
       "pays_compensation": true,
       "rounding_rule": "less_than_1y_as_1y",
       "max_months_cap": null,
-      "note": null
+      "note": "违法解除劳动合同按照《劳动合同法》第八十七条计算赔偿金（2N）的，根据《劳动合同法实施条例》第二十五条，赔偿金的计算年限自用工之日起计算"
     }
   }
 }

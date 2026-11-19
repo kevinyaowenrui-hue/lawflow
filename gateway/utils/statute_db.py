@@ -35,6 +35,8 @@ def _verification_label(status: Optional[str]) -> str:
     s = (status or "").upper()
     if s == "VERIFIED":
         return "已核验"
+    if s == "OFFICIAL_SOURCE":
+        return "官网全文·待抽核"
     if s == "USER_IMPORTED_UNVERIFIED":
         return "用户导入·未核验"
     if s == "PENDING_HUMAN":
@@ -57,7 +59,9 @@ def _annotate_result(item: Dict[str, Any]) -> Dict[str, Any]:
             item["key_terms"] = json.loads(item["key_terms"])
         except Exception:
             item["key_terms"] = []
-    return item
+    from gateway.utils.cpl_interp_citation_display import attach_interp_cpl_citation_display
+
+    return attach_interp_cpl_citation_display(item)
 
 
 @contextmanager
@@ -245,7 +249,7 @@ def init_statute_database(force_reseed: bool = False):
                         ab["name"],
                         ab.get("full_name") or ab["name"],
                         ab.get("abrogated_date") or "2021-01-01",
-                        ab.get("replaced_by") or "TODO(律师核实)",
+                        ab.get("replaced_by") or "对应条文未写入本地库，请按废止决定核对",
                         ab.get("risk_tip") or "",
                     ),
                 )
@@ -356,7 +360,7 @@ def _seed_statutes_corpus(conn: sqlite3.Connection):
                 ab["name"],
                 ab.get("full_name") or ab["name"],
                 ab.get("abrogated_date") or "2021-01-01",
-                ab.get("replaced_by") or "TODO(律师核实)",
+                ab.get("replaced_by") or "对应条文未写入本地库，请按废止决定核对",
                 ab.get("risk_tip") or "",
             ),
         )
@@ -762,6 +766,7 @@ def get_statute_database_stats() -> Dict[str, Any]:
         verification_counts = {r["vs"]: r["cnt"] for r in cursor.fetchall()}
 
         verified_n = verification_counts.get("VERIFIED", 0)
+        official_n = verification_counts.get("OFFICIAL_SOURCE", 0)
         pending_n = verification_counts.get("PENDING_HUMAN", 0) + verification_counts.get(
             "USER_IMPORTED_UNVERIFIED", 0
         )
@@ -778,7 +783,9 @@ def get_statute_database_stats() -> Dict[str, Any]:
         "hierarchy_breakdown": hierarchy_breakdown,
         "verification_counts": verification_counts,
         "coverage_note": (
-            f"已核验 {verified_n} 条、待核验 {pending_n} 条，仅覆盖本工具引擎引用的部分条文，"
-            "并非权威法典全集。"
+            f"已收录 {total_laws} 部规范、{total_articles} 条。"
+            f"律师已核对 {verified_n} 条；"
+            f"国家法律法规数据库现行全文切条 {official_n} 条（可检索，引用核对标为待抽核）。"
+            + (f"另有待核验 {pending_n} 条。" if pending_n else "")
         ),
     }

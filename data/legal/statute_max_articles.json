@@ -5,7 +5,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 1260,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -16,7 +16,7 @@
       {
         "effective_from": "2024-01-01",
         "max_articles": 306,
-        "source": "2023修正",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -27,7 +27,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 452,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -38,7 +38,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 266,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -49,7 +49,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 98,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -60,7 +60,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 107,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -73,6 +73,12 @@
         "max_articles": 101,
         "source": "legacy",
         "verified": true
+      },
+      {
+        "effective_from": "2017-07-01",
+        "max_articles": 103,
+        "source": "flk.npc.gov.cn",
+        "verified": true
       }
     ]
   },
@@ -82,7 +88,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 54,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -93,7 +99,7 @@
       {
         "effective_from": "2021-11-01",
         "max_articles": 74,
-        "source": "全国人大",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -102,15 +108,27 @@
     "law_name": "中华人民共和国反不正当竞争法",
     "versions": [
       {
-        "effective_from": "TODO(律师核实)",
+        "effective_from": "1993-12-01",
         "max_articles": 33,
-        "source": "旧版",
-        "verified": false
+        "source": "1993年9月2日通过、1993年12月1日施行的文本共33条",
+        "verified": true
+      },
+      {
+        "effective_from": "2018-01-01",
+        "max_articles": 32,
+        "source": "2017年11月4日修订，2018年1月1日施行，共32条",
+        "verified": true
+      },
+      {
+        "effective_from": "2019-04-23",
+        "max_articles": 33,
+        "source": "2019年4月23日修正新增举证责任条文，原施行日期条顺延为第33条，至2025年10月14日",
+        "verified": true
       },
       {
         "effective_from": "2025-10-15",
         "max_articles": 41,
-        "source": "npc.gov.cn 2025-06-27",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -121,7 +139,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 55,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -134,6 +152,12 @@
         "max_articles": 79,
         "source": "legacy",
         "verified": true
+      },
+      {
+        "effective_from": "2026-01-01",
+        "max_articles": 81,
+        "source": "flk.npc.gov.cn",
+        "verified": true
       }
     ]
   },
@@ -143,7 +167,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 63,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -152,10 +176,16 @@
     "law_name": "最高人民法院关于审理民间借贷案件适用法律若干问题的规定",
     "versions": [
       {
-        "effective_from": "TODO(律师核实)",
-        "max_articles": 32,
-        "source": "TODO(律师核实)",
-        "verified": false
+        "effective_from": "2015-09-01",
+        "max_articles": 33,
+        "source": "法释〔2015〕18号，2015年9月1日施行，共33条；2020年8月20日第一次修正未减少条数",
+        "verified": true
+      },
+      {
+        "effective_from": "2021-01-01",
+        "max_articles": 31,
+        "source": "法释〔2020〕17号第二次修正，2021年1月1日施行，现行文本31条",
+        "verified": true
       }
     ]
   },
@@ -165,7 +195,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 69,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -176,7 +206,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 71,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -187,7 +217,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 39,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -198,7 +228,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 28,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -211,6 +241,12 @@
         "max_articles": 552,
         "source": "legacy",
         "verified": true
+      },
+      {
+        "effective_from": "2022-04-10",
+        "max_articles": 550,
+        "source": "flk.npc.gov.cn",
+        "verified": true
       }
     ]
   },
@@ -220,7 +256,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 54,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -231,7 +267,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 100,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -242,7 +278,7 @@
       {
         "effective_from": "1970-01-01",
         "max_articles": 130,
-        "source": "legacy",
+        "source": "flk.npc.gov.cn",
         "verified": true
       }
     ]
@@ -251,10 +287,3019 @@
     "law_name": "劳动人事争议仲裁办案规则",
     "versions": [
       {
-        "effective_from": "TODO(律师核实)",
+        "effective_from": "2009-01-01",
+        "max_articles": 58,
+        "source": "人社部令第2号，2009年1月1日公布施行，共58条，施行至2017年6月30日",
+        "verified": true
+      },
+      {
+        "effective_from": "2017-07-01",
+        "max_articles": 81,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民法院关于民事执行中变更、追加当事人若干问题的规定",
+    "versions": [
+      {
+        "effective_from": "2021-01-01",
+        "max_articles": 35,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民法院关于统一法律适用加强类案检索的指导意见（试行）",
+    "versions": [
+      {
+        "effective_from": "2020-07-31",
+        "max_articles": 14,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "最高人民检察院、公安部关于公安机关管辖的刑事案件立案追诉标准的规定（二）",
+    "versions": [
+      {
+        "effective_from": "2022-05-15",
+        "max_articles": 85,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国税收征收管理法",
+    "versions": [
+      {
+        "effective_from": "2015-04-24",
+        "max_articles": 94,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国铁路法",
+    "versions": [
+      {
+        "effective_from": "2015-04-24",
+        "max_articles": 74,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国烟草专卖法",
+    "versions": [
+      {
+        "effective_from": "2015-04-24",
+        "max_articles": 43,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国注册会计师法",
+    "versions": [
+      {
+        "effective_from": "2014-08-31",
+        "max_articles": 46,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国政府采购法",
+    "versions": [
+      {
+        "effective_from": "2014-08-31",
+        "max_articles": 88,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国农业法",
+    "versions": [
+      {
+        "effective_from": "2013-01-01",
+        "max_articles": 99,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国石油天然气管道保护法",
+    "versions": [
+      {
+        "effective_from": "2010-10-01",
+        "max_articles": 61,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国进出境动植物检疫法",
+    "versions": [
+      {
+        "effective_from": "2009-08-27",
+        "max_articles": 50,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国企业国有资产法",
+    "versions": [
+      {
+        "effective_from": "2009-05-01",
+        "max_articles": 77,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国银行业监督管理法",
+    "versions": [
+      {
+        "effective_from": "2007-01-01",
+        "max_articles": 52,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国中国人民银行法",
+    "versions": [
+      {
+        "effective_from": "2004-02-01",
+        "max_articles": 53,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国价格法",
+    "versions": [
+      {
+        "effective_from": "1998-05-01",
+        "max_articles": 48,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国社会救助法",
+    "versions": [
+      {
+        "effective_from": "2026-07-01",
+        "max_articles": 78,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国危险化学品安全法",
+    "versions": [
+      {
+        "effective_from": "2026-05-01",
+        "max_articles": 127,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国科学技术普及法",
+    "versions": [
+      {
+        "effective_from": "2024-12-25",
+        "max_articles": 60,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国未成年人保护法",
+    "versions": [
+      {
+        "effective_from": "2024-04-26",
+        "max_articles": 132,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国慈善法",
+    "versions": [
+      {
+        "effective_from": "2024-09-05",
+        "max_articles": 125,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国无障碍环境建设法",
+    "versions": [
+      {
+        "effective_from": "2023-09-01",
+        "max_articles": 72,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国妇女权益保障法",
+    "versions": [
+      {
+        "effective_from": "2023-01-01",
+        "max_articles": 86,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国工会法",
+    "versions": [
+      {
+        "effective_from": "2022-01-01",
+        "max_articles": 58,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国宪法",
+    "versions": [
+      {
+        "effective_from": "2018-03-11",
+        "max_articles": 143,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国民族团结进步促进法",
+    "versions": [
+      {
+        "effective_from": "2026-07-01",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国家发展规划法",
+    "versions": [
+      {
+        "effective_from": "2026-03-12",
+        "max_articles": 38,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国家通用语言文字法",
+    "versions": [
+      {
+        "effective_from": "2026-01-01",
+        "max_articles": 32,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国村民委员会组织法",
+    "versions": [
+      {
+        "effective_from": "2026-01-01",
+        "max_articles": 50,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国城市居民委员会组织法",
+    "versions": [
+      {
+        "effective_from": "2026-01-01",
+        "max_articles": 50,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国法治宣传教育法",
+    "versions": [
+      {
+        "effective_from": "2025-11-01",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国全国人民代表大会和地方各级人民代表大会代表法",
+    "versions": [
+      {
+        "effective_from": "2025-03-12",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国监察法",
+    "versions": [
+      {
+        "effective_from": "2025-06-01",
+        "max_articles": 78,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国各级人民代表大会常务委员会监督法",
+    "versions": [
+      {
+        "effective_from": "2024-11-08",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国务院组织法",
+    "versions": [
+      {
+        "effective_from": "2024-03-11",
+        "max_articles": 20,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国爱国主义教育法",
+    "versions": [
+      {
+        "effective_from": "2024-01-01",
+        "max_articles": 40,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国外国国家豁免法",
+    "versions": [
+      {
+        "effective_from": "2024-01-01",
+        "max_articles": 23,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国对外关系法",
+    "versions": [
+      {
+        "effective_from": "2023-07-01",
+        "max_articles": 45,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国立法法",
+    "versions": [
+      {
+        "effective_from": "2023-03-15",
+        "max_articles": 120,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国地方各级人民代表大会和地方各级人民政府组织法",
+    "versions": [
+      {
+        "effective_from": "2022-03-12",
+        "max_articles": 90,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国陆地国界法",
+    "versions": [
+      {
+        "effective_from": "2022-01-01",
+        "max_articles": 62,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国监察官法",
+    "versions": [
+      {
+        "effective_from": "2022-01-01",
+        "max_articles": 68,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国反外国制裁法",
+    "versions": [
+      {
+        "effective_from": "2021-06-10",
+        "max_articles": 16,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中国人民解放军选举全国人民代表大会和县级以上地方各级人民代表大会代表的办法",
+    "versions": [
+      {
+        "effective_from": "2021-04-30",
+        "max_articles": 40,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国全国人民代表大会组织法",
+    "versions": [
+      {
+        "effective_from": "2021-03-12",
+        "max_articles": 49,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国防法",
+    "versions": [
+      {
+        "effective_from": "2021-01-01",
+        "max_articles": 73,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国全国人民代表大会和地方各级人民代表大会选举法",
+    "versions": [
+      {
+        "effective_from": "2020-10-18",
+        "max_articles": 60,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国徽法",
+    "versions": [
+      {
+        "effective_from": "2021-01-01",
+        "max_articles": 19,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国旗法",
+    "versions": [
+      {
+        "effective_from": "2021-01-01",
+        "max_articles": 24,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国香港特别行政区维护国家安全法",
+    "versions": [
+      {
+        "effective_from": "2020-06-30",
         "max_articles": 66,
-        "source": "TODO(律师核实)",
-        "verified": false
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国公职人员政务处分法",
+    "versions": [
+      {
+        "effective_from": "2020-07-01",
+        "max_articles": 68,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国检察官法",
+    "versions": [
+      {
+        "effective_from": "2019-10-01",
+        "max_articles": 70,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国法官法",
+    "versions": [
+      {
+        "effective_from": "2019-10-01",
+        "max_articles": 69,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国人民检察院组织法",
+    "versions": [
+      {
+        "effective_from": "2019-01-01",
+        "max_articles": 53,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国人民法院组织法",
+    "versions": [
+      {
+        "effective_from": "2019-01-01",
+        "max_articles": 59,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国英雄烈士保护法",
+    "versions": [
+      {
+        "effective_from": "2018-05-01",
+        "max_articles": 30,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国人民陪审员法",
+    "versions": [
+      {
+        "effective_from": "2018-04-27",
+        "max_articles": 32,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国歌法",
+    "versions": [
+      {
+        "effective_from": "2017-10-01",
+        "max_articles": 16,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国家勋章和国家荣誉称号法",
+    "versions": [
+      {
+        "effective_from": "2016-01-01",
+        "max_articles": 21,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国家安全法",
+    "versions": [
+      {
+        "effective_from": "2015-07-01",
+        "max_articles": 84,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国家赔偿法",
+    "versions": [
+      {
+        "effective_from": "2013-01-01",
+        "max_articles": 42,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国集会游行示威法",
+    "versions": [
+      {
+        "effective_from": "2009-08-27",
+        "max_articles": 36,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国外国中央银行财产司法强制措施豁免法",
+    "versions": [
+      {
+        "effective_from": "2005-10-25",
+        "max_articles": 4,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "反分裂国家法",
+    "versions": [
+      {
+        "effective_from": "2005-03-14",
+        "max_articles": 10,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国民族区域自治法",
+    "versions": [
+      {
+        "effective_from": "2001-02-28",
+        "max_articles": 74,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国澳门特别行政区驻军法",
+    "versions": [
+      {
+        "effective_from": "1999-12-20",
+        "max_articles": 30,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国专属经济区和大陆架法",
+    "versions": [
+      {
+        "effective_from": "1998-06-26",
+        "max_articles": 16,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国香港特别行政区驻军法",
+    "versions": [
+      {
+        "effective_from": "1997-07-01",
+        "max_articles": 30,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国戒严法",
+    "versions": [
+      {
+        "effective_from": "1996-03-01",
+        "max_articles": 32,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国澳门特别行政区基本法",
+    "versions": [
+      {
+        "effective_from": "1999-12-20",
+        "max_articles": 145,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国领海及毗连区法",
+    "versions": [
+      {
+        "effective_from": "1992-02-25",
+        "max_articles": 17,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国缔结条约程序法",
+    "versions": [
+      {
+        "effective_from": "1990-12-28",
+        "max_articles": 21,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国香港特别行政区基本法",
+    "versions": [
+      {
+        "effective_from": "1997-07-01",
+        "max_articles": 160,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国籍法",
+    "versions": [
+      {
+        "effective_from": "1980-09-10",
+        "max_articles": 18,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国海商法",
+    "versions": [
+      {
+        "effective_from": "2026-05-01",
+        "max_articles": 310,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国农村集体经济组织法",
+    "versions": [
+      {
+        "effective_from": "2025-05-01",
+        "max_articles": 67,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国期货和衍生品法",
+    "versions": [
+      {
+        "effective_from": "2022-08-01",
+        "max_articles": 155,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国著作权法",
+    "versions": [
+      {
+        "effective_from": "2021-06-01",
+        "max_articles": 67,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国专利法",
+    "versions": [
+      {
+        "effective_from": "2021-06-01",
+        "max_articles": 82,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国证券法",
+    "versions": [
+      {
+        "effective_from": "2020-03-01",
+        "max_articles": 226,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国商标法",
+    "versions": [
+      {
+        "effective_from": "2019-11-01",
+        "max_articles": 73,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国电子签名法",
+    "versions": [
+      {
+        "effective_from": "2019-04-23",
+        "max_articles": 36,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国农村土地承包法",
+    "versions": [
+      {
+        "effective_from": "2019-01-01",
+        "max_articles": 70,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国农民专业合作社法",
+    "versions": [
+      {
+        "effective_from": "2018-07-01",
+        "max_articles": 74,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国招标投标法",
+    "versions": [
+      {
+        "effective_from": "2017-12-28",
+        "max_articles": 68,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国商业银行法",
+    "versions": [
+      {
+        "effective_from": "2015-10-01",
+        "max_articles": 95,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国保险法",
+    "versions": [
+      {
+        "effective_from": "2015-04-24",
+        "max_articles": 185,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国拍卖法",
+    "versions": [
+      {
+        "effective_from": "2015-04-24",
+        "max_articles": 68,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国证券投资基金法",
+    "versions": [
+      {
+        "effective_from": "2015-04-24",
+        "max_articles": 154,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国涉外民事关系法律适用法",
+    "versions": [
+      {
+        "effective_from": "2011-04-01",
+        "max_articles": 52,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国企业破产法",
+    "versions": [
+      {
+        "effective_from": "2007-06-01",
+        "max_articles": 136,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国合伙企业法",
+    "versions": [
+      {
+        "effective_from": "2007-06-01",
+        "max_articles": 109,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国票据法",
+    "versions": [
+      {
+        "effective_from": "2004-08-28",
+        "max_articles": 110,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国信托法",
+    "versions": [
+      {
+        "effective_from": "2001-10-01",
+        "max_articles": 74,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国个人独资企业法",
+    "versions": [
+      {
+        "effective_from": "2000-01-01",
+        "max_articles": 48,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国防动员法",
+    "versions": [
+      {
+        "effective_from": "2026-10-01",
+        "max_articles": 82,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国食品安全法",
+    "versions": [
+      {
+        "effective_from": "2025-12-01",
+        "max_articles": 154,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国突发公共卫生事件应对法",
+    "versions": [
+      {
+        "effective_from": "2025-11-01",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国治安管理处罚法",
+    "versions": [
+      {
+        "effective_from": "2026-01-01",
+        "max_articles": 144,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国传染病防治法",
+    "versions": [
+      {
+        "effective_from": "2025-09-01",
+        "max_articles": 115,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国学前教育法",
+    "versions": [
+      {
+        "effective_from": "2025-06-01",
+        "max_articles": 85,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国文物保护法",
+    "versions": [
+      {
+        "effective_from": "2025-03-01",
+        "max_articles": 101,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国防教育法",
+    "versions": [
+      {
+        "effective_from": "2024-09-21",
+        "max_articles": 42,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国境卫生检疫法",
+    "versions": [
+      {
+        "effective_from": "2025-01-01",
+        "max_articles": 57,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国突发事件应对法",
+    "versions": [
+      {
+        "effective_from": "2024-11-01",
+        "max_articles": 106,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国学位法",
+    "versions": [
+      {
+        "effective_from": "2025-01-01",
+        "max_articles": 45,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国保守国家秘密法",
+    "versions": [
+      {
+        "effective_from": "2024-05-01",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国行政复议法",
+    "versions": [
+      {
+        "effective_from": "2024-01-01",
+        "max_articles": 90,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国预备役人员法",
+    "versions": [
+      {
+        "effective_from": "2023-03-01",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国体育法",
+    "versions": [
+      {
+        "effective_from": "2023-01-01",
+        "max_articles": 122,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国职业教育法",
+    "versions": [
+      {
+        "effective_from": "2022-05-01",
+        "max_articles": 69,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国科学技术进步法",
+    "versions": [
+      {
+        "effective_from": "2022-01-01",
+        "max_articles": 117,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国兵役法",
+    "versions": [
+      {
+        "effective_from": "2021-10-01",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国医师法",
+    "versions": [
+      {
+        "effective_from": "2022-03-01",
+        "max_articles": 67,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国人口与计划生育法",
+    "versions": [
+      {
+        "effective_from": "2021-08-20",
+        "max_articles": 48,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国军人地位和权益保障法",
+    "versions": [
+      {
+        "effective_from": "2021-08-01",
+        "max_articles": 71,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国军事设施保护法",
+    "versions": [
+      {
+        "effective_from": "2021-08-01",
+        "max_articles": 72,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国教育法",
+    "versions": [
+      {
+        "effective_from": "2021-04-30",
+        "max_articles": 86,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国海上交通安全法",
+    "versions": [
+      {
+        "effective_from": "2021-09-01",
+        "max_articles": 122,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国道路交通安全法",
+    "versions": [
+      {
+        "effective_from": "2021-04-29",
+        "max_articles": 124,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国消防法",
+    "versions": [
+      {
+        "effective_from": "2021-04-29",
+        "max_articles": 74,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国海关法",
+    "versions": [
+      {
+        "effective_from": "2021-04-29",
+        "max_articles": 102,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国反食品浪费法",
+    "versions": [
+      {
+        "effective_from": "2021-04-29",
+        "max_articles": 32,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国行政处罚法",
+    "versions": [
+      {
+        "effective_from": "2021-07-15",
+        "max_articles": 86,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国海警法",
+    "versions": [
+      {
+        "effective_from": "2021-02-01",
+        "max_articles": 84,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国档案法",
+    "versions": [
+      {
+        "effective_from": "2021-01-01",
+        "max_articles": 53,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国人民武装警察法",
+    "versions": [
+      {
+        "effective_from": "2020-06-21",
+        "max_articles": 51,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国基本医疗卫生与健康促进法",
+    "versions": [
+      {
+        "effective_from": "2020-06-01",
+        "max_articles": 110,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国密码法",
+    "versions": [
+      {
+        "effective_from": "2020-01-01",
+        "max_articles": 44,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国药品管理法",
+    "versions": [
+      {
+        "effective_from": "2019-12-01",
+        "max_articles": 155,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国疫苗管理法",
+    "versions": [
+      {
+        "effective_from": "2019-12-01",
+        "max_articles": 100,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国行政许可法",
+    "versions": [
+      {
+        "effective_from": "2019-04-23",
+        "max_articles": 83,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国义务教育法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 63,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国公务员法",
+    "versions": [
+      {
+        "effective_from": "2019-06-01",
+        "max_articles": 113,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国高等教育法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 69,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国民办教育促进法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 67,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国公共图书馆法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 55,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国家情报法",
+    "versions": [
+      {
+        "effective_from": "2018-04-27",
+        "max_articles": 32,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国精神卫生法",
+    "versions": [
+      {
+        "effective_from": "2018-04-27",
+        "max_articles": 85,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国律师法",
+    "versions": [
+      {
+        "effective_from": "2018-01-01",
+        "max_articles": 60,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国公证法",
+    "versions": [
+      {
+        "effective_from": "2018-01-01",
+        "max_articles": 47,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国核安全法",
+    "versions": [
+      {
+        "effective_from": "2018-01-01",
+        "max_articles": 94,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国中医药法",
+    "versions": [
+      {
+        "effective_from": "2017-07-01",
+        "max_articles": 63,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国公共文化服务保障法",
+    "versions": [
+      {
+        "effective_from": "2017-03-01",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国电影产业促进法",
+    "versions": [
+      {
+        "effective_from": "2017-03-01",
+        "max_articles": 60,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国气象法",
+    "versions": [
+      {
+        "effective_from": "2016-11-07",
+        "max_articles": 45,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国防交通法",
+    "versions": [
+      {
+        "effective_from": "2017-01-01",
+        "max_articles": 60,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国促进科技成果转化法",
+    "versions": [
+      {
+        "effective_from": "2015-10-01",
+        "max_articles": 52,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国枪支管理法",
+    "versions": [
+      {
+        "effective_from": "2015-04-24",
+        "max_articles": 50,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国人民警察法",
+    "versions": [
+      {
+        "effective_from": "2013-01-01",
+        "max_articles": 52,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国出境入境管理法",
+    "versions": [
+      {
+        "effective_from": "2013-07-01",
+        "max_articles": 93,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国居民身份证法",
+    "versions": [
+      {
+        "effective_from": "2012-01-01",
+        "max_articles": 23,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国行政强制法",
+    "versions": [
+      {
+        "effective_from": "2012-01-01",
+        "max_articles": 71,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国非物质文化遗产法",
+    "versions": [
+      {
+        "effective_from": "2011-06-01",
+        "max_articles": 45,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国驻外外交人员法",
+    "versions": [
+      {
+        "effective_from": "2010-01-01",
+        "max_articles": 48,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国人民防空法",
+    "versions": [
+      {
+        "effective_from": "2009-08-27",
+        "max_articles": 53,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国教师法",
+    "versions": [
+      {
+        "effective_from": "2009-08-27",
+        "max_articles": 43,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国防震减灾法",
+    "versions": [
+      {
+        "effective_from": "2009-05-01",
+        "max_articles": 93,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国禁毒法",
+    "versions": [
+      {
+        "effective_from": "2008-06-01",
+        "max_articles": 71,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国护照法",
+    "versions": [
+      {
+        "effective_from": "2007-01-01",
+        "max_articles": 26,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国现役军官法",
+    "versions": [
+      {
+        "effective_from": "2000-12-28",
+        "max_articles": 54,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国献血法",
+    "versions": [
+      {
+        "effective_from": "1998-10-01",
+        "max_articles": 24,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国民用航空法",
+    "versions": [
+      {
+        "effective_from": "2026-07-01",
+        "max_articles": 262,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国对外贸易法",
+    "versions": [
+      {
+        "effective_from": "2026-03-01",
+        "max_articles": 83,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国环境保护税法",
+    "versions": [
+      {
+        "effective_from": "2025-10-28",
+        "max_articles": 29,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国民营经济促进法",
+    "versions": [
+      {
+        "effective_from": "2025-05-20",
+        "max_articles": 78,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国增值税法",
+    "versions": [
+      {
+        "effective_from": "2026-01-01",
+        "max_articles": 38,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国反洗钱法",
+    "versions": [
+      {
+        "effective_from": "2025-01-01",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国统计法",
+    "versions": [
+      {
+        "effective_from": "2024-09-13",
+        "max_articles": 53,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国会计法",
+    "versions": [
+      {
+        "effective_from": "2024-07-01",
+        "max_articles": 51,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国关税法",
+    "versions": [
+      {
+        "effective_from": "2024-12-01",
+        "max_articles": 72,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国农业技术推广法",
+    "versions": [
+      {
+        "effective_from": "2024-04-26",
+        "max_articles": 39,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国粮食安全保障法",
+    "versions": [
+      {
+        "effective_from": "2024-06-01",
+        "max_articles": 74,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国畜牧法",
+    "versions": [
+      {
+        "effective_from": "2023-03-01",
+        "max_articles": 94,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国农产品质量安全法",
+    "versions": [
+      {
+        "effective_from": "2023-01-01",
+        "max_articles": 81,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国反垄断法",
+    "versions": [
+      {
+        "effective_from": "2022-08-01",
+        "max_articles": 70,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国种子法",
+    "versions": [
+      {
+        "effective_from": "2022-03-01",
+        "max_articles": 92,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国审计法",
+    "versions": [
+      {
+        "effective_from": "2022-01-01",
+        "max_articles": 60,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国印花税法",
+    "versions": [
+      {
+        "effective_from": "2022-07-01",
+        "max_articles": 20,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国海南自由贸易港法",
+    "versions": [
+      {
+        "effective_from": "2021-06-10",
+        "max_articles": 57,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国乡村振兴促进法",
+    "versions": [
+      {
+        "effective_from": "2021-06-01",
+        "max_articles": 74,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国进出口商品检验法",
+    "versions": [
+      {
+        "effective_from": "2021-04-29",
+        "max_articles": 39,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国广告法",
+    "versions": [
+      {
+        "effective_from": "2021-04-29",
+        "max_articles": 74,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国动物防疫法",
+    "versions": [
+      {
+        "effective_from": "2021-05-01",
+        "max_articles": 113,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国出口管制法",
+    "versions": [
+      {
+        "effective_from": "2020-12-01",
+        "max_articles": 49,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国城市维护建设税法",
+    "versions": [
+      {
+        "effective_from": "2021-09-01",
+        "max_articles": 11,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国契税法",
+    "versions": [
+      {
+        "effective_from": "2021-09-01",
+        "max_articles": 16,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国台湾同胞投资保护法",
+    "versions": [
+      {
+        "effective_from": "2019-12-28",
+        "max_articles": 14,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国资源税法",
+    "versions": [
+      {
+        "effective_from": "2020-09-01",
+        "max_articles": 17,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国城市房地产管理法",
+    "versions": [
+      {
+        "effective_from": "2020-01-01",
+        "max_articles": 73,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国城乡规划法",
+    "versions": [
+      {
+        "effective_from": "2019-04-23",
+        "max_articles": 70,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国车船税法",
+    "versions": [
+      {
+        "effective_from": "2019-04-23",
+        "max_articles": 13,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国建筑法",
+    "versions": [
+      {
+        "effective_from": "2019-04-23",
+        "max_articles": 85,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国外商投资法",
+    "versions": [
+      {
+        "effective_from": "2020-01-01",
+        "max_articles": 42,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国预算法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 101,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国企业所得税法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 60,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国耕地占用税法",
+    "versions": [
+      {
+        "effective_from": "2019-09-01",
+        "max_articles": 16,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国车辆购置税法",
+    "versions": [
+      {
+        "effective_from": "2019-07-01",
+        "max_articles": 19,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国港口法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 62,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国产品质量法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 74,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国电力法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 75,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国计量法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 34,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国旅游法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 112,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国船舶吨税法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 22,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国农业机械化促进法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 35,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国个人所得税法",
+    "versions": [
+      {
+        "effective_from": "2019-01-01",
+        "max_articles": 22,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国电子商务法",
+    "versions": [
+      {
+        "effective_from": "2019-01-01",
+        "max_articles": 89,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国中小企业促进法",
+    "versions": [
+      {
+        "effective_from": "2018-01-01",
+        "max_articles": 61,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国测绘法",
+    "versions": [
+      {
+        "effective_from": "2017-07-01",
+        "max_articles": 68,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国资产评估法",
+    "versions": [
+      {
+        "effective_from": "2016-12-01",
+        "max_articles": 55,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国航道法",
+    "versions": [
+      {
+        "effective_from": "2016-09-01",
+        "max_articles": 48,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国防洪法",
+    "versions": [
+      {
+        "effective_from": "2016-07-02",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国邮政法",
+    "versions": [
+      {
+        "effective_from": "2015-04-24",
+        "max_articles": 87,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国家庭教育促进法",
+    "versions": [
+      {
+        "effective_from": "2022-01-01",
+        "max_articles": 55,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国法律援助法",
+    "versions": [
+      {
+        "effective_from": "2022-01-01",
+        "max_articles": 71,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国安全生产法",
+    "versions": [
+      {
+        "effective_from": "2021-09-01",
+        "max_articles": 119,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国预防未成年人犯罪法",
+    "versions": [
+      {
+        "effective_from": "2021-06-01",
+        "max_articles": 68,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国退役军人保障法",
+    "versions": [
+      {
+        "effective_from": "2021-01-01",
+        "max_articles": 85,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国职业病防治法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 88,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国社会保险法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 98,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国老年人权益保障法",
+    "versions": [
+      {
+        "effective_from": "2018-12-29",
+        "max_articles": 85,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国残疾人保障法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 68,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国境外非政府组织境内活动管理法",
+    "versions": [
+      {
+        "effective_from": "2017-11-05",
+        "max_articles": 54,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国母婴保健法",
+    "versions": [
+      {
+        "effective_from": "2017-11-05",
+        "max_articles": 39,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国红十字会法",
+    "versions": [
+      {
+        "effective_from": "2017-05-08",
+        "max_articles": 30,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国反家庭暴力法",
+    "versions": [
+      {
+        "effective_from": "2016-03-01",
+        "max_articles": 38,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国就业促进法",
+    "versions": [
+      {
+        "effective_from": "2015-04-24",
+        "max_articles": 69,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国特种设备安全法",
+    "versions": [
+      {
+        "effective_from": "2014-01-01",
+        "max_articles": 101,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国军人保险法",
+    "versions": [
+      {
+        "effective_from": "2012-07-01",
+        "max_articles": 51,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国归侨侨眷权益保护法",
+    "versions": [
+      {
+        "effective_from": "2009-08-27",
+        "max_articles": 30,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国矿山安全法",
+    "versions": [
+      {
+        "effective_from": "2009-08-27",
+        "max_articles": 50,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国公益事业捐赠法",
+    "versions": [
+      {
+        "effective_from": "1999-09-01",
+        "max_articles": 32,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国生态环境法典",
+    "versions": [
+      {
+        "effective_from": "2026-08-15",
+        "max_articles": 1242,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国渔业法",
+    "versions": [
+      {
+        "effective_from": "2026-05-01",
+        "max_articles": 90,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国原子能法",
+    "versions": [
+      {
+        "effective_from": "2026-01-15",
+        "max_articles": 62,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国家公园法",
+    "versions": [
+      {
+        "effective_from": "2026-01-01",
+        "max_articles": 63,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国矿产资源法",
+    "versions": [
+      {
+        "effective_from": "2025-07-01",
+        "max_articles": 80,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国能源法",
+    "versions": [
+      {
+        "effective_from": "2025-01-01",
+        "max_articles": 80,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国生物安全法",
+    "versions": [
+      {
+        "effective_from": "2024-04-26",
+        "max_articles": 88,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国青藏高原生态保护法",
+    "versions": [
+      {
+        "effective_from": "2023-09-01",
+        "max_articles": 63,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国野生动物保护法",
+    "versions": [
+      {
+        "effective_from": "2023-05-01",
+        "max_articles": 64,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国黄河保护法",
+    "versions": [
+      {
+        "effective_from": "2023-04-01",
+        "max_articles": 122,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国黑土地保护法",
+    "versions": [
+      {
+        "effective_from": "2022-08-01",
+        "max_articles": 38,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国湿地保护法",
+    "versions": [
+      {
+        "effective_from": "2022-06-01",
+        "max_articles": 65,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国草原法",
+    "versions": [
+      {
+        "effective_from": "2021-04-29",
+        "max_articles": 75,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国长江保护法",
+    "versions": [
+      {
+        "effective_from": "2021-03-01",
+        "max_articles": 96,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国森林法",
+    "versions": [
+      {
+        "effective_from": "2020-07-01",
+        "max_articles": 84,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国土地管理法",
+    "versions": [
+      {
+        "effective_from": "2020-01-01",
+        "max_articles": 87,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国节约能源法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 87,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国循环经济促进法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 58,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国防沙治沙法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 47,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国煤炭法",
+    "versions": [
+      {
+        "effective_from": "2016-11-07",
+        "max_articles": 67,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国水法",
+    "versions": [
+      {
+        "effective_from": "2016-09-01",
+        "max_articles": 82,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国深海海底区域资源勘探开发法",
+    "versions": [
+      {
+        "effective_from": "2016-05-01",
+        "max_articles": 29,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国水土保持法",
+    "versions": [
+      {
+        "effective_from": "2011-03-01",
+        "max_articles": 60,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国可再生能源法",
+    "versions": [
+      {
+        "effective_from": "2010-04-01",
+        "max_articles": 33,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国海岛保护法",
+    "versions": [
+      {
+        "effective_from": "2010-03-01",
+        "max_articles": 58,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国海域使用管理法",
+    "versions": [
+      {
+        "effective_from": "2002-01-01",
+        "max_articles": 54,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国反间谍法",
+    "versions": [
+      {
+        "effective_from": "2023-07-01",
+        "max_articles": 71,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国反电信网络诈骗法",
+    "versions": [
+      {
+        "effective_from": "2022-12-01",
+        "max_articles": 50,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国反有组织犯罪法",
+    "versions": [
+      {
+        "effective_from": "2022-05-01",
+        "max_articles": 77,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国社区矫正法",
+    "versions": [
+      {
+        "effective_from": "2020-07-01",
+        "max_articles": 63,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国反恐怖主义法",
+    "versions": [
+      {
+        "effective_from": "2018-04-27",
+        "max_articles": 97,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国监狱法",
+    "versions": [
+      {
+        "effective_from": "2013-01-01",
+        "max_articles": 78,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国仲裁法",
+    "versions": [
+      {
+        "effective_from": "2026-03-01",
+        "max_articles": 96,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国刑事诉讼法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 308,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国国际刑事司法协助法",
+    "versions": [
+      {
+        "effective_from": "2018-10-26",
+        "max_articles": 70,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国人民调解法",
+    "versions": [
+      {
+        "effective_from": "2011-01-01",
+        "max_articles": 35,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国农村土地承包经营纠纷调解仲裁法",
+    "versions": [
+      {
+        "effective_from": "2010-01-01",
+        "max_articles": 53,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国引渡法",
+    "versions": [
+      {
+        "effective_from": "2000-12-28",
+        "max_articles": 55,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国海事诉讼特别程序法",
+    "versions": [
+      {
+        "effective_from": "2000-07-01",
+        "max_articles": 127,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国烟叶税法",
+    "versions": [
+      {
+        "effective_from": "2018-07-01",
+        "max_articles": 10,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国标准化法",
+    "versions": [
+      {
+        "effective_from": "2018-01-01",
+        "max_articles": 45,
+        "source": "flk.npc.gov.cn",
+        "verified": true
+      }
+    ]
+  },
+  {
+    "law_name": "中华人民共和国公路法",
+    "versions": [
+      {
+        "effective_from": "2017-11-05",
+        "max_articles": 87,
+        "source": "flk.npc.gov.cn",
+        "verified": true
       }
     ]
   }

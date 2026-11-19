@@ -92,7 +92,27 @@ def load_case_type_codes() -> Dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def load_seed_articles_bundle() -> Dict[str, Any]:
-    return dict(_load_json(_LEGAL_DIR / "seed_articles.json"))
+    """种子条文优先；data/legal/corpus 中的官网全文只补充种子里没有的条。"""
+    base = dict(_load_json(_LEGAL_DIR / "seed_articles.json"))
+    laws = list(base.get("laws") or [])
+    articles = list(base.get("articles") or [])
+    seen_laws = {law.get("id") for law in laws}
+    seen_articles = {art.get("id") for art in articles}
+    corpus_dir = _LEGAL_DIR / "corpus"
+    if corpus_dir.is_dir():
+        for path in sorted(corpus_dir.glob("*.json")):
+            extra = _load_json(path)
+            if not isinstance(extra, dict):
+                continue
+            for law in extra.get("laws") or []:
+                if law.get("id") and law["id"] not in seen_laws:
+                    laws.append(law)
+                    seen_laws.add(law["id"])
+            for art in extra.get("articles") or []:
+                if art.get("id") and art["id"] not in seen_articles:
+                    articles.append(art)
+                    seen_articles.add(art["id"])
+    return {"laws": laws, "articles": articles}
 
 
 @lru_cache(maxsize=1)
@@ -137,6 +157,13 @@ LAW_ALIAS_TO_CANONICAL: Dict[str, str] = {
     "劳动法": "劳动法",
     "个人信息保护法": "个人信息保护法",
     "反不正当竞争法": "反不正当竞争法",
+    "宪法": "宪法",
+    "证券法": "证券法",
+    "破产法": "企业破产法",
+    "企业破产法": "企业破产法",
+    "专利法": "专利法",
+    "商标法": "商标法",
+    "著作权法": "著作权法",
     "民间借贷规定": "民间借贷规定",
     "民间借贷司法解释": "民间借贷规定",
     "合同编解释": "合同编通则解释",
@@ -153,6 +180,8 @@ LAW_ALIAS_TO_CANONICAL: Dict[str, str] = {
     "网络安全法": "网络安全法",
     "消费者权益保护法": "消费者权益保护法",
     "劳动人事争议仲裁办案规则": "劳动人事争议仲裁办案规则",
+    "律师法": "律师法",
+    "仲裁法": "仲裁法",
 }
 
 
@@ -245,22 +274,22 @@ def get_official_max_article(
             return None
         return str(d)[:10]
 
+    dated = [v for v in versions if _parse_date(v.get("effective_from"))]
     if incident_date:
         inc = incident_date[:10]
         eligible = []
-        for v in versions:
+        for v in dated:
             ef = _parse_date(v.get("effective_from"))
-            if ef is None or ef <= inc:
+            if ef is not None and ef <= inc:
                 eligible.append(v)
         if eligible:
             eligible.sort(key=lambda v: _parse_date(v.get("effective_from")) or "0000-01-01")
             chosen = eligible[-1]
+        elif dated:
+            dated.sort(key=lambda v: _parse_date(v.get("effective_from")) or "9999-12-31")
+            chosen = dated[0]
         else:
-            # 无适用版本则取最早
-            versions_sorted = sorted(
-                versions, key=lambda v: _parse_date(v.get("effective_from")) or "9999-12-31"
-            )
-            chosen = versions_sorted[0]
+            chosen = versions[-1]
     else:
         # 无 incident_date：取最新可解析版本；若全是 TODO，取列表最后一项
         dated = [v for v in versions if _parse_date(v.get("effective_from"))]
